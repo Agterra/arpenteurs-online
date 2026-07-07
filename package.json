@@ -1,0 +1,60 @@
+{
+  "name": "arpenteurs",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "start": "node .output/server/index.mjs",
+    "postinstall": "nuxt prepare && prisma generate",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "cards:import": "node --env-file=.env --max-old-space-size=4096 scripts/import-cards.ts"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.9.0",
+    "@pinia/nuxt": "^0.11.3",
+    "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "@vueuse/core": "^13.0.0",
+    "nuxt": "^4.4.0",
+    "pg": "^8.13.0",
+    "pinia": "^3.0.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.116",
+    "@nuxt/test-utils": "^4.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.18.1",
+    "prisma": "^7.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.0",
+    "vue-tsc": "^3.0.0",
+    "ws": "^8.21.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "@parcel/watcher",
+      "@tailwindcss/oxide",
+      "unrs-resolver",
+      "vue-demi"
+    ]
+  }
+}

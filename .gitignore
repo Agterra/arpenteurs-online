@@ -1,0 +1,23 @@
+# Nuxt
+.nuxt
+.output
+.data
+dist
+
+# Node
+node_modules
+*.log
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Prisma generated client
+server/generated
+
+# Test
+coverage
+
+# Local card data downloads
+.cache

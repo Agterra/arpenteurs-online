@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../server/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Card catalog (MTGJSON AtomicCards ⋈ Scryfall oracle_cards) ----------
+
+enum CommanderLegality {
+  LEGAL
+  BANNED
+  RESTRICTED
+  NOT_LEGAL
+}
+
+model Card {
+  id                String            @id
+  scryfallOracleId  String            @unique @db.Uuid
+  scryfallId        String            @db.Uuid
+  name              String
+  nameNorm          String            @unique
+  asciiName         String?
+  faceNames         String[]
+  layout            String
+  manaCost          String?
+  manaValue         Float
+  typeLine          String
+  oracleText        String?
+  power             String?
+  toughness         String?
+  loyalty           String?
+  defense           String?
+  colors            String[]
+  colorIdentity     String[]
+  keywords          String[]
+  supertypes        String[]
+  commanderLegality CommanderLegality
+  canBeCommander    Boolean           @default(false)
+  hasAltDeckLimit   Boolean           @default(false)
+  isFunny           Boolean           @default(false)
+  edhrecRank        Int?
+  faces             Json? // per-face display data for multiface cards: [{name, manaCost, type, text, power, toughness, loyalty, defense}]
+  imageSmall        String?
+  imageNormal       String?
+  backImageSmall    String?
+  backImageNormal   String?
+  importedAt        DateTime          @updatedAt
+
+  aliases   CardAlias[]
+  deckCards DeckCard[]
+  // GIN pg_trgm index on nameNorm added by hand in the migration SQL
+}
+
+model CardAlias {
+  alias  String @id
+  cardId String
+  card   Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+}
+
+// ---------- Identity (ephemeral username + cookie token) ----------
+
+model User {
+  id         String   @id @default(cuid())
+  username   String
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  decks       Deck[]
+  seats       LobbySeat[]
+  gamePlayers GamePlayer[]
+}
+
+// ---------- Decks ----------
+
+enum DeckSection {
+  COMMANDER
+  MAIN
+}
+
+model Deck {
+  id        String     @id @default(cuid())
+  ownerId   String
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  rawText   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  cards     DeckCard[]
+
+  @@index([ownerId])
+}
+
+model DeckCard {
+  id       String      @id @default(cuid())
+  deckId   String
+  cardId   String
+  section  DeckSection @default(MAIN)
+  quantity Int         @default(1)
+  deck     Deck        @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  card     Card        @relation(fields: [cardId], references: [id])
+
+  @@unique([deckId, cardId, section])
+  @@index([cardId])
+}
+
+// ---------- Lobbies ----------
+
+enum LobbyStatus {
+  OPEN
+  STARTING
+  IN_GAME
+  FINISHED
+}
+
+enum LobbyVisibility {
+  PUBLIC
+  UNLISTED
+}
+
+model Lobby {
+  id           String          @id @default(cuid())
+  inviteCode   String          @unique
+  name         String
+  passwordHash String?
+  visibility   LobbyVisibility @default(UNLISTED)
+  hostId       String
+  status       LobbyStatus     @default(OPEN)
+  maxSeats     Int             @default(4)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  seats        LobbySeat[]
+  games        Game[]
+
+  @@index([visibility, status, createdAt])
+}
+
+model LobbySeat {
+  id        String   @id @default(cuid())
+  lobbyId   String
+  userId    String
+  seatIndex Int
+  deckId    String?
+  isReady   Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+  lobby     Lobby    @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([lobbyId, userId])
+  @@unique([lobbyId, seatIndex])
+}
+
+// ---------- Games ----------
+
+enum GameStatus {
+  ACTIVE
+  FINISHED
+  ABANDONED
+}
+
+model Game {
+  id          String       @id @default(cuid())
+  lobbyId     String
+  lobby       Lobby        @relation(fields: [lobbyId], references: [id])
+  status      GameStatus   @default(ACTIVE)
+  snapshot    Json
+  snapshotSeq Int          @default(0)
+  startedAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  endedAt     DateTime?
+  winnerSeat  Int?
+  players     GamePlayer[]
+  events      GameEvent[]
+
+  @@index([lobbyId])
+  @@index([status, updatedAt])
+}
+
+model GamePlayer {
+  gameId    String
+  userId    String
+  seatIndex Int
+  deckId    String?
+  game      Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@id([gameId, userId])
+  @@unique([gameId, seatIndex])
+}
+
+// Append-only, pre-redacted log lines (never replayed through game logic).
+model GameEvent {
+  id           BigInt   @id @default(autoincrement())
+  gameId       String
+  seq          Int
+  actorSeat    Int?
+  type         String
+  publicLine   String?
+  privateLines Json?
+  createdAt    DateTime @default(now())
+  game         Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, seq])
+}

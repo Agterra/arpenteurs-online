@@ -1,0 +1,13 @@
+node_modules
+.nuxt
+.output
+.data
+.cache
+.env
+.env.*
+!.env.example
+.git
+coverage
+docs
+tests/e2e
+*.log
