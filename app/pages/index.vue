@@ -60,9 +60,14 @@ const visibilityItems = [
   { label: 'Unlisted (invite link only)', value: 'UNLISTED' },
   { label: 'Public (listed below)', value: 'PUBLIC' },
 ]
+const modeItems = [
+  { label: 'Manual table (Commander, up to 4)', value: 'MANUAL' },
+  { label: 'Enforced Commander (beta — 2–4 players, small card pool)', value: 'ENFORCED' },
+]
 const lobbyName = ref('')
 const lobbyPassword = ref('')
 const lobbyVisibility = ref<'PUBLIC' | 'UNLISTED'>('UNLISTED')
+const lobbyMode = ref<'MANUAL' | 'ENFORCED'>('MANUAL')
 const createError = ref('')
 const creating = ref(false)
 async function onCreateLobby() {
@@ -75,6 +80,7 @@ async function onCreateLobby() {
       body: {
         name: lobbyName.value,
         visibility: lobbyVisibility.value,
+        mode: lobbyMode.value,
         ...(lobbyPassword.value ? { password: lobbyPassword.value } : {}),
       },
     })
@@ -173,6 +179,13 @@ async function onJoin(lobby: LobbyListItem) {
           <UFormField label="Name" required>
             <UInput v-model="lobbyName" placeholder="Friday pod" maxlength="60" class="w-full" />
           </UFormField>
+          <UFormField label="Mode">
+            <USelect v-model="lobbyMode" :items="modeItems" value-key="value" class="w-full" />
+          </UFormField>
+          <p v-if="lobbyMode === 'ENFORCED'" class="text-xs text-dimmed">
+            Enforced Commander applies the full game rules automatically (2–4 players, 40 life, real command zone).
+            Only a small starter card pool is supported so far.
+          </p>
           <div class="flex flex-wrap gap-3">
             <UFormField label="Password (optional)" class="flex-1 min-w-48">
               <UInput

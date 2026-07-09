@@ -18,6 +18,7 @@ type LobbyResponse =
       name: string
       hasPassword: boolean
       visibility: 'PUBLIC' | 'UNLISTED'
+      mode: 'MANUAL' | 'ENFORCED'
       status: 'OPEN' | 'STARTING' | 'IN_GAME' | 'FINISHED'
       hostId: string
       maxSeats: number
@@ -28,6 +29,7 @@ type LobbyResponse =
       member: false
       name: string
       hasPassword: boolean
+      mode: 'MANUAL' | 'ENFORCED'
       status: string
       seatCount: number
       maxSeats: number
@@ -163,7 +165,21 @@ async function onKick(seat: LobbySeatView) {
   }
 }
 const startBusy = ref(false)
-const startErrors = ref<{ seat: number; code: string }[]>([])
+interface StartError {
+  seat?: number
+  code: string
+  message?: string
+  names?: string[]
+  count?: number
+}
+const startErrors = ref<StartError[]>([])
+const supportedCommanders = ref<string[]>([])
+const unimplementedCards = computed(
+  () => startErrors.value.find((e) => e.code === 'UNIMPLEMENTED_CARDS') ?? null,
+)
+const seatStartErrors = computed(() =>
+  startErrors.value.filter((e) => e.code !== 'UNIMPLEMENTED_CARDS' && e.seat !== undefined),
+)
 async function onStart() {
   startBusy.value = true
   actionError.value = ''
@@ -172,8 +188,9 @@ async function onStart() {
     const res = await $fetch<{ gameId: string }>(`/api/lobbies/${code}/start`, { method: 'POST' })
     await navigateTo(`/game/${res.gameId}`)
   } catch (err) {
-    const e = err as { data?: { data?: { errors?: { seat: number; code: string }[] } } }
+    const e = err as { data?: { data?: { errors?: StartError[]; supportedCommanders?: string[] } } }
     startErrors.value = e?.data?.data?.errors ?? []
+    supportedCommanders.value = e?.data?.data?.supportedCommanders ?? []
     actionError.value = apiErrorMessage(err)
     await refresh()
   } finally {
@@ -215,9 +232,12 @@ async function copyInvite() {
       <!-- Non-member preview + join -->
       <UCard v-if="!lobby.member" class="mt-4">
         <template #header>
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-2">
             <h1 class="font-semibold">{{ lobby.name }}</h1>
-            <UBadge variant="subtle">{{ lobby.status }}</UBadge>
+            <div class="flex items-center gap-2">
+              <UBadge v-if="lobby.mode === 'ENFORCED'" variant="subtle" color="info">Enforced Commander (beta)</UBadge>
+              <UBadge variant="subtle">{{ lobby.status }}</UBadge>
+            </div>
           </div>
         </template>
         <p class="text-sm text-dimmed">{{ lobby.seatCount }}/{{ lobby.maxSeats }} seats taken</p>
@@ -239,6 +259,14 @@ async function copyInvite() {
       <template v-else>
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <h1 class="text-2xl font-bold grow">{{ lobby.name }}</h1>
+          <UBadge
+            v-if="lobby.mode === 'ENFORCED'"
+            variant="subtle"
+            color="info"
+            title="Full rules enforcement — 2–4 players, 40 life, command zone, small card pool"
+          >
+            Enforced Commander (beta)
+          </UBadge>
           <UBadge variant="subtle">{{ lobby.status }}</UBadge>
           <UBadge v-if="lobby.visibility === 'UNLISTED'" variant="subtle" color="neutral">Unlisted</UBadge>
           <UButton size="xs" variant="soft" icon="i-lucide-link" @click="copyInvite">
@@ -309,7 +337,10 @@ async function copyInvite() {
             <UButton color="error" variant="soft" @click="onLeave">Leave</UButton>
           </div>
           <p v-if="!deckItems.length" class="mt-2 text-xs text-dimmed">
-            You have no decks yet — <NuxtLink to="/decks" class="text-primary underline">import one</NuxtLink>.
+            You have no decks yet — <NuxtLink :to="`/decks?lobby=${code}`" class="text-primary underline">import one</NuxtLink>.
+          </p>
+          <p v-else class="mt-2 text-xs text-dimmed">
+            <NuxtLink :to="`/decks?lobby=${code}`" class="text-primary underline">Manage or import decks →</NuxtLink>
           </p>
         </UCard>
 
@@ -321,9 +352,34 @@ async function copyInvite() {
             </UButton>
             <p v-if="!allReady" class="text-sm text-dimmed">Waiting for everyone to be ready…</p>
           </div>
-          <ul v-if="startErrors.length" class="mt-2 text-sm text-error list-disc pl-5">
-            <li v-for="(e, i) in startErrors" :key="i">Seat {{ e.seat + 1 }}: {{ e.code }}</li>
+          <div v-if="unimplementedCards" class="mt-3 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">
+            <p class="font-medium">These cards aren't supported in enforced mode yet:</p>
+            <p class="mt-1 text-dimmed">
+              {{ (unimplementedCards.names ?? []).join(', ') }}
+              <template v-if="(unimplementedCards.count ?? 0) > (unimplementedCards.names?.length ?? 0)">
+                … and {{ (unimplementedCards.count ?? 0) - (unimplementedCards.names?.length ?? 0) }} more
+              </template>
+            </p>
+            <p class="mt-1 text-xs text-dimmed">
+              Swap them out, or play this deck in a manual lobby instead.
+            </p>
+          </div>
+          <ul v-if="seatStartErrors.length" class="mt-2 text-sm text-error list-disc pl-5">
+            <li v-for="(e, i) in seatStartErrors" :key="i">
+              Seat {{ (e.seat ?? 0) + 1 }}: {{ e.message ?? e.code }}
+            </li>
           </ul>
+          <div v-if="supportedCommanders.length" class="mt-2 rounded-md bg-elevated/60 p-2 text-xs">
+            <p class="font-medium">Commanders enforced mode supports right now (beta pool):</p>
+            <p class="mt-0.5 text-dimmed">{{ supportedCommanders.join(' · ') }}</p>
+            <p class="mt-1 text-dimmed">Any other deck plays fine in a <span class="font-medium">Manual</span> lobby.</p>
+          </div>
+          <p
+            v-if="startErrors.some((e) => e.code === 'NEED_TWO_PLAYERS' || e.code === 'NEED_2_TO_4_PLAYERS')"
+            class="mt-2 text-sm text-error"
+          >
+            Enforced Commander needs 2–4 players.
+          </p>
         </UCard>
 
         <p v-if="actionError" class="mt-3 text-sm text-error">{{ actionError }}</p>

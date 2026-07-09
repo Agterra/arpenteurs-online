@@ -4,6 +4,19 @@ import type { H3Event } from 'h3'
 const COOKIE = 'adm'
 const MONTH_S = 60 * 60 * 24 * 30
 
+/** Placeholders shipped in .env.example — refuse to run the backoffice with them. */
+const INSECURE_DEFAULT_TOKENS = new Set(['change-me-admin', 'change-me'])
+
+/**
+ * The effective admin token, or '' (backoffice disabled) when unset or left at a
+ * shipped placeholder. Stops an operator who forgot to set a real token from
+ * exposing /admin behind a publicly-known value (SEC finding #1 follow-up).
+ */
+export function effectiveAdminToken(configured: string | null | undefined): string {
+  if (!configured) return ''
+  return INSECURE_DEFAULT_TOKENS.has(configured) ? '' : configured
+}
+
 /**
  * Constant-time admin token comparison. Hashing both sides first makes the
  * buffers equal-length (timingSafeEqual throws otherwise) and avoids leaking
@@ -33,7 +46,7 @@ export function clearAdminCookie(event: H3Event) {
 
 /** Gate for every /api/admin route: re-validates the cookie token on each call. */
 export function requireAdmin(event: H3Event): void {
-  const configured = useRuntimeConfig(event).adminToken
+  const configured = effectiveAdminToken(useRuntimeConfig(event).adminToken)
   if (!configured) throw createError({ statusCode: 403, statusMessage: 'Backoffice disabled' })
   const cookie = getCookie(event, COOKIE)
   if (!cookie || !tokensMatch(cookie, configured)) {

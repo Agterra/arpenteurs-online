@@ -1,0 +1,286 @@
+/**
+ * Rules-engine state model (enforced mode). Kept separate from the manual
+ * engine's shared/types/game.ts. 1v1 / 20-life for M-R0; generalises to
+ * multiplayer + Commander in M-R4.
+ *
+ * The engine is server-authoritative and event-driven. Characteristics in M-R0
+ * come straight from the CardDefinition (no continuous-effects layer system yet
+ * — that's M-R1), so a GameObject stores only instance state + status.
+ */
+
+export type PlayerId = string
+export type ObjId = string
+export type ManaColor = 'W' | 'U' | 'B' | 'R' | 'G' | 'C'
+export type ManaPool = Record<ManaColor, number>
+
+export type CardType =
+  | 'Land'
+  | 'Creature'
+  | 'Instant'
+  | 'Sorcery'
+  | 'Artifact'
+  | 'Enchantment'
+  | 'Planeswalker'
+  | 'Battle'
+
+export type RulesZone = 'library' | 'hand' | 'battlefield' | 'graveyard' | 'exile' | 'command'
+export type NonStackZone = RulesZone
+
+/** Evergreen keywords the engine automates (combat + a few non-combat). */
+export type Keyword =
+  | 'flying'
+  | 'reach'
+  | 'vigilance'
+  | 'haste'
+  | 'defender'
+  | 'menace'
+  | 'trample'
+  | 'deathtouch'
+  | 'lifelink'
+  | 'first strike'
+  | 'double strike'
+  | 'indestructible'
+  | 'hexproof'
+  | 'flash'
+
+// Turn structure. Combat is split so priority is granted in each step.
+export const STEPS = [
+  'untap',
+  'upkeep',
+  'draw',
+  'main1',
+  'begin_combat',
+  'declare_attackers',
+  'declare_blockers',
+  'combat_damage',
+  'end_combat',
+  'main2',
+  'end',
+  'cleanup',
+] as const
+export type Step = (typeof STEPS)[number]
+
+/** A permanent / card instance in any zone (incl. a spell on the stack). */
+export interface GameObject {
+  id: ObjId
+  defName: string // normalized card-definition key (registry lookup)
+  ownerId: PlayerId
+  controllerId: PlayerId
+  zone: RulesZone | 'stack'
+  tapped: boolean
+  /** entered the battlefield under its controller's control this turn */
+  summoningSick: boolean
+  /** combat damage marked this turn (creatures) */
+  damageMarked: number
+  /** counters on the object (e.g. "+1/+1"); manual for unimplemented cards */
+  counters: Record<string, number>
+  isCommander: boolean
+  // combat (transient, cleared at end of combat)
+  attackingDefender: PlayerId | null // the player this creature is attacking
+  blockingAttackerId: ObjId | null // the attacker this creature is blocking
+  /** took damage from a deathtouch source this turn → destroyed by SBA (704.5g) */
+  deathtouched?: boolean
+}
+
+export type StackItemKind = 'spell' | 'ability'
+
+/** A spell or ability on the stack. */
+export interface StackItem {
+  id: ObjId // spell: the card object's id; ability: a synthetic id
+  kind: StackItemKind
+  controllerId: PlayerId
+  defName: string
+  sourceId: ObjId // the card object this originated from
+  abilityIndex: number | null // for activated abilities
+  /** which triggered ability this is (for kind: 'ability') */
+  trigger?: 'etb' | 'dies' | 'attacks'
+  targets: (ObjId | PlayerId)[]
+}
+
+export interface PlayerRState {
+  id: PlayerId
+  seat: number
+  name: string
+  life: number
+  manaPool: ManaPool
+  landsPlayedThisTurn: number
+  hasLost: boolean
+  /** the player's commander object id (exactly one; no partners yet) */
+  commanderId: ObjId | null
+  /** casts from the command zone so far → +{2}×tax on the next cast */
+  commanderTax: number
+  /** combat damage TAKEN per commander object id (≥21 from one → lose, CR 704.5v) */
+  commanderDamage: Record<ObjId, number>
+  /** London mulligan bookkeeping (pre-game): times mulliganed, and kept-yet */
+  mullCount: number
+  keptHand: boolean
+}
+
+export interface RulesGameState {
+  id: string
+  mode: 'enforced'
+  players: Record<PlayerId, PlayerRState>
+  turnOrder: PlayerId[]
+  activePlayer: PlayerId
+  step: Step
+  turnNumber: number
+  /** who currently holds priority (null while the engine performs turn-based actions) */
+  priorityPlayer: PlayerId | null
+  /** players who have passed priority since the last stack change / step start */
+  passed: PlayerId[]
+  /** engine is waiting for a player decision (no priority until it's made) */
+  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice'; player: PlayerId } | null
+  /** details of a triggered ability awaiting its controller's target choice */
+  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' } | null
+  /** an active scry: the top-N library ids (top first) the scrying player is looking at */
+  pendingScry: { player: PlayerId; cardIds: ObjId[] } | null
+  /**
+   * An active library search (tutor / land-ramp): the matching library ids the
+   * searching player may pick from. Exposed ONLY to the actor (sanctioned peek,
+   * like scry); the library is shuffled + re-minted after resolution.
+   */
+  pendingSearch: {
+    player: PlayerId
+    matchIds: ObjId[]
+    dest: 'battlefield' | 'hand'
+    tapped: boolean
+    count: number
+  } | null
+  /**
+   * An active forced sacrifice (edicts / each-player sacrifices). The current
+   * chooser picks `count` of `candidateIds` (creatures they control) to
+   * sacrifice; `queue` holds the remaining players who must each still
+   * sacrifice, prompted one at a time in APNAP order. Battlefield ids are
+   * public, so this carries no hidden information.
+   */
+  pendingSacrifice: {
+    player: PlayerId
+    candidateIds: ObjId[]
+    count: number
+    queue: PlayerId[]
+  } | null
+  /** true only on the very first turn's first player (skips their draw) */
+  firstTurnSkipDraw: boolean
+  /**
+   * Combat bookkeeping: attackerId → blockerIds in declared damage order.
+   * An attacker with a key here "became blocked" (stays blocked even if its
+   * blockers die — rule 509.2). Cleared at end of combat.
+   */
+  blockOrders: Record<ObjId, ObjId[]>
+  /** ≥1 attacker was declared this combat (drives the CR 508.8 skip precisely) */
+  attackersDeclaredThisCombat: boolean
+  /** defenders who have completed their block declaration this combat (multiplayer queue) */
+  blockersDone: PlayerId[]
+  /** until-end-of-turn P/T boosts (CR 613 layer 7c, temporary); cleared each cleanup */
+  pumps: { objId: ObjId; power: number; toughness: number }[]
+  /** until-end-of-turn "set base P/T" effects (CR 613 layer 7b); last one wins */
+  setPT: { objId: ObjId; power: number; toughness: number }[]
+  /** until-end-of-turn "loses all abilities" (CR 613 layer 6) — object ids */
+  loseAbilities: ObjId[]
+  objects: Record<ObjId, GameObject>
+  zones: {
+    perPlayer: Record<PlayerId, Record<NonStackZone, ObjId[]>>
+    stack: StackItem[] // last element = top of stack
+  }
+  status: 'mulligans' | 'active' | 'ended'
+  winner: PlayerId | null
+  log: string[]
+  seq: number
+}
+
+// ---------- client-facing redacted view ----------
+
+/** A card as seen by one viewer. Hidden cards carry no identity (defName null). */
+export interface RulesClientCard {
+  id: ObjId
+  defName: string | null // null when hidden from this viewer
+  ownerId: PlayerId
+  controllerId: PlayerId
+  zone: RulesZone | 'stack'
+  tapped: boolean
+  summoningSick: boolean
+  damageMarked: number
+  counters: Record<string, number>
+  /** current power/toughness incl. counters & continuous effects (null = not a creature) */
+  power: number | null
+  toughness: number | null
+  isCommander: boolean
+  /** true = an assisted-table fallback (printed body known, rules player-run) */
+  unimplemented: boolean
+  /** evergreen combat keywords the engine enforces (shown on the card) */
+  keywords: Keyword[]
+  attackingDefender: PlayerId | null
+  blockingAttackerId: ObjId | null
+  hidden: boolean
+}
+
+export interface RulesClientState {
+  id: string
+  mode: 'enforced'
+  you: PlayerId
+  players: Record<PlayerId, PlayerRState>
+  turnOrder: PlayerId[]
+  activePlayer: PlayerId
+  step: Step
+  turnNumber: number
+  priorityPlayer: PlayerId | null
+  cards: Record<ObjId, RulesClientCard>
+  zones: {
+    perPlayer: Record<
+      PlayerId,
+      {
+        battlefield: ObjId[]
+        graveyard: ObjId[]
+        exile: ObjId[]
+        command: ObjId[]
+        hand: ObjId[] | { count: number } // ids only for your own hand
+        library: { count: number } // order never serialised
+      }
+    >
+    stack: StackItem[]
+  }
+  /** legal actions for `you` right now — drives client affordances (filled by legal.ts) */
+  legal: LegalActions
+  status: 'mulligans' | 'active' | 'ended'
+  winner: PlayerId | null
+  log: string[]
+  seq: number
+  /** YOUR active scry (top-N ids you're looking at) — actor-only; null for everyone else */
+  scry: { cardIds: ObjId[] } | null
+  /** YOUR active library search — actor-only; the ids you may pick and how many */
+  search: { matchIds: ObjId[]; dest: 'battlefield' | 'hand'; count: number } | null
+}
+
+/** What `you` may currently do (client uses this to enable/disable affordances). */
+export interface LegalActions {
+  hasPriority: boolean
+  canPass: boolean
+  playableLandIds: ObjId[]
+  castableIds: ObjId[] // spells in hand you could cast right now
+  manaSourceIds: ObjId[] // untapped permanents you can tap for mana
+  /** colours each mana source can produce (>1 means the player must choose on tap) */
+  manaSourceColors: Record<ObjId, ManaColor[]>
+  declarableAttackerIds: ObjId[]
+  declarableBlockerIds: ObjId[]
+  /** players your attackers may be sent at (alive opponents) */
+  attackablePlayerIds: PlayerId[]
+  /** the attackers currently assigned against YOU (when declaring blocks) */
+  incomingAttackerIds: ObjId[]
+  needsAttackers: boolean
+  needsBlockers: boolean
+  needsDiscard: boolean
+  discardCount: number
+  /** a forced sacrifice (edict) is waiting on you */
+  needsSacrifice: boolean
+  sacrificeCount: number
+  /** creatures you control that you may choose to sacrifice right now */
+  sacrificeableIds: ObjId[]
+  /** a triggered ability of yours needs a target chosen */
+  needsTriggerTargets: boolean
+  triggerTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | null
+  triggerSourceName: string | null
+  /** non-mana activated abilities you can use right now (cost = mana part, '' if none; sacCost = creatures to sacrifice as a cost) */
+  activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | null; cost: string; sacCost: number }[]
+}
+
+export const emptyPool = (): ManaPool => ({ W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 })

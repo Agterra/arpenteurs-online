@@ -19,7 +19,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "cards:import": "node --env-file=.env --max-old-space-size=4096 scripts/import-cards.ts"
+    "cards:import": "node --env-file=.env --max-old-space-size=4096 scripts/import-cards.ts",
+    "tokens:import": "node --env-file=.env scripts/import-tokens.ts"
   },
   "dependencies": {
     "@nuxt/ui": "^4.9.0",

@@ -1,0 +1,89 @@
+/**
+ * Enforced-mode wire protocol (client → server). Every field bounded (zod),
+ * same discipline as the manual protocol in shared/schemas/messages.ts.
+ *
+ * Server → client is a full redacted state push per action ({ t: 'rstate' }) —
+ * enforced 1v1 states are small, and full-state keeps the client trivially
+ * correct (no delta reconciliation).
+ */
+import { z } from 'zod'
+import type { RulesClientState } from './types'
+
+const Id = z.string().min(1).max(64)
+
+export const RulesMsg = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('r.pass') }),
+  z.object({ type: z.literal('r.playLand'), objId: Id }),
+  z.object({ type: z.literal('r.tapMana'), objId: Id, color: z.enum(['W', 'U', 'B', 'R', 'G', 'C']).optional() }),
+  z.object({
+    type: z.literal('r.activate'),
+    objId: Id,
+    abilityIndex: z.number().int().min(0).max(15),
+    targets: z.array(Id).max(8).default([]),
+    // creatures sacrificed to pay a "Sacrifice a creature" cost (sac outlets);
+    // optional so the many r.activate call sites without a sac cost need not pass it
+    sacrifices: z.array(Id).max(20).optional(),
+  }),
+  z.object({ type: z.literal('r.cast'), objId: Id, targets: z.array(Id).max(8).default([]) }),
+  z.object({
+    type: z.literal('r.attackers'),
+    attacks: z.array(z.object({ attackerId: Id, defenderId: Id })).max(50),
+  }),
+  z.object({
+    type: z.literal('r.blockers'),
+    blocks: z.array(z.object({ blockerId: Id, attackerId: Id })).max(50),
+  }),
+  z.object({ type: z.literal('r.discard'), objIds: z.array(Id).max(20) }),
+  z.object({ type: z.literal('r.chooseTargets'), targets: z.array(Id).max(8) }),
+  z.object({ type: z.literal('r.scry'), toBottom: z.array(Id).max(20) }),
+  z.object({ type: z.literal('r.search'), cardIds: z.array(Id).max(20) }),
+  z.object({ type: z.literal('r.sacrifice'), objIds: z.array(Id).max(20) }),
+  z.object({ type: z.literal('r.concede') }),
+
+  // ---- London mulligan (pre-game) ----
+  z.object({ type: z.literal('r.mulligan') }),
+  z.object({ type: z.literal('r.keep'), toBottom: z.array(Id).max(20) }),
+
+  // ---- manual overrides (assisted table): hand-run effects the engine can't ----
+  z.object({
+    type: z.literal('r.mMove'),
+    objId: Id,
+    // a card always moves to its OWNER's zone (battlefield uses the controller's
+    // side); there is no "give to another player" move in the assisted table.
+    zone: z.enum(['hand', 'battlefield', 'graveyard', 'exile', 'command', 'library']),
+    pos: z.enum(['top', 'bottom']).optional(), // library placement
+  }),
+  z.object({ type: z.literal('r.mLife'), delta: z.number().int().min(-999).max(999) }),
+  z.object({
+    type: z.literal('r.mMana'),
+    color: z.enum(['W', 'U', 'B', 'R', 'G', 'C']),
+    delta: z.number().int().min(-99).max(99),
+  }),
+  z.object({ type: z.literal('r.mTap'), objId: Id, tapped: z.boolean() }),
+  z.object({ type: z.literal('r.mDraw'), n: z.number().int().min(1).max(50) }),
+  z.object({
+    type: z.literal('r.mToken'),
+    name: z.string().min(1).max(80),
+    power: z.number().int().min(0).max(99).optional(),
+    toughness: z.number().int().min(0).max(99).optional(),
+    typeLine: z.string().max(120).optional(),
+  }),
+  z.object({
+    type: z.literal('r.mCounter'),
+    objId: Id,
+    name: z.string().min(1).max(40),
+    delta: z.number().int().min(-99).max(99),
+  }),
+])
+export type RulesMsgT = z.infer<typeof RulesMsg>
+
+export interface RulesStateMsg {
+  t: 'rstate'
+  state: RulesClientState
+}
+export interface RulesErrorMsg {
+  t: 'rerror'
+  code: string
+  message: string
+}
+export type RulesServerMsg = RulesStateMsg | RulesErrorMsg

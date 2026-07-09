@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
       inviteCode: l.inviteCode,
       name: l.name,
       hasPassword: !!l.passwordHash,
+      mode: l.mode,
       seatCount: l.seats.length,
       maxSeats: l.maxSeats,
       hostName: l.seats.find((s) => s.userId === l.hostId)?.user.username ?? null,

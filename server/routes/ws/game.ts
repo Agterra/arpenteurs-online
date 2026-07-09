@@ -6,6 +6,7 @@
  */
 import type { Peer } from 'crossws'
 import { getRoom, attachPeer, detachPeer, handleMessage, sendSync } from '../../game/room'
+// wsFrameByteLength is auto-imported from server/utils/wsFrame.ts
 
 function gameIdFrom(url: string | undefined): string | null {
   if (!url) return null
@@ -72,14 +73,21 @@ export default defineWebSocketHandler({
   async message(peer, message) {
     const id = identities.get(peer.id)
     if (!id) return
+    // Flood/OOM guard: reject by BYTE length before decoding to a string. Byte
+    // length ≥ decoded char length for UTF-8, so this subsumes the old text-length
+    // check while avoiding the decode + string allocation for oversized frames.
+    if (wsFrameByteLength(message.rawData) > 64_000) return
     const text = message.text()
-    if (text.length > 64_000) return // flood/OOM guard before any JSON parsing
-    if (text === 'ping') return peer.send('pong')
+    if (text === 'ping') {
+      peer.send('pong')
+      return
+    }
     let json: unknown
     try {
       json = JSON.parse(text)
     } catch {
-      return peer.send(JSON.stringify({ t: 'error', code: 'BAD_JSON', message: 'Not JSON' }))
+      peer.send(JSON.stringify({ t: 'error', code: 'BAD_JSON', message: 'Not JSON' }))
+      return
     }
     try {
       const room = await getRoom(id.gameId)

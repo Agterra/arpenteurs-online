@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { SAMPLE_DECK_NAME, SAMPLE_DECK_TEXT } from '#shared/data/sampleDeck'
+
 interface DeckListItem {
   id: string
   name: string
@@ -24,6 +26,10 @@ await useAsyncData('session', async () => {
   await refresh()
   return true
 })
+
+// if we arrived from a lobby (?lobby=CODE), return there instead of the home view
+const route = useRoute()
+const fromLobby = computed(() => (route.query.lobby as string) || null)
 
 const requestFetch = useRequestFetch()
 const { data, refresh: refreshDecks } = await useAsyncData('decks', async () => {
@@ -53,6 +59,18 @@ function openImport() {
   importOpen.value = true
 }
 
+/** Pre-fill the import modal with a ready-to-play deck of only-implemented cards
+ *  (great for playtesting the enforced engine) and preview the resolution. */
+async function loadSample() {
+  importName.value = SAMPLE_DECK_NAME
+  importText.value = SAMPLE_DECK_TEXT
+  skipUnresolved.value = true
+  report.value = null
+  importError.value = ''
+  importOpen.value = true
+  await runImport(false) // dry-run preview; user clicks confirm to create
+}
+
 async function runImport(commit: boolean) {
   importBusy.value = true
   importError.value = ''
@@ -69,7 +87,8 @@ async function runImport(commit: boolean) {
     report.value = res
     if (commit && res.deckId) {
       importOpen.value = false
-      await navigateTo(`/decks/${res.deckId}`)
+      // returning from a lobby → go back to it (the new deck is now selectable there)
+      await navigateTo(fromLobby.value ? `/l/${fromLobby.value}` : `/decks/${res.deckId}`)
     } else if (commit) {
       importError.value = 'Deck was not created — resolve the lines below or accept dropping them.'
     }
@@ -126,9 +145,16 @@ async function onDelete(deck: DeckListItem) {
     <div class="flex items-center justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold">My decks</h1>
-        <UButton to="/" variant="link" size="xs" class="px-0">← Back to lobbies</UButton>
+        <UButton :to="fromLobby ? `/l/${fromLobby}` : '/'" variant="link" size="xs" class="px-0">
+          ← {{ fromLobby ? 'Back to lobby' : 'Back to lobbies' }}
+        </UButton>
       </div>
-      <UButton v-if="user" icon="i-lucide-clipboard-paste" @click="openImport">Import a decklist</UButton>
+      <div v-if="user" class="flex items-center gap-2">
+        <UButton icon="i-lucide-sparkles" variant="soft" :loading="importBusy" @click="loadSample">
+          Load sample deck
+        </UButton>
+        <UButton icon="i-lucide-clipboard-paste" @click="openImport">Import a decklist</UButton>
+      </div>
     </div>
 
     <UCard v-if="!user" class="mt-8">

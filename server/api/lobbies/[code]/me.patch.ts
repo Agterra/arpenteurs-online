@@ -33,11 +33,15 @@ export default defineEventHandler(async (event) => {
   let nextReady = body.isReady ?? (deckChanged ? false : seat.isReady)
 
   if (body.isReady === true) {
-    const commanderCount = nextDeckId
-      ? await db.deckCard.count({ where: { deckId: nextDeckId, section: 'COMMANDER' } })
-      : 0
-    if (!nextDeckId || commanderCount < 1)
-      throw createError({ statusCode: 422, statusMessage: 'Deck needs a commander' })
+    if (!nextDeckId) throw createError({ statusCode: 422, statusMessage: 'Pick a deck first' })
+    // Commander is a Commander-format requirement — enforced duels (1v1) skip it.
+    if (lobby.mode !== 'ENFORCED') {
+      const commanderCount = await db.deckCard.count({
+        where: { deckId: nextDeckId, section: 'COMMANDER' },
+      })
+      if (commanderCount < 1)
+        throw createError({ statusCode: 422, statusMessage: 'Deck needs a commander' })
+    }
     nextReady = true
   }
 

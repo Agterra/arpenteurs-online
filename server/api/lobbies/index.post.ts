@@ -4,11 +4,12 @@ const Body = z.object({
   name: z.string().trim().min(1).max(60),
   password: z.string().min(4).max(100).optional(),
   visibility: z.enum(['PUBLIC', 'UNLISTED']).default('UNLISTED'),
+  mode: z.enum(['MANUAL', 'ENFORCED']).default('MANUAL'),
 })
 
 export default defineEventHandler(async (event) => {
   const me = await requireUser(event)
-  const { name, password, visibility } = await readValidatedBody(event, Body.parse)
+  const { name, password, visibility, mode } = await readValidatedBody(event, Body.parse)
 
   const passwordHash = password ? await hashPassword(password) : null
 
@@ -22,9 +23,10 @@ export default defineEventHandler(async (event) => {
           name,
           passwordHash,
           visibility,
+          mode,
           hostId: me.id,
           status: 'OPEN',
-          maxSeats: 4,
+          maxSeats: 4, // both modes: manual Commander and enforced Commander support 2–4 players
           seats: { create: { userId: me.id, seatIndex: 0 } },
         },
       })

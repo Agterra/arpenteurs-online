@@ -10,6 +10,15 @@ const Body = z.object({
 
 export default defineEventHandler(async (event) => {
   const me = await requireUser(event)
+  // Parse + fan-out of catalog lookups over up to 100 KB — throttle so it can't
+  // amplify into DB load (SEC finding #2). Per-IP + topology-independent global
+  // backstop (per-IP first protects the global bucket from a single source).
+  if (
+    !checkRateLimit(`deck-import:${getClientIp(event)}`, 20, 60_000) ||
+    !checkRateLimit('deck-import:global', 120, 60_000)
+  ) {
+    throw createError({ statusCode: 429, statusMessage: 'Slow down' })
+  }
   const { name, text, commit, skipUnresolved } = await readValidatedBody(event, Body.parse)
 
   const parsed = parseDecklist(text)

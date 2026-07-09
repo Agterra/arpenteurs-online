@@ -5,7 +5,9 @@
  * the game store; exposes `send` which drops + toasts when the socket is down.
  */
 import type { ClientMsgT, ServerMsg } from '#shared/schemas/messages'
+import type { RulesMsgT, RulesServerMsg } from '#shared/rules/messages'
 import { useGameStore } from '~/stores/game'
+import { useRulesGameStore } from '~/stores/rulesGame'
 
 const HEARTBEAT_MS = 15_000
 const PONG_TIMEOUT_MS = 10_000
@@ -14,6 +16,7 @@ const BACKOFF_MAX_MS = 8_000
 
 export function useGameSocket(gameId: string) {
   const store = useGameStore()
+  const rulesStore = useRulesGameStore()
   const toast = useToast()
 
   let ws: WebSocket | null = null
@@ -27,14 +30,14 @@ export function useGameSocket(gameId: string) {
     return `${location.origin.replace(/^http/, 'ws')}/ws/game?g=${gameId}`
   }
 
-  function rawSend(action: ClientMsgT): boolean {
+  function rawSend(action: ClientMsgT | RulesMsgT): boolean {
     if (!ws || ws.readyState !== WebSocket.OPEN) return false
     ws.send(JSON.stringify(action))
     return true
   }
 
   /** Send a game action; when the socket is down the action is dropped with a toast. */
-  function send(action: ClientMsgT): boolean {
+  function send(action: ClientMsgT | RulesMsgT): boolean {
     if (rawSend(action)) return true
     toast.add({
       title: 'Not connected',
@@ -45,7 +48,7 @@ export function useGameSocket(gameId: string) {
     return false
   }
 
-  function route(msg: ServerMsg) {
+  function route(msg: ServerMsg | RulesServerMsg) {
     switch (msg.t) {
       case 'sync':
         store.applySync(msg)
@@ -58,6 +61,15 @@ export function useGameSocket(gameId: string) {
         break
       case 'presence':
         store.setPresence(msg.connected)
+        break
+      // enforced-mode (rules engine) messages → the rules store
+      case 'rstate':
+        rulesStore.applyRState(msg.state)
+        store.setConn('open')
+        break
+      case 'rerror':
+        rulesStore.setError(msg.code, msg.message)
+        toast.add({ title: 'Illegal action', description: msg.message, color: 'error', icon: 'i-lucide-shield-x' })
         break
       case 'error':
         toast.add({ title: 'Rejected', description: msg.message, color: 'error', icon: 'i-lucide-shield-x' })
@@ -114,9 +126,9 @@ export function useGameSocket(gameId: string) {
         pongTimer = null
         return
       }
-      let msg: ServerMsg
+      let msg: ServerMsg | RulesServerMsg
       try {
-        msg = JSON.parse(e.data as string) as ServerMsg
+        msg = JSON.parse(e.data as string) as ServerMsg | RulesServerMsg
       } catch {
         return
       }

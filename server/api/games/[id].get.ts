@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
         select: {
           status: true,
           lobbyId: true,
+          lobby: { select: { mode: true } },
           players: { include: { user: { select: { id: true, username: true } } } },
         },
       },
@@ -18,6 +19,7 @@ export default defineEventHandler(async (event) => {
     game: {
       id: gameId,
       status: membership.game.status,
+      engine: membership.game.lobby.mode === 'ENFORCED' ? ('rules' as const) : ('manual' as const),
       lobbyId: membership.game.lobbyId,
       you: me.id,
       players: membership.game.players.map((p) => ({

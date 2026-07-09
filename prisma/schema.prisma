@@ -54,6 +54,18 @@ model Card {
   // GIN pg_trgm index on nameNorm added by hand in the migration SQL
 }
 
+// Representative art for game tokens (Beast, Soldier, Treasure, …), keyed by the
+// normalized token type name. Tokens aren't in AtomicCards, so these are imported
+// separately (scripts/import-tokens.ts) from Scryfall and resolved by the display
+// endpoint for engine/manual token permanents. Not touched by the card re-import.
+model TokenImage {
+  nameNorm    String  @id
+  name        String
+  typeLine    String?
+  imageSmall  String?
+  imageNormal String?
+}
+
 model CardAlias {
   alias  String @id
   cardId String
@@ -123,12 +135,18 @@ enum LobbyVisibility {
   UNLISTED
 }
 
+enum GameMode {
+  MANUAL
+  ENFORCED
+}
+
 model Lobby {
   id           String          @id @default(cuid())
   inviteCode   String          @unique
   name         String
   passwordHash String?
   visibility   LobbyVisibility @default(UNLISTED)
+  mode         GameMode        @default(MANUAL)
   hostId       String
   status       LobbyStatus     @default(OPEN)
   maxSeats     Int             @default(4)

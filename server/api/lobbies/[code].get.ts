@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
     member: false as const,
     name: lobby.name,
     hasPassword: !!lobby.passwordHash,
+    mode: lobby.mode,
     status: lobby.status,
     seatCount,
     maxSeats: lobby.maxSeats,

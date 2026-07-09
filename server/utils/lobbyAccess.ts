@@ -63,6 +63,7 @@ export async function lobbyDetail(lobby: Lobby) {
     name: lobby.name,
     hasPassword: !!lobby.passwordHash,
     visibility: lobby.visibility,
+    mode: lobby.mode,
     status: lobby.status,
     hostId: lobby.hostId,
     maxSeats: lobby.maxSeats,

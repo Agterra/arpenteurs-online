@@ -7,6 +7,7 @@ interface GameBootstrap {
   game: {
     id: string
     status: string
+    engine: 'manual' | 'rules'
     lobbyId: string
     you: string
     players: { id: string; username: string; seat: number }[]
@@ -55,7 +56,9 @@ useHead(() => ({ title: data.value ? `Game — Arpenteurs` : 'Game' }))
 
     <template v-else-if="data">
       <ClientOnly>
-        <BoardGameBoard :game-id="gameId" />
+        <!-- enforced (rules-engine) duels get the DuelBoard; manual tables keep the classic board -->
+        <RulesDuelBoard v-if="data.game.engine === 'rules'" :game-id="gameId" />
+        <BoardGameBoard v-else :game-id="gameId" />
         <template #fallback>
           <div class="fixed inset-0 flex items-center justify-center text-dimmed">Loading the table…</div>
         </template>
