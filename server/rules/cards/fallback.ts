@@ -24,6 +24,7 @@ export interface CatalogCardData {
   manaCost?: string | null
   power?: string | null
   toughness?: string | null
+  loyalty?: string | null
   oracleText?: string | null
   colors?: string[] | null
 }
@@ -75,6 +76,7 @@ export function buildFallbackDef(c: CatalogCardData): CardDefinition {
     colors: (c.colors ?? undefined) as ManaColor[] | undefined,
     power: intOrUndef(c.power),
     toughness: intOrUndef(c.toughness),
+    loyalty: intOrUndef(c.loyalty), // so an unimplemented planeswalker shows its real starting loyalty
     oracleText: c.oracleText ?? undefined,
     unimplemented: true,
   }

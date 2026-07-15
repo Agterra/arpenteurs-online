@@ -5,8 +5,7 @@
  */
 import type { GameObject, PlayerId, RulesGameState } from '#shared/rules/types'
 import { emptyPool } from '#shared/rules/types'
-import { mintCardId, shuffleInPlace } from '../game/rng'
-import { randomInt } from 'node:crypto'
+import { mintCardId, randomIndex, shuffleInPlace } from '../game/rng'
 import { defKey, findDef } from './cards/registry'
 import { defIsValidCommander } from './cards/dsl'
 import { drawOne, logLine } from './state'
@@ -38,7 +37,7 @@ export function buildRulesGame(
     mode: 'enforced',
     players: {},
     turnOrder: ordered.map((p) => p.id),
-    activePlayer: ordered[randomInt(ordered.length)]!.id,
+    activePlayer: ordered[randomIndex(ordered.length)]!.id,
     step: 'untap',
     turnNumber: 1,
     priorityPlayer: null,
@@ -48,6 +47,9 @@ export function buildRulesGame(
     pendingScry: null,
     pendingSearch: null,
     pendingSacrifice: null,
+    pendingDiscard: null,
+    pendingWard: null,
+    pendingCascade: null,
     // CR 103.8a/b: only two-player games skip the first draw
     firstTurnSkipDraw: ordered.length === 2,
     blockOrders: {},
@@ -56,6 +58,7 @@ export function buildRulesGame(
     pumps: [],
     setPT: [],
     loseAbilities: [],
+    protectionGrants: [],
     objects: {},
     zones: { perPlayer: {}, stack: [] },
     status: 'mulligans',
@@ -96,6 +99,7 @@ export function buildRulesGame(
       seat: p.seat,
       name: p.name,
       life: 40,
+      poison: 0,
       manaPool: emptyPool(),
       landsPlayedThisTurn: 0,
       hasLost: false,

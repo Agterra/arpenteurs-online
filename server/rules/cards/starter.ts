@@ -7,27 +7,42 @@ import type { CardDefinition } from './dsl'
 import {
   addCounters,
   addCountersToEachControlled,
+  addLoyaltyToOtherPlaneswalkers,
   addMana,
   counterTarget,
   createToken,
   damageAllCreatures,
   dealDamage,
+  dealDamageKicked,
+  dealDamageX,
   dealToEachOpponent,
+  dealToEachPlayer,
   destroyAllCreatures,
   destroyPermanent,
   destroyPermanentGrantToken,
   destroyTarget,
   drawCards,
+  drawCardsX,
+  earthquakeX,
   exileTarget,
+  fight,
+  gainAndDrawEqualToLands,
   gainLifeEqualToPowerForController,
+  grantProtection,
   returnToHand,
   eachOpponentLoses,
   gainLife,
+  gainLifeX,
   loseAllAbilities,
   loseLife,
+  mill,
+  playersDiscard,
   playersSacrifice,
   pump,
+  weakenAllCreatures,
+  weakenControlledCreatures,
   pumpSelf,
+  returnFromGraveyard,
   scry,
   searchLibrary,
   sequence,
@@ -51,6 +66,16 @@ const guildgate = (name: string, a: ManaColor, b: ManaColor): CardDefinition => 
   entersTapped: true,
   // effect unused for a colour-choice source (the engine adds the chosen colour)
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/** An Onslaught cycling land: enters tapped, "{T}: Add {c}." + "Cycling {c}". Entire
+ *  rules captured (tapland mana ability + plain cycling → discard, draw a card). */
+const cyclingLand = (name: string, color: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTapped: true,
+  cyclingCost: `{${color}}`,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [color], effect: addMana(color) }],
 })
 
 /** A scry-land: enters tapped, "When ~ enters, scry 1.", "{T}: Add {a} or {b}." */
@@ -158,6 +183,13 @@ export const STARTER_SET: CardDefinition[] = [
   scryland('Temple of Malady', 'B', 'G'),
   scryland('Temple of Silence', 'W', 'B'),
   scryland('Temple of Triumph', 'R', 'W'),
+
+  // Onslaught cycling lands (enters tapped, {T}: add one colour, Cycling {colour})
+  cyclingLand('Secluded Steppe', 'W'),
+  cyclingLand('Lonely Sandbar', 'U'),
+  cyclingLand('Barren Moor', 'B'),
+  cyclingLand('Forgotten Cave', 'R'),
+  cyclingLand('Tranquil Thicket', 'G'),
 
   // --- Coverage batch B1: mana dorks/rock, efficient burn/removal, card draw ---
   manaDork('Birds of Paradise', '{G}', ['G'], ['Bird'], ['W', 'U', 'B', 'R', 'G'], { power: 0, toughness: 1, keywords: ['flying'] }),
@@ -615,6 +647,404 @@ export const STARTER_SET: CardDefinition[] = [
     abilities: [{ kind: 'activated', cost: { sacrifice: { count: 1, filter: 'creature' } }, effect: pumpSelf(2, 2) }],
   },
 
+  // --- Coverage batch T: turn-based triggers (upkeep + attacks) ---
+  {
+    name: 'Phyrexian Arena',
+    types: ['Enchantment'],
+    manaCost: '{1}{B}{B}',
+    colors: ['B'],
+    // "At the beginning of your upkeep, you draw a card and you lose 1 life."
+    upkeep: { effect: sequence(drawCards(1), loseLife(1)) },
+  },
+  {
+    name: 'Bitterblossom',
+    types: ['Enchantment'],
+    subtypes: ['Faerie'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "At the beginning of your upkeep, you lose 1 life and create a 1/1 black Faerie Rogue creature token with flying."
+    upkeep: {
+      effect: sequence(
+        loseLife(1),
+        createToken({ name: 'Faerie Rogue', power: 1, toughness: 1, subtypes: ['Faerie', 'Rogue'], keywords: ['flying'] }, 1),
+      ),
+    },
+  },
+  {
+    name: 'Borderland Marauder',
+    types: ['Creature'],
+    subtypes: ['Human', 'Warrior'],
+    manaCost: '{1}{R}',
+    colors: ['R'],
+    power: 1,
+    toughness: 2,
+    // "Whenever this creature attacks, it gets +2/+0 until end of turn."
+    attacks: { effect: pumpSelf(2, 0) },
+  },
+  {
+    name: 'Vicious Conquistador',
+    types: ['Creature'],
+    subtypes: ['Vampire', 'Soldier'],
+    manaCost: '{B}',
+    colors: ['B'],
+    power: 1,
+    toughness: 2,
+    // "Whenever this creature attacks, each opponent loses 1 life."
+    attacks: { effect: eachOpponentLoses(1) },
+  },
+  {
+    name: 'Audacious Thief',
+    types: ['Creature'],
+    subtypes: ['Human', 'Rogue'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    power: 2,
+    toughness: 2,
+    // "Whenever this creature attacks, you draw a card and you lose 1 life."
+    attacks: { effect: sequence(drawCards(1), loseLife(1)) },
+  },
+
+  // --- Coverage batch AE: Auras & Equipment (attach → static grant to the host) ---
+  {
+    name: 'Unholy Strength',
+    types: ['Enchantment'],
+    subtypes: ['Aura'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Enchant creature. Enchanted creature gets +2/+1."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: sequence() },
+    grantsToHost: { power: 2, toughness: 1 },
+  },
+  {
+    name: 'Holy Strength',
+    types: ['Enchantment'],
+    subtypes: ['Aura'],
+    manaCost: '{W}',
+    colors: ['W'],
+    // "Enchant creature. Enchanted creature gets +1/+2."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: sequence() },
+    grantsToHost: { power: 1, toughness: 2 },
+  },
+  {
+    name: 'Angelic Gift',
+    types: ['Enchantment'],
+    subtypes: ['Aura'],
+    manaCost: '{1}{W}',
+    colors: ['W'],
+    // "Enchant creature. When this Aura enters, draw a card. Enchanted creature has flying."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: sequence() },
+    enters: { effect: drawCards(1) },
+    grantsToHost: { keywords: ['flying'] },
+  },
+  {
+    name: 'Pacifism',
+    types: ['Enchantment'],
+    subtypes: ['Aura'],
+    manaCost: '{1}{W}',
+    colors: ['W'],
+    // "Enchant creature. Enchanted creature can't attack or block."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: sequence() },
+    grantsToHost: { cantAttack: true, cantBlock: true },
+  },
+  {
+    name: 'Bonesplitter',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{1}',
+    // "Equipped creature gets +2/+0. Equip {1}"
+    equipCost: '{1}',
+    grantsToHost: { power: 2, toughness: 0 },
+  },
+  {
+    name: 'Vulshok Morningstar',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{2}',
+    // "Equipped creature gets +2/+2. Equip {2}"
+    equipCost: '{2}',
+    grantsToHost: { power: 2, toughness: 2 },
+  },
+  {
+    name: 'Loxodon Warhammer',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{3}',
+    // "Equipped creature gets +3/+0 and has trample and lifelink. Equip {3}"
+    equipCost: '{3}',
+    grantsToHost: { power: 3, toughness: 0, keywords: ['trample', 'lifelink'] },
+  },
+  {
+    name: 'Sword of Vengeance',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{3}',
+    // "Equipped creature gets +2/+0 and has first strike, vigilance, trample, and haste. Equip {3}"
+    equipCost: '{3}',
+    grantsToHost: { power: 2, toughness: 0, keywords: ['first strike', 'vigilance', 'trample', 'haste'] },
+  },
+
+  // --- Coverage batch MX: X spells + modal ("choose one") ---
+  {
+    name: 'Blaze',
+    types: ['Sorcery'],
+    manaCost: '{X}{R}',
+    colors: ['R'],
+    // "Blaze deals X damage to any target."
+    spell: { targets: [{ kind: 'anyTarget', count: 1 }], effect: dealDamageX() },
+  },
+  {
+    name: 'Mind Spring',
+    types: ['Sorcery'],
+    manaCost: '{X}{U}{U}',
+    colors: ['U'],
+    // "Draw X cards."
+    spell: { effect: drawCardsX() },
+  },
+  {
+    name: "Sphinx's Revelation",
+    types: ['Instant'],
+    manaCost: '{X}{W}{U}{U}',
+    colors: ['W', 'U'],
+    // "You gain X life and draw X cards."
+    spell: { effect: sequence(gainLifeX(), drawCardsX()) },
+  },
+  {
+    name: 'Earthquake',
+    types: ['Sorcery'],
+    manaCost: '{X}{R}',
+    colors: ['R'],
+    // "Earthquake deals X damage to each creature without flying and each player."
+    spell: { effect: earthquakeX() },
+  },
+  {
+    name: 'Abrade',
+    types: ['Instant'],
+    manaCost: '{1}{R}',
+    colors: ['R'],
+    // "Choose one — • deals 3 damage to target creature. • Destroy target artifact."
+    modes: [
+      { label: 'Deal 3 damage to target creature', targets: [{ kind: 'creature', count: 1 }], effect: dealDamage(3) },
+      { label: 'Destroy target artifact', targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact'] } }], effect: destroyPermanent() },
+    ],
+  },
+
+  // --- Coverage batch SUB2: granted protection (layer-6 protection-from-colour grant) ---
+  {
+    name: 'Gods Willing',
+    types: ['Instant'],
+    manaCost: '{W}',
+    colors: ['W'],
+    // "Target creature you control gains protection from the color of your choice until end of turn. Scry 1."
+    // Modelled as 5 modes (one per colour) — reuses the modal mode-picker for the colour choice.
+    modes: (['W', 'U', 'B', 'R', 'G'] as ManaColor[]).map((color) => ({
+      label: `Protection from ${({ W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' } as const)[color]}`,
+      targets: [{ kind: 'creature' as const, count: 1, filter: { controller: 'you' as const } }],
+      effect: sequence(grantProtection([color]), scry(1)),
+    })),
+  },
+
+  // --- Coverage batch GY: graveyard recursion (return to hand) ---
+  {
+    name: 'Raise Dead',
+    types: ['Sorcery'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Return target creature card from your graveyard to your hand."
+    spell: { targets: [{ kind: 'graveyardCard', count: 1, filter: { controller: 'you', types: ['Creature'] } }], effect: returnFromGraveyard() },
+  },
+  {
+    name: 'Regrowth',
+    types: ['Sorcery'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "Return target card from your graveyard to your hand."
+    spell: { targets: [{ kind: 'graveyardCard', count: 1, filter: { controller: 'you' } }], effect: returnFromGraveyard() },
+  },
+
+  // --- Coverage batch KIK: kicker (optional additional cost → more/different effect) ---
+  {
+    name: 'Burst Lightning',
+    types: ['Instant'],
+    manaCost: '{R}',
+    colors: ['R'],
+    kickerCost: '{4}',
+    // "Deals 2 damage to any target. If kicked, it deals 4 damage instead."
+    spell: { targets: [{ kind: 'anyTarget', count: 1 }], effect: dealDamageKicked(2, 4) },
+  },
+  {
+    name: 'Marsh Casualties',
+    types: ['Sorcery'],
+    manaCost: '{B}{B}',
+    colors: ['B'],
+    kickerCost: '{3}',
+    // "Creatures target player controls get -1/-1 until end of turn. If kicked, -2/-2 instead."
+    spell: { targets: [{ kind: 'player', count: 1 }], effect: weakenControlledCreatures(1, 2) },
+  },
+
+  // --- Coverage batch BR: recognizable staples via existing primitives ---
+  {
+    name: "Hero's Downfall",
+    types: ['Instant'],
+    manaCost: '{1}{B}{B}',
+    colors: ['B'],
+    // "Destroy target creature or planeswalker."
+    spell: { targets: [{ kind: 'permanent', count: 1, filter: { types: ['Creature', 'Planeswalker'] } }], effect: destroyPermanent() },
+  },
+  // (Night's Whisper and Flametongue Kavu already exist earlier in the pool — not re-added here)
+  {
+    name: 'Acidic Slime',
+    types: ['Creature'],
+    subtypes: ['Ooze'],
+    manaCost: '{3}{G}{G}',
+    colors: ['G'],
+    power: 2,
+    toughness: 2,
+    keywords: ['deathtouch'],
+    // "When this creature enters, destroy target artifact, enchantment, or land."
+    enters: { targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Enchantment', 'Land'] } }], effect: destroyPermanent() },
+  },
+  {
+    name: 'Flame Rift',
+    types: ['Sorcery'],
+    manaCost: '{1}{R}',
+    colors: ['R'],
+    // "Flame Rift deals 4 damage to each player." (symmetric — hits you too)
+    spell: { effect: dealToEachPlayer(4) },
+  },
+  {
+    name: 'Languish',
+    types: ['Sorcery'],
+    manaCost: '{2}{B}{B}',
+    colors: ['B'],
+    // "All creatures get -4/-4 until end of turn."
+    spell: { effect: weakenAllCreatures(4) },
+  },
+
+  // --- Coverage batch MILL: mill (top of library → graveyard) ---
+  {
+    name: 'Tome Scour',
+    types: ['Sorcery'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Target player mills five cards."
+    spell: { targets: [{ kind: 'player', count: 1 }], effect: mill(5) },
+  },
+  {
+    name: 'Mind Sculpt',
+    types: ['Sorcery'],
+    manaCost: '{1}{U}',
+    colors: ['U'],
+    // "Target opponent mills seven cards."
+    spell: { targets: [{ kind: 'player', count: 1, filter: { controller: 'opponent' } }], effect: mill(7) },
+  },
+  {
+    name: 'Thought Scour',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Target player mills two cards. Draw a card."
+    spell: { targets: [{ kind: 'player', count: 1 }], effect: sequence(mill(2), drawCards(1)) },
+  },
+
+  // --- Coverage batch DSC: forced discard (target / each player) ---
+  {
+    name: 'Mind Rot',
+    types: ['Sorcery'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    // "Target player discards two cards."
+    spell: { targets: [{ kind: 'player', count: 1 }], effect: playersDiscard('target', 2) },
+  },
+  {
+    name: 'Ravenous Rats',
+    types: ['Creature'],
+    subtypes: ['Rat'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    power: 1,
+    toughness: 1,
+    // "When Ravenous Rats enters, target opponent discards a card."
+    enters: { targets: [{ kind: 'player', count: 1, filter: { controller: 'opponent' } }], effect: playersDiscard('target', 1) },
+  },
+
+  // --- Coverage batch FC: fight + enters-with-counters ---
+  {
+    name: 'Pounce',
+    types: ['Instant'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "Target creature you control fights target creature you don't control."
+    spell: {
+      targets: [
+        { kind: 'creature', count: 1, filter: { controller: 'you' } },
+        { kind: 'creature', count: 1, filter: { controller: 'opponent' } },
+      ],
+      effect: fight(),
+    },
+  },
+  {
+    name: 'Prey Upon',
+    types: ['Sorcery'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "Target creature you control fights target creature you don't control."
+    spell: {
+      targets: [
+        { kind: 'creature', count: 1, filter: { controller: 'you' } },
+        { kind: 'creature', count: 1, filter: { controller: 'opponent' } },
+      ],
+      effect: fight(),
+    },
+  },
+  {
+    name: 'Faithful Watchdog',
+    types: ['Creature'],
+    subtypes: ['Dog'],
+    manaCost: '{G}{W}',
+    colors: ['G', 'W'],
+    power: 0,
+    toughness: 0,
+    keywords: ['vigilance'],
+    // "This creature enters with three +1/+1 counters on it." (a 0/0 → 3/3)
+    entersWithCounters: 3,
+  },
+
+  // --- Coverage batch PW: planeswalkers (loyalty core; attackability + emblems deferred) ---
+  {
+    name: 'Nissa, Voice of Zendikar',
+    types: ['Planeswalker'],
+    supertypes: ['Legendary'],
+    subtypes: ['Nissa'],
+    manaCost: '{1}{G}{G}',
+    colors: ['G'],
+    loyalty: 3,
+    loyaltyAbilities: [
+      // [+1]: Create a 0/1 green Plant creature token.
+      { cost: 1, effect: createToken({ name: 'Plant', power: 0, toughness: 1, subtypes: ['Plant'] }, 1) },
+      // [−2]: Put a +1/+1 counter on each creature you control.
+      { cost: -2, effect: addCountersToEachControlled('+1/+1', 1) },
+      // [−7]: You gain X life and draw X cards, where X is the number of lands you control.
+      { cost: -7, effect: gainAndDrawEqualToLands() },
+    ],
+  },
+  {
+    name: 'Ajani, the Greathearted',
+    types: ['Planeswalker'],
+    supertypes: ['Legendary'],
+    subtypes: ['Ajani'],
+    manaCost: '{2}{G}{W}',
+    colors: ['G', 'W'],
+    loyalty: 5,
+    // "Creatures you control have vigilance."
+    staticKeywords: [{ affects: { controllerOnly: true }, keywords: ['vigilance'] }],
+    loyaltyAbilities: [
+      // [+1]: You gain 3 life.
+      { cost: 1, effect: gainLife(3) },
+      // [−2]: +1/+1 counter on each creature you control and a loyalty counter on each other planeswalker you control.
+      { cost: -2, effect: sequence(addCountersToEachControlled('+1/+1', 1), addLoyaltyToOtherPlaneswalkers(1)) },
+    ],
+  },
+
   vanilla('Savannah Lions', '{W}', ['W'], 2, 1, ['Cat']),
   vanilla('Merfolk of the Pearl Trident', '{U}', ['U'], 1, 1, ['Merfolk']),
   vanilla('Grizzly Bears', '{1}{G}', ['G'], 2, 2, ['Bear']),
@@ -994,4 +1424,190 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['W'],
     spell: { effect: destroyAllCreatures() },
   },
+  {
+    name: 'Damnation',
+    types: ['Sorcery'],
+    manaCost: '{2}{B}{B}',
+    colors: ['B'],
+    // "Destroy all creatures. They can't be regenerated." (regeneration isn't modeled → vacuous, as on Wrath of God)
+    spell: { effect: destroyAllCreatures() },
+  },
+
+  // --- Coverage batch BR2: more removal staples (existing primitives) ---
+  {
+    name: 'Terminate',
+    types: ['Instant'],
+    manaCost: '{B}{R}',
+    colors: ['B', 'R'],
+    // "Destroy target creature. It can't be regenerated."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: destroyPermanent() },
+  },
+  {
+    name: 'Go for the Throat',
+    types: ['Instant'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "Destroy target nonartifact creature."
+    spell: { targets: [{ kind: 'creature', count: 1, filter: { excludeTypes: ['Artifact'] } }], effect: destroyPermanent() },
+  },
+  {
+    name: 'Pongify',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Destroy target creature. Its controller creates a 3/3 green Ape creature token."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: destroyPermanentGrantToken({ name: 'Ape', power: 3, toughness: 3, subtypes: ['Ape'] }) },
+  },
+  {
+    name: 'Rapid Hybridization',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Destroy target creature. That creature's controller creates a 3/3 green Frog Lizard creature token."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: destroyPermanentGrantToken({ name: 'Frog Lizard', power: 3, toughness: 3, subtypes: ['Frog', 'Lizard'] }) },
+  },
+
+  // --- Coverage batch WARD: ward (counter a targeting spell/ability unless you pay) ---
+  {
+    name: 'Tomakul Honor Guard',
+    types: ['Creature'],
+    subtypes: ['Human', 'Soldier'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    power: 3,
+    toughness: 1,
+    ward: '{2}',
+  },
+  {
+    name: 'Waterfall Aerialist',
+    types: ['Creature'],
+    subtypes: ['Djinn', 'Wizard'],
+    manaCost: '{3}{U}',
+    colors: ['U'],
+    power: 3,
+    toughness: 1,
+    keywords: ['flying'],
+    ward: '{2}',
+  },
+
+  // --- Coverage batch BR3: a cantrip flyer (Serra Angel / Vampire Nighthawk / Colossal
+  // Dreadmaw already exist above, so only Cloudkin Seer is new here) ---
+  {
+    name: 'Cloudkin Seer',
+    types: ['Creature'],
+    subtypes: ['Elemental', 'Wizard'],
+    manaCost: '{2}{U}',
+    colors: ['U'],
+    power: 2,
+    toughness: 1,
+    keywords: ['flying'],
+    // "When this creature enters, draw a card."
+    enters: { effect: drawCards(1) },
+  },
+
+  // --- Coverage batch CASCADE: cascade (CR 702.85) ---
+  {
+    name: 'Shardless Agent',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Human', 'Rogue'],
+    manaCost: '{1}{G}{U}',
+    colors: ['G', 'U'],
+    power: 2,
+    toughness: 2,
+    cascade: true,
+  },
+  {
+    name: 'Bloodbraid Elf',
+    types: ['Creature'],
+    subtypes: ['Elf', 'Berserker'],
+    manaCost: '{2}{R}{G}',
+    colors: ['R', 'G'],
+    power: 3,
+    toughness: 2,
+    keywords: ['haste'],
+    cascade: true,
+  },
+
+  // --- Coverage batch KW1: evasion keywords (block restrictions) ---
+  keyworded('Prickly Boggart', '{B}', ['B'], 1, 1, ['Goblin', 'Rogue'], ['fear']),
+  keyworded("Krenko's Enforcer", '{1}{R}{R}', ['R'], 2, 2, ['Goblin', 'Rogue'], ['intimidate']),
+  keyworded('Vampire Cutthroat', '{B}', ['B'], 1, 1, ['Vampire', 'Rogue'], ['skulk', 'lifelink']),
+  keyworded('Soltari Foot Soldier', '{W}', ['W'], 1, 1, ['Soltari', 'Soldier'], ['shadow']),
+  keyworded('Pale Bears', '{2}{G}', ['G'], 2, 2, ['Bear'], ['islandwalk']),
+  keyworded('Marsh Boa', '{G}', ['G'], 1, 1, ['Snake'], ['swampwalk']),
+
+  // --- Coverage batch KW2: protection from [colour] (CR 702.16, the DEBT rule) ---
+  {
+    name: 'White Knight',
+    types: ['Creature'],
+    subtypes: ['Human', 'Knight'],
+    manaCost: '{W}{W}',
+    colors: ['W'],
+    power: 2,
+    toughness: 2,
+    keywords: ['first strike'],
+    protectionFrom: ['B'],
+  },
+  {
+    name: 'Black Knight',
+    types: ['Creature'],
+    subtypes: ['Human', 'Knight'],
+    manaCost: '{B}{B}',
+    colors: ['B'],
+    power: 2,
+    toughness: 2,
+    keywords: ['first strike'],
+    protectionFrom: ['W'],
+  },
+  {
+    name: 'Paladin en-Vec',
+    types: ['Creature'],
+    subtypes: ['Human', 'Knight'],
+    manaCost: '{1}{W}{W}',
+    colors: ['W'],
+    power: 2,
+    toughness: 2,
+    keywords: ['first strike'],
+    protectionFrom: ['B', 'R'],
+  },
+
+  // --- Coverage batch KW3: shroud + prowess ---
+  keyworded('Elvish Lookout', '{G}', ['G'], 1, 1, ['Elf'], ['shroud']),
+  keyworded('Pincher Beetles', '{2}{G}', ['G'], 3, 1, ['Insect'], ['shroud']),
+  keyworded('Monastery Swiftspear', '{R}', ['R'], 1, 2, ['Human', 'Monk'], ['haste', 'prowess']),
+
+  // --- Coverage batch KW4: persist + undying (dies → return with a counter) ---
+  keyworded('Young Wolf', '{G}', ['G'], 1, 1, ['Wolf'], ['undying']),
+  keyworded('Strangleroot Geist', '{G}{G}', ['G'], 2, 1, ['Spirit'], ['haste', 'undying']),
+  keyworded('Putrid Goblin', '{1}{B}', ['B'], 2, 2, ['Zombie', 'Goblin'], ['persist']),
+  keyworded('Lingering Tormentor', '{3}{B}', ['B'], 2, 2, ['Zombie'], ['fear', 'persist']),
+
+  // --- Coverage batch KW5: exalted, flanking, battle cry (combat-trigger keywords) ---
+  {
+    name: 'Knight of Glory',
+    types: ['Creature'],
+    subtypes: ['Human', 'Knight'],
+    manaCost: '{1}{W}',
+    colors: ['W'],
+    power: 2,
+    toughness: 1,
+    keywords: ['exalted'],
+    protectionFrom: ['B'],
+  },
+  keyworded('Benalish Cavalry', '{1}{W}', ['W'], 2, 2, ['Human', 'Knight'], ['flanking']),
+  keyworded('Accorder Paladin', '{1}{W}', ['W'], 3, 1, ['Human', 'Knight'], ['battle cry']),
+  keyworded('Goblin Wardriver', '{R}{R}', ['R'], 2, 2, ['Goblin', 'Warrior'], ['battle cry']),
+
+  // --- Coverage batch SUB1: infect (poison to players, -1/-1 counters to creatures). Wither
+  // shares the same engine branch (damage as -1/-1 counters) — mechanism ready, no starter card yet. ---
+  keyworded('Glistener Elf', '{G}', ['G'], 1, 1, ['Elf'], ['infect']),
+  keyworded('Plague Stinger', '{1}{B}', ['B'], 2, 2, ['Insect'], ['flying', 'infect']),
+
+  // --- Coverage batch SUB3: phasing (permanent toggles in/out each untap; CR 702.26) ---
+  keyworded('Teferi\'s Honor Guard', '{3}{W}', ['W'], 2, 4, ['Human', 'Soldier'], ['phasing']),
+  keyworded('Rainbow Efreet', '{4}{U}{U}', ['U'], 4, 4, ['Efreet'], ['flying', 'phasing']),
+
+  // --- Coverage batch SUB4: banding (defensive damage-assignment control subset; CR 702.22) ---
+  keyworded('Benalish Hero', '{W}', ['W'], 1, 1, ['Human', 'Soldier'], ['banding']),
+  keyworded('Mesa Pegasus', '{1}{W}', ['W'], 1, 1, ['Pegasus'], ['flying', 'banding']),
 ]

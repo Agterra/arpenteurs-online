@@ -87,6 +87,10 @@ const TARGETED_STARTERS: Record<string, TargetClass> = {
   'lightning strike': 'any',
   'volcanic hammer': 'any',
   murder: 'creature',
+  terminate: 'creature',
+  'go for the throat': 'creature',
+  pongify: 'creature',
+  'rapid hybridization': 'creature',
   disfigure: 'creature',
   'grasp of darkness': 'creature',
   'swords to plowshares': 'creature',
@@ -105,14 +109,54 @@ const TARGETED_STARTERS: Record<string, TargetClass> = {
   putrefy: 'permanent',
   'utter end': 'permanent',
   'anguished unmaking': 'permanent',
+  "hero's downfall": 'permanent', // creature or planeswalker (server enforces the filter)
   boomerang: 'permanent',
   'diabolic edict': 'player',
+  // Auras enchant a creature (they attach to their target on resolution)
+  'unholy strength': 'creature',
+  'holy strength': 'creature',
+  'angelic gift': 'creature',
+  pacifism: 'creature',
+  blaze: 'any', // {X} damage to any target
+  'burst lightning': 'any', // 2 (or 4 if kicked) damage to any target
+  'mind rot': 'player',
+  'tome scour': 'player',
+  'mind sculpt': 'player',
+  'thought scour': 'player',
+  'marsh casualties': 'player', // -1/-1 (or -2/-2 if kicked) to a player's creatures
+}
+/** modal "choose one" starters: per-mode label + the target class that mode needs. */
+const MODAL_STARTERS: Record<string, { label: string; spec: TargetClass | null }[]> = {
+  abrade: [
+    { label: 'Deal 3 damage to target creature', spec: 'creature' },
+    { label: 'Destroy target artifact', spec: 'permanent' },
+  ],
+  'gods willing': [
+    { label: 'Protection from white', spec: 'creature' },
+    { label: 'Protection from blue', spec: 'creature' },
+    { label: 'Protection from black', spec: 'creature' },
+    { label: 'Protection from red', spec: 'creature' },
+    { label: 'Protection from green', spec: 'creature' },
+  ],
+}
+/** multi-target starters (ordered slots) — fight spells: your creature, then theirs. */
+type FightSlot = 'your-creature' | 'opp-creature'
+const MULTI_TARGET_STARTERS: Record<string, FightSlot[]> = {
+  pounce: ['your-creature', 'opp-creature'],
+  'prey upon': ['your-creature', 'opp-creature'],
+}
+/** graveyard-recursion starters → whether the target is creature-only. */
+const GRAVEYARD_STARTERS: Record<string, 'creature' | 'any'> = {
+  'raise dead': 'creature',
+  regrowth: 'any',
 }
 
-const targeting = ref<{ objId: ObjId; spec: TargetClass } | null>(null)
+const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number } | null>(null)
 const attackAssign = ref<{ attackerId: ObjId; defenderId: PlayerId }[]>([])
 const pendingAttacker = ref<ObjId | null>(null)
 const selDiscard = ref<Set<ObjId>>(new Set())
+// equipment being equipped (awaiting a creature-you-control click) → r.equip
+const equipping = ref<ObjId | null>(null)
 // forced-sacrifice (edict) selection + sacrifice-as-cost (sac outlet) picker
 const selSacrifice = ref<Set<ObjId>>(new Set())
 const costSac = ref<{ objId: ObjId; abilityIndex: number; count: number } | null>(null)
@@ -127,7 +171,21 @@ const casting = ref<{
   targets: (ObjId | PlayerId)[]
   abilityIndex: number | null
   costStr: string
+  x: number // chosen X (0 when the card has no {X})
+  xCount: number // number of {X} pips in the cost
+  mode: number | null // chosen mode for a modal spell
+  cycling?: boolean // paying a cycling cost (→ r.cycle) rather than casting
+  kickerCost?: string // the spell's kicker cost, if it has one (enables the kick toggle)
+  kicked?: boolean // whether the player chose to pay the kicker
 } | null>(null)
+// modal "choose one": pick a mode before targeting/payment
+const modalPick = ref<{ card: RulesClientCard; modes: { label: string; spec: TargetClass | null }[] } | null>(null)
+// planeswalker loyalty-ability picker
+const loyaltyPick = ref<{ objId: ObjId; options: { abilityIndex: number; cost: number }[] } | null>(null)
+// multi-target casting (fight): collect ordered targets, then pay
+const multiTargeting = ref<{ objId: ObjId; slots: FightSlot[]; collected: ObjId[] } | null>(null)
+// graveyard recursion (Raise Dead / Regrowth): pick a card from your graveyard, then pay
+const graveyardTargeting = ref<{ objId: ObjId; creatureOnly: boolean } | null>(null)
 
 watch(
   () => st.value?.seq,
@@ -144,17 +202,23 @@ watch(
     }
     if (!l.needsDiscard) selDiscard.value = new Set()
     if (!l.needsSacrifice) selSacrifice.value = new Set()
+    if (equipping.value && !l.equippableIds.includes(equipping.value)) equipping.value = null
     // drop a stale cost-sacrifice picker if its ability is no longer available
     if (costSac.value && !l.activations.some((a) => a.objId === costSac.value!.objId && a.abilityIndex === costSac.value!.abilityIndex)) {
       costSac.value = null
       costSacPick.value = new Set()
     }
     if (targeting.value && !l.castableIds.includes(targeting.value.objId)) targeting.value = null
+    if (modalPick.value && !l.castableIds.includes(modalPick.value.card.id)) modalPick.value = null
+    if (loyaltyPick.value && !l.loyaltyActivations.some((a) => a.objId === loyaltyPick.value!.objId)) loyaltyPick.value = null
+    if (multiTargeting.value && !l.castableIds.includes(multiTargeting.value.objId)) multiTargeting.value = null
+    if (graveyardTargeting.value && !l.castableIds.includes(graveyardTargeting.value.objId)) graveyardTargeting.value = null
     // drop the payment prompt if the spell/ability is no longer available
     if (casting.value) {
       const c = casting.value
-      const ok =
-        c.abilityIndex == null
+      const ok = c.cycling
+        ? l.cyclable.some((cy) => cy.objId === c.cardId)
+        : c.abilityIndex == null
           ? l.castableIds.includes(c.cardId)
           : l.activations.some((a) => a.objId === c.cardId && a.abilityIndex === c.abilityIndex)
       if (!ok) casting.value = null
@@ -169,44 +233,152 @@ const castCost = computed(() => {
   const c = casting.value
   if (!c) return null
   const cost = parseManaCost(c.costStr)
+  cost.generic += (c.x ?? 0) * (c.xCount ?? 0) // {X}: add the chosen X per {X} pip
   if (c.abilityIndex == null && cardOf(c.cardId)?.isCommander) cost.generic += 2 * cmdTax(you.value)
+  if (c.kicked && c.kickerCost) {
+    // kicker adds its mana to the total the player must pay
+    const kc = parseManaCost(c.kickerCost)
+    cost.generic += kc.generic
+    for (const col of POOL_COLORS) cost.colored[col] += kc.colored[col]
+  }
   return cost
 })
-const castManaCostStr = computed(() => casting.value?.costStr ?? '')
+// displayed cost string — append the kicker's pips when the player has chosen to kick
+const castManaCostStr = computed(() =>
+  casting.value ? casting.value.costStr + (casting.value.kicked && casting.value.kickerCost ? casting.value.kickerCost : '') : '',
+)
 const castIsAbility = computed(() => casting.value?.abilityIndex != null)
 const castCovered = computed(
   () => !!castCost.value && !!me.value && planPayment(castCost.value, me.value.manaPool).covered,
 )
 
-function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[]) {
+function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode: number | null = null) {
   targeting.value = null
+  const costStr = display.value[card.defName ?? '']?.manaCost ?? ''
   casting.value = {
     cardId: card.id,
     defName: card.defName ?? '',
     targets,
     abilityIndex: null,
-    costStr: display.value[card.defName ?? '']?.manaCost ?? '',
+    costStr,
+    x: 0,
+    xCount: (costStr.match(/\{X\}/g) ?? []).length,
+    mode,
+    kickerCost: legal.value?.kickable.find((k) => k.objId === card.id)?.cost,
+    kicked: false,
   }
+}
+/** toggle whether the current cast pays its kicker (recomputes the required cost). */
+function toggleKicker() {
+  if (casting.value?.kickerCost) casting.value.kicked = !casting.value.kicked
 }
 function beginActivatePayment(objId: ObjId, abilityIndex: number, cost: string, targets: (ObjId | PlayerId)[]) {
   activating.value = null
-  casting.value = { cardId: objId, defName: cardOf(objId)?.defName ?? '', targets, abilityIndex, costStr: cost }
+  casting.value = { cardId: objId, defName: cardOf(objId)?.defName ?? '', targets, abilityIndex, costStr: cost, x: 0, xCount: 0, mode: null }
 }
 function confirmCast() {
   const c = casting.value
   if (!c || !castCovered.value) return
-  if (c.abilityIndex == null) send({ type: 'r.cast', objId: c.cardId, targets: c.targets as string[] })
+  if (c.cycling) send({ type: 'r.cycle', objId: c.cardId })
+  else if (c.abilityIndex == null)
+    send({
+      type: 'r.cast',
+      objId: c.cardId,
+      targets: c.targets as string[],
+      x: c.xCount > 0 ? c.x : undefined,
+      mode: c.mode ?? undefined,
+      kicked: c.kicked || undefined,
+    })
   else send({ type: 'r.activate', objId: c.cardId, abilityIndex: c.abilityIndex, targets: c.targets as string[] })
   casting.value = null
 }
+/** open the mana-payment panel for cycling a hand card (pays cyclingCost → r.cycle). */
+function beginCyclePayment(objId: ObjId, cost: string) {
+  targeting.value = null
+  casting.value = { cardId: objId, defName: cardOf(objId)?.defName ?? '', targets: [], abilityIndex: null, costStr: cost, x: 0, xCount: 0, mode: null, cycling: true }
+}
+/** the cycling cost for a hand card if it can be cycled right now, else null. */
+const cycleCost = (id: ObjId): string | null => legal.value?.cyclable.find((c) => c.objId === id)?.cost ?? null
 function cancelCast() {
   casting.value = null
 }
+/** step the chosen X up/down (clamped ≥ 0). */
+function setX(delta: number) {
+  if (casting.value) casting.value.x = Math.max(0, casting.value.x + delta)
+}
+const cancelModal = () => {
+  modalPick.value = null
+}
+const cancelMultiTarget = () => {
+  multiTargeting.value = null
+}
 
 function startCast(card: RulesClientCard) {
-  const spec = TARGETED_STARTERS[card.defName ?? '']
+  const name = card.defName ?? ''
+  const modes = MODAL_STARTERS[name]
+  if (modes) return void (modalPick.value = { card, modes }) // pick a mode first
+  const slots = MULTI_TARGET_STARTERS[name]
+  if (slots) return void (multiTargeting.value = { objId: card.id, slots, collected: [] }) // fight: 2 targets
+  const gy = GRAVEYARD_STARTERS[name]
+  if (gy) return void (graveyardTargeting.value = { objId: card.id, creatureOnly: gy === 'creature' }) // pick a card from your graveyard
+  const spec = TARGETED_STARTERS[name]
   if (spec) targeting.value = { objId: card.id, spec }
   else beginPayment(card, [])
+}
+/** cards in your own graveyard eligible for the active recursion spell. */
+const graveyardTargets = computed<ObjId[]>(() => {
+  const gt = graveyardTargeting.value
+  if (!gt || !st.value) return []
+  const ids = st.value.zones.perPlayer[you.value]?.graveyard ?? []
+  if (!gt.creatureOnly) return ids
+  return ids.filter((id) => (display.value[cardOf(id)?.defName ?? '']?.typeLine ?? '').includes('Creature'))
+})
+/** the player picked a graveyard card → move to payment with it as the target. */
+function pickGraveyardTarget(id: ObjId) {
+  const gt = graveyardTargeting.value
+  if (!gt) return
+  const card = cardOf(gt.objId)
+  graveyardTargeting.value = null
+  if (card) beginPayment(card, [id])
+}
+const cancelGraveyardTarget = () => {
+  graveyardTargeting.value = null
+}
+/** while collecting fight targets, does `id` fit the current slot (your/opponent creature)? */
+function matchesFightSlot(id: ObjId, slot: FightSlot | undefined): boolean {
+  if (!slot) return false
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield') return false
+  if (!(display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')) return false
+  return slot === 'your-creature' ? card.controllerId === you.value : card.controllerId !== you.value
+}
+const isFightTarget = (id: ObjId) =>
+  !!multiTargeting.value && matchesFightSlot(id, multiTargeting.value.slots[multiTargeting.value.collected.length])
+/** modal: the player picked mode `i` → target for that mode (if any), else pay. */
+function pickMode(i: number) {
+  const mp = modalPick.value
+  if (!mp) return
+  const m = mp.modes[i]
+  const card = mp.card
+  modalPick.value = null
+  if (m?.spec) targeting.value = { objId: card.id, spec: m.spec, mode: i }
+  else beginPayment(card, [], i)
+}
+
+// planeswalker loyalty abilities (the current pool has only non-targeted ones)
+function startLoyalty(id: ObjId) {
+  const opts = legal.value?.loyaltyActivations.filter((l) => l.objId === id) ?? []
+  if (opts.length) loyaltyPick.value = { objId: id, options: opts.map((o) => ({ abilityIndex: o.abilityIndex, cost: o.cost })) }
+}
+function pickLoyalty(abilityIndex: number) {
+  const lp = loyaltyPick.value
+  if (!lp) return
+  send({ type: 'r.loyalty', objId: lp.objId, abilityIndex, targets: [] })
+  loyaltyPick.value = null
+}
+const loyaltyLabel = (cost: number) => (cost >= 0 ? `+${cost}` : `${cost}`)
+const cancelLoyalty = () => {
+  loyaltyPick.value = null
 }
 
 // ---------- click routing ----------
@@ -247,6 +419,26 @@ function onBattlefieldClick(id: ObjId) {
   const l = legal.value
   if (!card || !l || !st.value) return
 
+  if (multiTargeting.value) {
+    // collect the ordered fight targets; when both are chosen, move to payment
+    const mt = multiTargeting.value
+    if (isFightTarget(id) && !mt.collected.includes(id)) {
+      mt.collected.push(id)
+      if (mt.collected.length === mt.slots.length) {
+        beginPayment(cardOf(mt.objId)!, [...mt.collected])
+        multiTargeting.value = null
+      }
+    }
+    return
+  }
+  if (equipping.value) {
+    // click one of your creatures to attach the equipment to it
+    if (isEquipTargetCreature(id)) {
+      send({ type: 'r.equip', equipmentId: equipping.value, creatureId: id })
+      equipping.value = null
+    }
+    return
+  }
   if (activating.value) {
     if (isActivateTargetCard(id)) sendActivate(id)
     return
@@ -255,8 +447,13 @@ function onBattlefieldClick(id: ObjId) {
     if (isTriggerTargetCard(id)) send({ type: 'r.chooseTargets', targets: [id] })
     return
   }
+  if (l.needsCascade) {
+    // clicking a legal target free-casts the cascade hit at it
+    if (isCascadeTargetCard(id)) sendCascade(true, [id])
+    return
+  }
   if (targeting.value) {
-    if (isValidTarget(id)) beginPayment(cardOf(targeting.value.objId)!, [id])
+    if (isValidTarget(id)) beginPayment(cardOf(targeting.value.objId)!, [id], targeting.value.mode ?? null)
     return
   }
   if (l.needsAttackers && l.declarableAttackerIds.includes(id)) {
@@ -265,9 +462,17 @@ function onBattlefieldClick(id: ObjId) {
       attackAssign.value.splice(idx, 1) // un-declare
       return
     }
-    // one opponent → auto-assign; otherwise wait for a defender panel click
-    if (opponents.value.length === 1) attackAssign.value.push({ attackerId: id, defenderId: opponents.value[0]! })
+    // exactly one opponent and no attackable planeswalkers → auto-assign; otherwise
+    // wait for a defender pick (a player HUD or an opponent's planeswalker)
+    if (opponents.value.length === 1 && !l.attackablePlaneswalkerIds.length)
+      attackAssign.value.push({ attackerId: id, defenderId: opponents.value[0]! })
     else pendingAttacker.value = pendingAttacker.value === id ? null : id
+    return
+  }
+  // assign a pending attacker to an opponent's planeswalker
+  if (l.needsAttackers && pendingAttacker.value && l.attackablePlaneswalkerIds.includes(id)) {
+    attackAssign.value.push({ attackerId: pendingAttacker.value, defenderId: id })
+    pendingAttacker.value = null
     return
   }
   if (l.needsBlockers) {
@@ -285,6 +490,27 @@ function onBattlefieldClick(id: ObjId) {
     return
   }
   if (l.manaSourceIds.includes(id)) return void tapManaSource(id)
+  // click your planeswalker with an available loyalty ability → pick one
+  if (l.loyaltyActivations.some((a) => a.objId === id)) return void startLoyalty(id)
+  // start equipping: click your Equipment, then a creature you control
+  if (l.equippableIds.includes(id)) return void (equipping.value = id)
+}
+
+const cancelEquip = () => {
+  equipping.value = null
+}
+
+/** badge for an attached Aura/Equipment: "→ Host" (so attachments are legible). */
+const attachBadge = (id: ObjId): string | null => {
+  const c = cardOf(id)
+  return c?.attachedTo ? `→ ${nameOf(c.attachedTo)}` : null
+}
+
+/** while equipping, is `id` a creature the player controls (a legal attach target)? */
+function isEquipTargetCreature(id: ObjId): boolean {
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield' || card.controllerId !== you.value) return false
+  return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
 }
 
 /** clicking an opponent panel: assign a pending attacker's defender, or a spell/trigger target. */
@@ -297,18 +523,20 @@ function onOpponentClick(pid: PlayerId) {
   }
   if (canActivateTargetPlayer.value) return void sendActivate(pid)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [pid] })
-  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [pid])
+  if (canCascadeTargetPlayer.value) return void sendCascade(true, [pid])
+  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [pid], targeting.value!.mode ?? null)
 }
 
 /** clicking a spell on the stack while casting a counter (targeting.spec === 'spell'). */
 function onStackTarget(stackId: ObjId) {
-  if (targeting.value?.spec === 'spell') beginPayment(cardOf(targeting.value.objId)!, [stackId])
+  if (targeting.value?.spec === 'spell') beginPayment(cardOf(targeting.value.objId)!, [stackId], targeting.value.mode ?? null)
 }
 
 function onSelfClick() {
   if (canActivateTargetPlayer.value) return void sendActivate(you.value)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [you.value] })
-  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [you.value])
+  if (canCascadeTargetPlayer.value) return void sendCascade(true, [you.value])
+  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [you.value], targeting.value!.mode ?? null)
 }
 
 function isValidTarget(id: ObjId): boolean {
@@ -331,11 +559,34 @@ const canTargetPlayerForTrigger = computed(
 function isTriggerTargetCard(id: ObjId): boolean {
   const l = legal.value
   if (!l?.needsTriggerTargets) return false
-  if (l.triggerTargetKind !== 'creature' && l.triggerTargetKind !== 'anyTarget') return false
   const card = cardOf(id)
   if (!card || card.zone !== 'battlefield') return false
+  // 'permanent' → any battlefield permanent (server enforces the type filter);
+  // 'creature'/'anyTarget' → a creature. (mirrors isValidTarget for spell targets)
+  if (l.triggerTargetKind === 'permanent') return true
+  if (l.triggerTargetKind !== 'creature' && l.triggerTargetKind !== 'anyTarget') return false
   return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
 }
+
+// ---------- cascade (CR 702.85): cast the revealed hit for free, choosing its target ----------
+/** send the cascade decision (cast the free hit with `targets`, or decline). */
+function sendCascade(cast: boolean, targets: (ObjId | PlayerId)[] = []) {
+  send({ type: 'r.cascade', cast, targets: targets as string[] })
+}
+/** true if `id` is a legal battlefield target for the cascade hit's single target. */
+function isCascadeTargetCard(id: ObjId): boolean {
+  const l = legal.value
+  if (!l?.needsCascade) return false
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield') return false
+  if (l.cascadeTargetKind === 'permanent') return true
+  if (l.cascadeTargetKind !== 'creature' && l.cascadeTargetKind !== 'anyTarget') return false
+  return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
+}
+/** true if a player-HUD click is a legal target for the cascade hit. */
+const canCascadeTargetPlayer = computed(
+  () => !!legal.value?.needsCascade && (legal.value.cascadeTargetKind === 'player' || legal.value.cascadeTargetKind === 'anyTarget'),
+)
 
 // ---------- activated abilities ----------
 type Activation = {
@@ -362,9 +613,11 @@ const canActivateTargetPlayer = computed(
 )
 function isActivateTargetCard(id: ObjId): boolean {
   const a = activating.value
-  if (!a || (a.targetKind !== 'creature' && a.targetKind !== 'anyTarget')) return false
+  if (!a) return false
   const card = cardOf(id)
   if (!card || card.zone !== 'battlefield') return false
+  if (a.targetKind === 'permanent') return true // any battlefield permanent (server enforces the filter)
+  if (a.targetKind !== 'creature' && a.targetKind !== 'anyTarget') return false
   return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
 }
 function sendActivate(target: ObjId | PlayerId) {
@@ -379,8 +632,13 @@ function sendActivate(target: ObjId | PlayerId) {
 
 const attackerTargetName = (id: ObjId) => {
   const a = attackAssign.value.find((x) => x.attackerId === id)
-  return a ? (st.value?.players[a.defenderId]?.name ?? '?') : null
+  if (!a) return null
+  // defender is a player, or an opponent's planeswalker
+  return st.value?.players[a.defenderId]?.name ?? nameOf(a.defenderId)
 }
+/** while declaring attackers with a pending attacker, is `id` a legal planeswalker target? */
+const isAttackTargetPw = (id: ObjId) =>
+  !!legal.value?.needsAttackers && !!pendingAttacker.value && (legal.value.attackablePlaneswalkerIds?.includes(id) ?? false)
 
 // ---------- confirms ----------
 
@@ -453,6 +711,11 @@ function confirmKeep() {
   send({ type: 'r.keep', toBottom: [...bottoming.value] })
   bottomingActive.value = false
   bottoming.value = new Set()
+}
+
+/** ward (CR 702.21): pay the ward cost to save your spell/ability, or decline (it's countered). */
+function sendWard(pay: boolean) {
+  send({ type: 'r.ward', pay })
 }
 
 const menu = ref<{ x: number; y: number; id: ObjId } | null>(null)
@@ -659,7 +922,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || l.needsDiscard || l.needsSacrifice || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsSacrifice || l.needsWard || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -703,10 +966,16 @@ const arrowSpecs = computed<ArrowSpec[]>(() => {
   if (!s) return []
   const out: ArrowSpec[] = []
   for (const c of Object.values(s.cards)) {
-    if (c.attackingDefender) out.push({ from: `card:${c.id}`, to: `player:${c.attackingDefender}`, color: '#f43f5e' })
+    // an attack on a planeswalker points at the PW card, not the defending player
+    if (c.attackingPwId) out.push({ from: `card:${c.id}`, to: `card:${c.attackingPwId}`, color: '#f43f5e' })
+    else if (c.attackingDefender) out.push({ from: `card:${c.id}`, to: `player:${c.attackingDefender}`, color: '#f43f5e' })
     if (c.blockingAttackerId) out.push({ from: `card:${c.id}`, to: `card:${c.blockingAttackerId}`, color: '#3b82f6' })
   }
-  for (const a of attackAssign.value) out.push({ from: `card:${a.attackerId}`, to: `player:${a.defenderId}`, color: '#f43f5e', dashed: true })
+  for (const a of attackAssign.value) {
+    // defenderId is a player id or an opponent's planeswalker (a card)
+    const to = st.value?.players[a.defenderId] ? `player:${a.defenderId}` : `card:${a.defenderId}`
+    out.push({ from: `card:${a.attackerId}`, to, color: '#f43f5e', dashed: true })
+  }
   for (const p of blockPairs.value) out.push({ from: `card:${p.blockerId}`, to: `card:${p.attackerId}`, color: '#3b82f6', dashed: true })
   // live targeting line from the source spell/ability to the hovered target
   const src = targeting.value?.objId ?? activating.value?.objId ?? null
@@ -816,7 +1085,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="flex items-center gap-2 rounded px-1"
                   :data-arrow="`player:${pid}`"
-                  :class="(legal?.needsAttackers && pendingAttacker) || targetingPlayerOk || canTargetPlayerForTrigger || canActivateTargetPlayer
+                  :class="(legal?.needsAttackers && pendingAttacker) || targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer
                     ? 'ring-2 ring-rose-400 cursor-crosshair'
                     : 'cursor-default'"
                   @click="onOpponentClick(pid)"
@@ -824,6 +1093,7 @@ onBeforeUnmount(() => {
                   @mouseleave="clearHover()"
                 >
                   <span class="text-2xl font-bold tabular-nums">{{ st.players[pid].life }}</span>
+                  <span v-if="st.players[pid].poison" class="text-xs font-semibold text-green-500" title="Poison counters (10 = loss)">☠ {{ st.players[pid].poison }}</span>
                   <span class="flex items-center gap-1 text-xs text-dimmed">
                     {{ st.players[pid].name }}
                     <span
@@ -869,7 +1139,7 @@ onBeforeUnmount(() => {
                       :key="id"
                       :card="st.cards[id]!"
                       :display="display[st.cards[id]!.defName ?? '']"
-                      :targetable="(!!targeting && isValidTarget(id)) || isTriggerTargetCard(id) || isActivateTargetCard(id)"
+                      :targetable="(!!targeting && isValidTarget(id)) || isTriggerTargetCard(id) || isCascadeTargetCard(id) || isActivateTargetCard(id) || isAttackTargetPw(id) || isFightTarget(id)"
                       :data-arrow="`card:${id}`"
                       size="sm"
                       @click="onBattlefieldClick(id)"
@@ -888,6 +1158,12 @@ onBeforeUnmount(() => {
             <div v-if="st.status === 'mulligans'" class="rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-sm font-medium">
               <template v-if="me.keptHand">Hand kept — waiting for the other players…</template>
               <template v-else>Mulligan phase — keep your opening hand or mulligan for a new seven.</template>
+            </div>
+            <div v-if="multiTargeting" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
+              Casting {{ nameOf(multiTargeting.objId) }} —
+              {{ multiTargeting.slots[multiTargeting.collected.length] === 'your-creature' ? 'pick YOUR creature' : "pick an OPPONENT's creature" }}
+              ({{ multiTargeting.collected.length }}/{{ multiTargeting.slots.length }})
+              <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="cancelMultiTarget">Cancel</UButton>
             </div>
             <div v-if="targeting" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
               Casting {{ nameOf(targeting.objId) }} — select a target
@@ -911,7 +1187,23 @@ onBeforeUnmount(() => {
                 </template>
                 <span v-if="POOL_COLORS.every((c) => (me?.manaPool[c] ?? 0) === 0)" class="text-dimmed">empty</span>
               </span>
-              <UButton size="xs" icon="i-lucide-sparkles" :disabled="!castCovered" @click="confirmCast">{{ castIsAbility ? 'Activate' : 'Cast' }}</UButton>
+              <span v-if="casting.xCount > 0" class="flex items-center gap-1">
+                X =
+                <UButton size="xs" variant="soft" icon="i-lucide-minus" :disabled="casting.x <= 0" @click="setX(-1)" />
+                <b class="tabular-nums">{{ casting.x }}</b>
+                <UButton size="xs" variant="soft" icon="i-lucide-plus" @click="setX(1)" />
+              </span>
+              <UButton
+                v-if="casting.kickerCost"
+                size="xs"
+                :variant="casting.kicked ? 'solid' : 'soft'"
+                :color="casting.kicked ? 'primary' : 'neutral'"
+                icon="i-lucide-zap"
+                @click="toggleKicker"
+              >
+                <span class="flex items-center gap-0.5">Kicker <ManaSymbols :value="casting.kickerCost" :size="12" /></span>
+              </UButton>
+              <UButton size="xs" icon="i-lucide-sparkles" :disabled="!castCovered" @click="confirmCast">{{ casting.cycling ? 'Cycle' : castIsAbility ? 'Activate' : 'Cast' }}</UButton>
               <UButton size="xs" variant="ghost" color="neutral" @click="cancelCast">Cancel</UButton>
             </div>
             <div v-if="legal?.needsAttackers" class="rounded-lg border border-red-400 bg-red-500/10 px-3 py-1.5 text-xs font-medium">
@@ -923,12 +1215,23 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="legal?.needsTriggerTargets" class="rounded-lg border border-fuchsia-400 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-medium">
               {{ legal.triggerSourceName }} — choose a target
-              ({{ legal.triggerTargetKind === 'creature' ? 'creature' : legal.triggerTargetKind === 'player' ? 'player' : 'creature or player' }})
+              ({{ legal.triggerTargetKind === 'creature' ? 'creature' : legal.triggerTargetKind === 'permanent' ? 'permanent' : legal.triggerTargetKind === 'player' ? 'player' : 'creature or player' }})
+            </div>
+            <div v-if="legal?.needsCascade" class="flex items-center gap-2 rounded-lg border border-violet-400 bg-violet-500/10 px-3 py-1.5 text-xs font-medium">
+              <span>Cascade — cast <b>{{ legal.cascadeHitId ? nameOf(legal.cascadeHitId) : '' }}</b> for free?</span>
+              <span v-if="legal.cascadeTargetKind" class="text-dimmed">click a {{ legal.cascadeTargetKind === 'permanent' ? 'permanent' : legal.cascadeTargetKind === 'player' ? 'player' : 'creature or player' }} target</span>
+              <UButton v-else-if="legal.cascadeCanFreeCast" size="xs" icon="i-lucide-sparkles" @click="sendCascade(true)">Cast free</UButton>
+              <span v-else class="text-dimmed">(can't free-cast this here — decline)</span>
+              <UButton size="xs" variant="ghost" color="neutral" @click="sendCascade(false)">Decline</UButton>
             </div>
             <div v-if="activating" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
               Activating {{ nameOf(activating.objId) }} — choose a target
-              ({{ activating.targetKind === 'creature' ? 'creature' : activating.targetKind === 'player' ? 'player' : 'creature or player' }})
+              ({{ activating.targetKind === 'creature' ? 'creature' : activating.targetKind === 'permanent' ? 'permanent' : activating.targetKind === 'player' ? 'player' : 'creature or player' }})
               <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="activating = null">Cancel</UButton>
+            </div>
+            <div v-if="equipping" class="rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-xs font-medium">
+              Equipping {{ nameOf(equipping) }} — click one of your creatures
+              <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="cancelEquip">Cancel</UButton>
             </div>
             <div v-if="legal?.needsBlockers" class="rounded-lg border border-blue-400 bg-blue-500/10 px-3 py-1.5 text-xs font-medium">
               Declare blockers — click a blocker, then the attacker it blocks
@@ -958,12 +1261,13 @@ onBeforeUnmount(() => {
                 type="button"
                 class="flex flex-col items-center rounded-lg px-3 py-1"
                 :data-arrow="`player:${you}`"
-                :class="targetingPlayerOk || canTargetPlayerForTrigger || canActivateTargetPlayer ? 'ring-2 ring-rose-400 cursor-crosshair' : 'cursor-default'"
+                :class="targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer ? 'ring-2 ring-rose-400 cursor-crosshair' : 'cursor-default'"
                 @click="onSelfClick"
                 @mouseenter="setHover(you)"
                 @mouseleave="clearHover()"
               >
                 <span class="text-3xl font-bold tabular-nums">{{ me.life }}</span>
+                <span v-if="me.poison" class="text-xs font-semibold text-green-500" title="Poison counters (10 = loss)">☠ {{ me.poison }}</span>
                 <span class="text-xs text-dimmed">{{ me.name }} (you)</span>
                 <div v-if="cmdDamage(you).length" class="flex gap-1 text-[10px]">
                   <span
@@ -1013,10 +1317,10 @@ onBeforeUnmount(() => {
                       :key="id"
                       :card="st.cards[id]!"
                       :display="display[st.cards[id]!.defName ?? '']"
-                      :glow="!targeting && !!legal && (legal.declarableAttackerIds.includes(id) || legal.declarableBlockerIds.includes(id))"
+                      :glow="!targeting && !equipping && !!legal && (legal.declarableAttackerIds.includes(id) || legal.declarableBlockerIds.includes(id) || legal.equippableIds.includes(id) || legal.loyaltyActivations.some((a) => a.objId === id))"
                       :selected="attackAssign.some((a) => a.attackerId === id) || pendingAttacker === id || pendingBlocker === id || blockPairs.some((p) => p.blockerId === id)"
-                      :targetable="(!!targeting && isValidTarget(id)) || isTriggerTargetCard(id) || isActivateTargetCard(id)"
-                      :badge="attackerTargetName(id)"
+                      :targetable="(!!targeting && isValidTarget(id)) || isTriggerTargetCard(id) || isCascadeTargetCard(id) || isActivateTargetCard(id) || (!!equipping && isEquipTargetCreature(id)) || isFightTarget(id)"
+                      :badge="attackerTargetName(id) ?? attachBadge(id)"
                       :data-arrow="`card:${id}`"
                       manual
                       size="sm"
@@ -1033,18 +1337,29 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="mt-2 flex flex-wrap gap-2">
-              <RulesCard
-                v-for="id in myHandIds"
-                :key="id"
-                :card="st.cards[id]!"
-                :display="display[st.cards[id]!.defName ?? '']"
-                :glow="bottomingActive || (!!legal && legal.needsDiscard)"
-                :selected="selDiscard.has(id) || bottoming.has(id)"
-                manual
-                @click="onHandClick(id)"
-                @menu="openMenu($event, id)"
-                @preview="hoverDisplay = $event"
-              />
+              <div v-for="id in myHandIds" :key="id" class="flex flex-col items-center gap-1">
+                <RulesCard
+                  :card="st.cards[id]!"
+                  :display="display[st.cards[id]!.defName ?? '']"
+                  :glow="bottomingActive || (!!legal && legal.needsDiscard)"
+                  :selected="selDiscard.has(id) || bottoming.has(id)"
+                  manual
+                  @click="onHandClick(id)"
+                  @menu="openMenu($event, id)"
+                  @preview="hoverDisplay = $event"
+                />
+                <UButton
+                  v-if="cycleCost(id)"
+                  size="xs"
+                  variant="soft"
+                  color="neutral"
+                  class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-recycle"
+                  @click.stop="beginCyclePayment(id, cycleCost(id)!)"
+                >
+                  Cycle {{ cycleCost(id) }}
+                </UButton>
+              </div>
               <span v-if="!myHandIds.length" class="self-center text-xs text-dimmed">Empty hand</span>
             </div>
           </div>
@@ -1177,6 +1492,50 @@ onBeforeUnmount(() => {
 
       <RulesCardPreview :display="hoverDisplay" />
 
+      <!-- modal "choose one": pick a mode before targeting/payment -->
+      <div v-if="modalPick" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click="cancelModal">
+        <div class="rounded-lg border border-primary bg-default p-4 shadow-xl" @click.stop>
+          <p class="mb-2 text-sm font-semibold">{{ nameOf(modalPick.card.id) }} — choose one</p>
+          <div class="flex flex-col gap-2">
+            <UButton
+              v-for="(m, i) in modalPick.modes"
+              :key="i"
+              size="sm"
+              variant="soft"
+              class="justify-start"
+              @click="pickMode(i)"
+            >
+              {{ m.label }}
+            </UButton>
+          </div>
+          <div class="mt-3 flex justify-end">
+            <UButton size="xs" variant="ghost" color="neutral" @click="cancelModal">Cancel</UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- planeswalker loyalty ability picker -->
+      <div v-if="loyaltyPick" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click="cancelLoyalty">
+        <div class="rounded-lg border border-indigo-400 bg-default p-4 shadow-xl" @click.stop>
+          <p class="mb-2 text-sm font-semibold">{{ nameOf(loyaltyPick.objId) }} — loyalty ability</p>
+          <div class="flex flex-col gap-2">
+            <UButton
+              v-for="opt in loyaltyPick.options"
+              :key="opt.abilityIndex"
+              size="sm"
+              variant="soft"
+              class="justify-start"
+              @click="pickLoyalty(opt.abilityIndex)"
+            >
+              ◆ {{ loyaltyLabel(opt.cost) }}
+            </UButton>
+          </div>
+          <div class="mt-3 flex justify-end">
+            <UButton size="xs" variant="ghost" color="neutral" @click="cancelLoyalty">Cancel</UButton>
+          </div>
+        </div>
+      </div>
+
       <!-- scry: peek at the top-N and choose which to bottom -->
       <div v-if="st.scry" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
         <div class="rounded-lg border border-default bg-default p-4 shadow-xl">
@@ -1225,6 +1584,49 @@ onBeforeUnmount(() => {
             <UButton size="sm" variant="ghost" color="neutral" @click="confirmSearch">Take none</UButton>
             <UButton size="sm" icon="i-lucide-check" :disabled="!searchPick.size" @click="confirmSearch">
               Take {{ searchPick.size }}
+            </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- graveyard recursion (Raise Dead / Regrowth): pick a card from your graveyard to return -->
+      <div v-if="graveyardTargeting" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-h-[85vh] flex-col rounded-lg border border-default bg-default p-4 shadow-xl">
+          <p class="mb-2 text-sm font-semibold">
+            Casting {{ nameOf(graveyardTargeting.objId) }} — pick a
+            {{ graveyardTargeting.creatureOnly ? 'creature card' : 'card' }} from your graveyard to return
+          </p>
+          <div v-if="graveyardTargets.length" class="flex flex-wrap gap-2 overflow-y-auto">
+            <RulesCard
+              v-for="id in graveyardTargets"
+              :key="id"
+              :card="st.cards[id]!"
+              :display="display[st.cards[id]!.defName ?? '']"
+              size="sm"
+              @click="pickGraveyardTarget(id)"
+              @preview="hoverDisplay = $event"
+            />
+          </div>
+          <p v-else class="text-xs text-dimmed">No eligible cards in your graveyard.</p>
+          <div class="mt-3 flex justify-end">
+            <UButton size="sm" variant="ghost" color="neutral" @click="cancelGraveyardTarget">Cancel</UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- ward (CR 702.21): pay the ward cost from your pool, or let your spell/ability be countered -->
+      <div v-if="legal?.needsWard" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-w-sm flex-col rounded-lg border border-sky-400 bg-default p-4 shadow-xl">
+          <p class="mb-1 flex items-center gap-1 text-sm font-semibold">
+            Ward — pay <ManaSymbols :value="legal.wardCost" :size="13" /> or your spell/ability is countered
+          </p>
+          <p class="mb-3 text-xs text-dimmed">
+            {{ legal.wardAffordable ? 'You have the mana in your pool.' : 'You cannot pay from your current pool — declining will counter it.' }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton size="sm" variant="ghost" color="neutral" @click="sendWard(false)">Decline (counter)</UButton>
+            <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
+              Pay ward
             </UButton>
           </div>
         </div>

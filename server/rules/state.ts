@@ -13,6 +13,7 @@ import type {
 import { getDef } from './cards/registry'
 import { defIsCreature } from './cards/dsl'
 import { mintCardId } from '../game/rng'
+import { currentKeywords } from './characteristics'
 
 export function zoneArr(state: RulesGameState, player: PlayerId, zone: RulesZone): ObjId[] {
   return state.zones.perPlayer[player]![zone]
@@ -44,12 +45,26 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
   obj.tapped = false
   obj.damageMarked = 0
   obj.deathtouched = false
+  obj.attachedTo = null // an Aura/Equipment leaving the battlefield is no longer attached
   obj.counters = {} // counters fall off when an object changes zones (becomes new)
   // until-end-of-turn effects are tied to the object; leaving the zone ends them
   // (a returning object is a NEW object and must not inherit them)
   if (state.pumps.length) state.pumps = state.pumps.filter((pm) => pm.objId !== objId)
   if (state.setPT.length) state.setPT = state.setPT.filter((s) => s.objId !== objId)
   if (state.loseAbilities.length) state.loseAbilities = state.loseAbilities.filter((id) => id !== objId)
+  // a planeswalker ENTERING the battlefield (by ANY path: cast, r.mMove, tutor/search,
+  // reanimation) is a fresh permanent — set its starting loyalty + reset once-per-turn.
+  // Centralised here so no entry path leaves loyalty undefined (→ instant 0-loyalty SBA death).
+  if (zone === 'battlefield') {
+    const def = getDef(obj.defName)
+    if (def.types.includes('Planeswalker')) {
+      obj.loyalty = def.loyalty ?? 0
+      obj.loyaltyActivatedThisTurn = false
+    }
+    // enters-with-counters (counters were just reset above) — before any SBA check so a
+    // 0/0-with-counters creature survives; applies on ANY entry path (cast, tutor, move)
+    if (def.entersWithCounters) obj.counters['+1/+1'] = def.entersWithCounters
+  }
   const holder = zone === 'battlefield' ? obj.controllerId : obj.ownerId
   const arr = zoneArr(state, holder, zone)
   if (opts.top) arr.unshift(obj.id)
@@ -76,6 +91,13 @@ export function moveToGraveyard(state: RulesGameState, objId: ObjId) {
   // that itself died earlier in the same event won't see later co-deaths.
   const wasBattlefield = !!obj && obj.zone === 'battlefield'
   const dyingIsCreature = wasBattlefield && defIsCreature(getDef(obj!.defName))
+  // persist (CR 702.79) / undying (CR 702.92): a creature that dies returns to the battlefield
+  // with a counter IF it had no such counter when it died — capture that BEFORE moveTo clears
+  // counters. Uses `currentKeywords` (last-known-info at death) so it honors granted keywords AND
+  // "loses all abilities" (layer 6): a de-abilitied creature has no undying/persist and stays dead.
+  const dyingKw = dyingIsCreature ? currentKeywords(state, obj!) : []
+  const undying = dyingKw.includes('undying') && (obj!.counters['+1/+1'] ?? 0) === 0
+  const persist = dyingKw.includes('persist') && (obj!.counters['-1/-1'] ?? 0) === 0
   const toFire: { sourceId: ObjId; defName: string; controllerId: PlayerId }[] = []
   if (wasBattlefield && obj) {
     for (const pid of state.turnOrder) {
@@ -106,10 +128,22 @@ export function moveToGraveyard(state: RulesGameState, objId: ObjId) {
     })
     logLine(state, `${getDef(t.defName).name}'s dies ability triggers.`)
   }
+  // persist / undying: return the creature to the battlefield under its OWNER's control with the
+  // appropriate counter. Applied directly (documented simplification — the true dies-trigger
+  // ordering rarely matters). LIMITATION: ETB triggers do NOT re-fire on the return (the current
+  // persist/undying cards are vanilla+keyword); a persist creature WITH an ETB is deferred.
+  if ((undying || persist) && obj && obj.zone === 'graveyard') {
+    obj.controllerId = obj.ownerId
+    moveTo(state, objId, 'battlefield')
+    obj.counters[undying ? '+1/+1' : '-1/-1'] = 1
+    obj.summoningSick = true // re-enters as a new object → summoning sick
+    logLine(state, `${getDef(obj.defName).name} returns with a ${undying ? '+1/+1' : '-1/-1'} counter (${undying ? 'undying' : 'persist'}).`)
+  }
 }
 
 function clearCombatState(state: RulesGameState, obj: GameObject) {
   obj.attackingDefender = null
+  obj.attackingPwId = null
   obj.blockingAttackerId = null
   for (const order of Object.values(state.blockOrders)) {
     const i = order.indexOf(obj.id)
@@ -135,13 +169,15 @@ export function drawOne(state: RulesGameState, player: PlayerId) {
 
 export function isCreatureOnBattlefield(state: RulesGameState, id: ObjId | PlayerId): boolean {
   const obj = state.objects[id as ObjId]
-  return !!obj && obj.zone === 'battlefield' && defIsCreature(getDef(obj.defName))
+  // a phased-out permanent is treated as though it doesn't exist (CR 702.26e)
+  return !!obj && obj.zone === 'battlefield' && !obj.phasedOut && defIsCreature(getDef(obj.defName))
 }
 
 export function battlefieldCreatures(state: RulesGameState, controller?: PlayerId): GameObject[] {
   return Object.values(state.objects).filter(
     (o) =>
       o.zone === 'battlefield' &&
+      !o.phasedOut && // phased-out permanents don't exist for combat/SBA/sweepers (CR 702.26e)
       defIsCreature(getDef(o.defName)) &&
       (controller === undefined || o.controllerId === controller),
   )

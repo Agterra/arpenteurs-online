@@ -123,12 +123,28 @@ export function until(state: RulesGameState, pred: (s: RulesGameState) => boolea
     else if (state.pending?.kind === 'discard') {
       const p = state.pending.player
       const hand = state.zones.perPlayer[p]!.hand
-      act(state, p, { type: 'r.discard', objIds: hand.slice(0, hand.length - 7) })
+      // forced discard (Mind Rot / each-player) uses its own count; cleanup uses hand−7
+      const need = state.pendingDiscard ? Math.min(state.pendingDiscard.count, hand.length) : hand.length - 7
+      act(state, p, { type: 'r.discard', objIds: hand.slice(0, need) })
     } else if (state.pending?.kind === 'trigger') {
-      // auto-choose a legal target: first battlefield creature, else the controller
+      // auto-choose a legal target based on the trigger's own target spec (player
+      // targets need a player, not a creature — e.g. Ravenous Rats' opponent ETB)
       const p = state.pending.player
-      const creature = Object.values(state.objects).find((o) => o.zone === 'battlefield' && defIsCreature(getDef(o.defName)))
-      act(state, p, { type: 'r.chooseTargets', targets: [creature ? creature.id : p] })
+      const pt = state.pendingTrigger
+      const def = pt ? getDef(pt.defName) : undefined
+      const ab = def && pt
+        ? pt.trigger === 'dies' ? def.dies : pt.trigger === 'attacks' ? def.attacks : pt.trigger === 'upkeep' ? def.upkeep : def.enters
+        : undefined
+      const spec = ab?.targets?.[0]
+      let target: string
+      if (spec?.kind === 'player') {
+        target = spec.filter?.controller === 'you' ? p : (state.turnOrder.find((x) => x !== p && !state.players[x]!.hasLost) ?? p)
+      } else {
+        const creature = Object.values(state.objects).find((o) => o.zone === 'battlefield' && defIsCreature(getDef(o.defName)))
+        const perm = Object.values(state.objects).find((o) => o.zone === 'battlefield')
+        target = spec?.kind === 'permanent' ? (perm ? perm.id : p) : creature ? creature.id : p
+      }
+      act(state, p, { type: 'r.chooseTargets', targets: [target] })
     } else if (state.pending?.kind === 'scry') {
       act(state, state.pending.player, { type: 'r.scry', toBottom: [] }) // keep everything on top
     } else if (state.priorityPlayer) pass(state, state.priorityPlayer)

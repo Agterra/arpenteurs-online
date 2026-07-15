@@ -24,7 +24,14 @@ export const RulesMsg = z.discriminatedUnion('type', [
     // optional so the many r.activate call sites without a sac cost need not pass it
     sacrifices: z.array(Id).max(20).optional(),
   }),
-  z.object({ type: z.literal('r.cast'), objId: Id, targets: z.array(Id).max(8).default([]) }),
+  z.object({
+    type: z.literal('r.cast'),
+    objId: Id,
+    targets: z.array(Id).max(8).default([]),
+    x: z.number().int().min(0).max(99).optional(), // chosen X for an {X} spell
+    mode: z.number().int().min(0).max(9).optional(), // chosen mode for a modal spell
+    kicked: z.boolean().optional(), // whether the optional kicker cost was paid
+  }),
   z.object({
     type: z.literal('r.attackers'),
     attacks: z.array(z.object({ attackerId: Id, defenderId: Id })).max(50),
@@ -38,6 +45,16 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.scry'), toBottom: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.search'), cardIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.sacrifice'), objIds: z.array(Id).max(20) }),
+  z.object({ type: z.literal('r.equip'), equipmentId: Id, creatureId: Id }),
+  z.object({ type: z.literal('r.cycle'), objId: Id }),
+  z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
+  z.object({ type: z.literal('r.cascade'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }),
+  z.object({
+    type: z.literal('r.loyalty'),
+    objId: Id,
+    abilityIndex: z.number().int().min(0).max(9),
+    targets: z.array(Id).max(8).default([]),
+  }),
   z.object({ type: z.literal('r.concede') }),
 
   // ---- London mulligan (pre-game) ----

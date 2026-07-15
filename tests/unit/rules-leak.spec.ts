@@ -19,8 +19,10 @@ import type { ObjId, PlayerId, RulesGameState } from '../../shared/rules/types.t
 import { applyRulesAction } from '../../server/rules/engine.ts'
 import { redactRulesState, computeLegal } from '../../server/rules/redact.ts'
 import { getDef } from '../../server/rules/cards/registry.ts'
-import { makeGameN } from './rules-helpers.ts'
+import { currentKeywords } from '../../server/rules/characteristics.ts'
+import { makeGameN, putCard, rig, toStep, until } from './rules-helpers.ts'
 import { mulberry32 } from './engine-helpers.ts'
+import { __setDeterministicRng } from '../../server/game/rng.ts'
 
 // The searching/scrying player legitimately sees their OWN peeked library ids
 // (sanctioned actor-only window, CLAUDE.md invariant #2); every other viewer must
@@ -61,6 +63,11 @@ function assertNoLeaks(state: RulesGameState, context: string, seen: Map<PlayerI
   }
 }
 
+// coverage counters: the new actions must actually be exercised across the seeded
+// games (a green deck alone doesn't guarantee it) — asserted at the end of the run
+let pwLoyaltyFired = 0
+let pwAttacked = 0
+
 /** One random-but-legal action for whoever must act; returns false when stuck. */
 function randomAction(state: RulesGameState, rnd: () => number): boolean {
   const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)]!
@@ -68,22 +75,54 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
   if (state.pending) {
     const p = state.pending.player
     const legal = computeLegal(state, p)
+    if (state.pending.kind === 'ward') {
+      // pay the ward if affordable (randomly), else decline — both leak-safe. This MUST
+      // handle the pending or the fuzzer stalls if a ward trigger ever fires.
+      const pay = legal.wardAffordable && rnd() < 0.5
+      applyRulesAction(state, p, { type: 'r.ward', pay })
+      return true
+    }
+    if (state.pending.kind === 'cascade') {
+      // DECLINE — the exiled (publicly-revealed) cards go to the bottom re-minted, exercising
+      // the leak-critical exile→library path; must handle this pending or the fuzzer stalls.
+      applyRulesAction(state, p, { type: 'r.cascade', cast: false, targets: [] })
+      return true
+    }
     if (state.pending.kind === 'attackers') {
-      const foes = legal.attackablePlayerIds
+      // attack a random legal defender: an opponent player OR an opponent's planeswalker
+      const foes = [...legal.attackablePlayerIds, ...legal.attackablePlaneswalkerIds]
       const attacks = foes.length
         ? legal.declarableAttackerIds
             .filter(() => rnd() < 0.6)
             .map((attackerId) => ({ attackerId, defenderId: pick(foes) }))
         : []
+      if (attacks.some((a) => legal.attackablePlaneswalkerIds.includes(a.defenderId))) pwAttacked++ // coverage guard
       applyRulesAction(state, p, { type: 'r.attackers', attacks })
       return true
     }
     if (state.pending.kind === 'blockers') {
       const attackers = Object.values(state.objects).filter((o) => o.attackingDefender === p)
+      // only assign a blocker to an attacker it may LEGALLY block: a flyer can be
+      // blocked only by flyers/reach (CR 509.1b). declarableBlockerIds is just the
+      // untapped creatures (not filtered by attacker), so the fuzzer must respect
+      // evasion itself, else the engine throws BAD_BLOCKER and aborts the run.
+      const canBlock = (blockerId: ObjId, atk: (typeof attackers)[number]) => {
+        if (!currentKeywords(state, atk).includes('flying')) return true
+        const bk = currentKeywords(state, state.objects[blockerId]!)
+        return bk.includes('flying') || bk.includes('reach')
+      }
       const blocks = legal.declarableBlockerIds
         .filter(() => rnd() < 0.5)
-        .map((blockerId) => ({ blockerId, attackerId: pick(attackers).id }))
-      applyRulesAction(state, p, { type: 'r.blockers', blocks: attackers.length ? blocks : [] })
+        .map((blockerId) => {
+          const legalAtk = attackers.filter((a) => canBlock(blockerId, a))
+          return legalAtk.length ? { blockerId, attackerId: pick(legalAtk).id } : null
+        })
+        .filter((b): b is { blockerId: ObjId; attackerId: ObjId } => b !== null)
+      try {
+        applyRulesAction(state, p, { type: 'r.blockers', blocks })
+      } catch {
+        applyRulesAction(state, p, { type: 'r.blockers', blocks: [] }) // any residual illegality (e.g. menace) → decline
+      }
       return true
     }
     if (state.pending.kind === 'scry' && state.pendingScry) {
@@ -155,6 +194,41 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     return true
   }
 
+  // occasionally activate a planeswalker loyalty ability (the pool's are non-targeted)
+  if (legal.loyaltyActivations.length && rnd() < 0.4) {
+    const la = pick(legal.loyaltyActivations)
+    try {
+      applyRulesAction(state, actor, { type: 'r.loyalty', objId: la.objId, abilityIndex: la.abilityIndex, targets: [] })
+      pwLoyaltyFired++ // coverage guard: assert this path is actually exercised
+    } catch {
+      return tryPass()
+    }
+    return true
+  }
+
+  // occasionally equip a piece of Equipment onto one of your creatures (r.equip)
+  if (legal.equippableIds.length && rnd() < 0.25) {
+    const eqId = pick(legal.equippableIds)
+    const eqCost = (getDef(state.objects[eqId]!.defName).equipCost?.match(/\{/g) ?? []).length
+    for (const src of legal.manaSourceIds) {
+      const pool = state.players[actor]!.manaPool
+      if (Object.values(pool).reduce((x, y) => x + y, 0) >= eqCost) break
+      const colors = legal.manaSourceColors[src] ?? []
+      applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+    }
+    const mine = Object.values(state.objects)
+      .filter((o) => o.zone === 'battlefield' && o.controllerId === actor && getDef(o.defName).types.includes('Creature'))
+      .map((o) => o.id)
+    if (mine.length) {
+      try {
+        applyRulesAction(state, actor, { type: 'r.equip', equipmentId: eqId, creatureId: pick(mine) })
+      } catch {
+        return tryPass()
+      }
+      return true
+    }
+  }
+
   const roll = rnd()
 
   if (roll < 0.25 && legal.playableLandIds.length) {
@@ -164,32 +238,57 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
   if (roll < 0.5 && legal.castableIds.length) {
     const objId = pick(legal.castableIds)
     const def = getDef(state.objects[objId]!.defName)
-    // pay: tap sources until the pool covers (legal.castableIds guarantees potential)
-    const need = (def.manaCost?.match(/\{/g) ?? []).length
+    // modal ("choose one"): pick a random mode — its targets/effect drive this cast
+    const modeIdx = def.modes?.length ? Math.floor(rnd() * def.modes.length) : undefined
+    const specs = def.modes?.length ? (def.modes[modeIdx!]!.targets ?? []) : (def.spell?.targets ?? [])
+    // X spell: pick a small affordable X (0..2); mana needed = base pips + x·(#{X})
+    const xCount = (def.manaCost?.match(/\{X\}/g) ?? []).length
+    const x = xCount > 0 ? Math.floor(rnd() * 3) : undefined
+    const basePips = (def.manaCost?.replace(/\{X\}/g, '').match(/\{/g) ?? []).length
+    const need = basePips + (x ?? 0) * xCount
     for (const src of legal.manaSourceIds) {
       const pool = state.players[actor]!.manaPool
       if (Object.values(pool).reduce((a, b) => a + b, 0) >= need) break
       const colors = legal.manaSourceColors[src] ?? []
       applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
     }
-    const specs = def.spell?.targets ?? []
     const targets: (ObjId | PlayerId)[] = []
     for (const spec of specs) {
       for (let i = 0; i < spec.count; i++) {
         const creatures = Object.values(state.objects)
           .filter((o) => o.zone === 'battlefield' && getDef(o.defName).types.includes('Creature'))
           .map((o) => o.id)
+        const perms = Object.values(state.objects).filter((o) => o.zone === 'battlefield').map((o) => o.id)
         const players = state.turnOrder.filter((p) => !state.players[p]!.hasLost)
+        // graveyardCard (Raise Dead / Regrowth): pick from the ACTOR's own graveyard,
+        // honouring the spec's type filter — this is the leak-critical graveyard→hand path
+        const graveyardCards =
+          spec.kind === 'graveyardCard'
+            ? state.zones.perPlayer[actor]!.graveyard.filter((id) => {
+                const d = getDef(state.objects[id]!.defName)
+                if (spec.filter?.types && !spec.filter.types.some((t) => d.types.includes(t))) return false
+                if (spec.filter?.excludeTypes && spec.filter.excludeTypes.some((t) => d.types.includes(t))) return false
+                return true
+              })
+            : []
         const cands =
-          spec.kind === 'creature' ? creatures : spec.kind === 'player' ? players : [...creatures, ...players]
+          spec.kind === 'creature'
+            ? creatures
+            : spec.kind === 'permanent'
+              ? perms
+              : spec.kind === 'player'
+                ? players
+                : spec.kind === 'graveyardCard'
+                  ? graveyardCards
+                  : [...creatures, ...players]
         if (!cands.length) return tryPass()
         targets.push(pick(cands))
       }
     }
     try {
-      applyRulesAction(state, actor, { type: 'r.cast', objId, targets })
+      applyRulesAction(state, actor, { type: 'r.cast', objId, targets, x, mode: modeIdx })
     } catch {
-      return tryPass() // e.g. pool short after random taps — passing is always legal
+      return tryPass() // e.g. pool short after random taps, or illegal modal target — passing is always legal
     }
     return true
   }
@@ -261,15 +360,47 @@ function maybeOverride(state: RulesGameState, actor: PlayerId, rnd: () => number
 // which the r.activate branch below drives). Black mana (Swamps + the B/R temple)
 // is present so the black cards are actually castable.
 const FUZZ_DECK = [
-  ...Array(20).fill('Mountain'),
-  ...Array(14).fill('Swamp'),
+  ...Array(12).fill('Mountain'),
+  ...Array(12).fill('Swamp'),
+  ...Array(16).fill('Forest'), // enough green that Nissa ({1}{G}{G}) is reliably castable
   ...Array(4).fill('Temple of Malice'),
   ...Array(4).fill('Solemn Simulacrum'),
   ...Array(4).fill('Fleshbag Marauder'),
   ...Array(4).fill('Diabolic Edict'),
   ...Array(4).fill('Viscera Seer'),
+  // batch T turn-based triggers: Phyrexian Arena (upkeep draw+lose → exercises the
+  // upkeep firing + a library→hand each turn), Bitterblossom (upkeep token → ETB
+  // watchers), Borderland Marauder (attacks self-pump → the attacks-trigger firing)
+  ...Array(2).fill('Phyrexian Arena'),
+  ...Array(2).fill('Bitterblossom'),
+  ...Array(3).fill('Borderland Marauder'),
+  // batch AE: an Aura (targeted spell → attaches on resolution, dies with host) and
+  // an Equipment (enters unattached → exercises the r.equip attach path)
+  ...Array(2).fill('Unholy Strength'),
+  ...Array(2).fill('Bonesplitter'),
+  // batch MX: an X spell (Blaze — X damage to any target, exercises r.cast.x) and a
+  // modal spell (Abrade — exercises r.cast.mode + per-mode targeting)
+  ...Array(3).fill('Blaze'),
+  ...Array(2).fill('Abrade'),
+  // batch PW: a planeswalker (Nissa; green mana above covers her {1}{G}{G}) — exercises
+  // enters-with-loyalty, the r.loyalty action, token/counter/gain effects, and SBA
+  ...Array(4).fill('Nissa, Voice of Zendikar'),
+  // batch GY: graveyard recursion — Raise Dead ({B}, creature-only) and Regrowth
+  // ({1}{G}, any card). Both move a card graveyard(public)→hand(hidden), the leak-
+  // critical re-mint path (invariant #3); the fuzzer fills graveyards via combat
+  // deaths and r.mMove, so these are reliably castable with black/green mana present.
+  ...Array(3).fill('Raise Dead'),
+  ...Array(3).fill('Regrowth'),
+  // batch WARD: a warded creature ({1}{G} 3/1 Ward {2}) — when an opponent's removal
+  // (Shock/Bolt/Blaze) targets it, the ward trigger fires and the fuzzer's ward branch
+  // pays-or-declines; exercises the new r.ward action + 'ward' pending end to end.
+  ...Array(3).fill('Tomakul Honor Guard'),
+  // batch CASCADE: a cascade spell ({2}{R}{G} 3/1 haste) — casting it exiles from the top
+  // of the library (public) and the fuzzer declines, sending the revealed cards to the
+  // bottom RE-MINTED; the history-aware assertion then guards that leak-critical path.
+  ...Array(3).fill('Bloodbraid Elf'),
   ...Array(6).fill('Shock'),
-  ...Array(6).fill('Lightning Bolt'),
+  ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
 ]
 
@@ -281,18 +412,159 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       [4, 20260707],
       [4, 909090],
     ]
-    for (const [nPlayers, seed] of cases) {
-      const rnd = mulberry32(seed)
-      const { state } = makeGameN(nPlayers, FUZZ_DECK)
-      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
-      assertNoLeaks(state, `(${nPlayers}p seed ${seed}, initial)`, seen)
-      let steps = 0
-      while (state.status === 'active' && steps < 1500) {
-        steps++
-        if (!randomAction(state, rnd)) break
-        assertNoLeaks(state, `(${nPlayers}p seed ${seed}, action ${steps}, step ${state.step})`, seen)
+    pwLoyaltyFired = 0
+    pwAttacked = 0
+    try {
+      for (const [nPlayers, seed] of cases) {
+        const rnd = mulberry32(seed)
+        // seed EVERY source of randomness (library shuffle, first-player pick, id
+        // minting AND action choices) from the same stream so the game replays
+        // identically from `seed` — a failure here is reproducible/bisectable.
+        __setDeterministicRng(rnd)
+        const { state } = makeGameN(nPlayers, FUZZ_DECK)
+        const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+        assertNoLeaks(state, `(${nPlayers}p seed ${seed}, initial)`, seen)
+        let steps = 0
+        while (state.status === 'active' && steps < 1500) {
+          steps++
+          if (!randomAction(state, rnd)) break
+          assertNoLeaks(state, `(${nPlayers}p seed ${seed}, action ${steps}, step ${state.step})`, seen)
+        }
+        expect(steps).toBeGreaterThan(50) // the fuzzer actually exercised the engine
       }
-      expect(steps).toBeGreaterThan(50) // the fuzzer actually exercised the engine
+    } finally {
+      __setDeterministicRng(null) // never leave the deterministic seam set for other suites
     }
+    // invariant #4: the new actions must actually be exercised by the fuzzer, not left
+    // as dead code (a planeswalker never castable / never attacked)
+    expect(pwLoyaltyFired).toBeGreaterThan(0)
+    expect(pwAttacked).toBeGreaterThan(0)
   }, 180_000)
+
+  // Deterministic coverage of the graveyard→hand recursion re-mint (invariant #3),
+  // run through the SAME history-aware machinery as the fuzzer. The random loop can't
+  // be relied on to line up (recursion in hand + coloured mana + a matching graveyard
+  // card + the cast roll, all at once), so this drives it explicitly: it would FAIL
+  // if returnFromGraveyard stopped re-minting, because B saw the graveyard id and the
+  // same id would then surface in A's hidden hand.
+  it('re-mints a card returned from graveyard to hand (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(5150))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const gyId = putCard(state, A, 'Grizzly Bears', 'graveyard')
+      const rd = putCard(state, A, 'Raise Dead', 'hand')
+      // record the current (public-graveyard) view — B genuinely sees the graveyard id now
+      assertNoLeaks(state, '(gy setup)', seen)
+      expect(seen.get(B)!.has(gyId)).toBe(true)
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'B', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.cast', objId: rd, targets: [gyId] })
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'Raise Dead resolves')
+      // the creature is back in A's hand with a FRESH id (old graveyard id destroyed)
+      expect(state.objects[gyId]).toBeUndefined()
+      const returned = state.zones.perPlayer[A]!.hand.find((id) => getDef(state.objects[id]!.defName).name === 'Grizzly Bears')
+      expect(returned, 'Grizzly Bears returned to hand').toBeTruthy()
+      expect(returned).not.toBe(gyId)
+      // history-aware: B must not see the re-minted hand id, and the old (seen) id must
+      // not resurface in any zone hidden from B.
+      assertNoLeaks(state, '(gy after return)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // Deterministic leak-fuzzer coverage for the new r.cycle action (CLAUDE.md: new actions
+  // need leak-fuzzer coverage). Cycling moves a card hand(hidden)→graveyard(public) as a
+  // cost, then draws (library→hand). It's leak-safe by construction, but this drives it
+  // through the SAME history-aware machinery to regression-guard that (a) the reveal
+  // leaks no other hidden id and (b) the draw stays hidden from opponents.
+  it('cycles a card (hidden→public reveal + draw) with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(3131))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const moor = putCard(state, A, 'Barren Moor', 'hand') // Cycling {B}
+      const libBefore = state.zones.perPlayer[A]!.library.length
+      assertNoLeaks(state, '(cycle setup)', seen)
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'B', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.cycle', objId: moor })
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'cycling resolves')
+      // cost paid (discarded to the public graveyard) + drew a card
+      expect(state.zones.perPlayer[A]!.graveyard.includes(moor)).toBe(true)
+      expect(state.zones.perPlayer[A]!.library.length).toBe(libBefore - 1)
+      assertNoLeaks(state, '(after cycle)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // Deterministic leak-fuzzer coverage for the new r.ward action (CLAUDE.md: new actions
+  // need leak-fuzzer coverage). Ward's counter/payment touch only public zones (stack →
+  // graveyard, pool), but this drives the pay path through the history-aware machinery.
+  it('ward: pay-or-counter resolves with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(7007))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const warded = putCard(state, B, 'Tomakul Honor Guard', 'battlefield') // 3/1 Ward {2}
+      const shock = putCard(state, A, 'Shock', 'hand')
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 3 }) // {R} Shock + {2} ward
+      assertNoLeaks(state, '(ward setup)', seen)
+      applyRulesAction(state, A, { type: 'r.cast', objId: shock, targets: [warded] })
+      // pass priority both ways → the ward trigger (top of stack) resolves → pending ward for A
+      applyRulesAction(state, A, { type: 'r.pass' })
+      applyRulesAction(state, B, { type: 'r.pass' })
+      expect(state.pending?.kind).toBe('ward')
+      assertNoLeaks(state, '(ward pending)', seen)
+      applyRulesAction(state, A, { type: 'r.ward', pay: true })
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'Shock resolves after ward')
+      expect(state.objects[warded]!.zone).toBe('graveyard') // ward paid → Shock resolves → 3/1 dies
+      assertNoLeaks(state, '(ward after)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // Deterministic leak-fuzzer coverage for cascade's leak-critical path: cards exiled from the
+  // library are REVEALED (public), then the passed-over cards return to the bottom of the
+  // library (hidden). They MUST be re-minted, or an opponent who saw them in exile could track
+  // them in the hidden library (invariant #3). Declining sends ALL exiled cards to the bottom.
+  it('cascade: exiled cards return to the bottom re-minted (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(4242))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      rig(state, A, { hand: ['Bloodbraid Elf'], libraryTop: ['Mountain', 'Shock'], librarySize: 6 })
+      until(state, (s) => s.step === 'main1' && s.priorityPlayer === A && !s.zones.stack.length, 'main1')
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 3 })
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'G', delta: 1 })
+      const bbe = state.zones.perPlayer[A]!.hand.find((id) => getDef(state.objects[id]!.defName).name === 'Bloodbraid Elf')!
+      applyRulesAction(state, A, { type: 'r.cast', objId: bbe, targets: [] })
+      applyRulesAction(state, A, { type: 'r.pass' })
+      applyRulesAction(state, B, { type: 'r.pass' }) // cascade trigger resolves → exile Mountain + Shock (hit)
+      expect(state.pending?.kind).toBe('cascade')
+      // both exiled cards are public in exile now — B has genuinely seen their ids
+      assertNoLeaks(state, '(cascade exiled)', seen)
+      const exiled = [...state.pendingCascade!.exiledIds]
+      expect(exiled.some((id) => seen.get(B)!.has(id))).toBe(true)
+      applyRulesAction(state, A, { type: 'r.cascade', cast: false, targets: [] }) // decline → all to the bottom
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'Bloodbraid resolves')
+      // the once-revealed exile ids must be gone (re-minted); none may resurface in the hidden library
+      for (const id of exiled) expect(state.objects[id]).toBeUndefined()
+      assertNoLeaks(state, '(cascade after)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
 })

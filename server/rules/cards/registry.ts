@@ -11,12 +11,23 @@ import { STARTER_SET } from './starter'
 const registry = new Map<string, CardDefinition>()
 
 export function registerSet(defs: CardDefinition[]) {
-  for (const def of defs) registry.set(norm(def.name), def)
+  for (const def of defs) {
+    const key = norm(def.name)
+    // fail fast on a duplicate definition — a silent last-write-wins overwrite hides
+    // divergence (two defs for one card) and illusory "coverage" (re-adding an existing card)
+    if (registry.has(key)) throw new Error(`Duplicate card definition for "${def.name}"`)
+    registry.set(key, def)
+  }
 }
 registerSet(STARTER_SET)
 
 export function findDef(name: string): CardDefinition | undefined {
   return registry.get(norm(name))
+}
+
+/** Every registered definition (implemented set + any fallbacks registered so far). */
+export function allDefs(): CardDefinition[] {
+  return [...registry.values()]
 }
 
 /** Lookup by pre-normalized key (GameObject.defName). Throws on unknown — that's a bug. */
@@ -80,6 +91,12 @@ export function registerToken(spec: {
     })
   }
   return key
+}
+
+/** Is `defName` a token def key? Tokens (manual `tok:` or engine `itok:`) exist only on
+ *  the battlefield — CR 704.5d removes one as an SBA once it reaches any other zone. */
+export function isTokenDefName(defName: string): boolean {
+  return defName.startsWith('tok:') || defName.startsWith('itok:')
 }
 
 /** Register an ENGINE-created token (a real, mortal permanent — dies to SBA, has keywords),

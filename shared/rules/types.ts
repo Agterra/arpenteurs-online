@@ -42,6 +42,28 @@ export type Keyword =
   | 'indestructible'
   | 'hexproof'
   | 'flash'
+  // evasion keywords (block restrictions — CR 509/702)
+  | 'fear'
+  | 'intimidate'
+  | 'skulk'
+  | 'shadow'
+  | 'horsemanship'
+  | 'islandwalk'
+  | 'swampwalk'
+  | 'mountainwalk'
+  | 'forestwalk'
+  | 'plainswalk'
+  | 'shroud'
+  | 'prowess'
+  | 'persist'
+  | 'undying'
+  | 'exalted'
+  | 'flanking'
+  | 'battle cry'
+  | 'infect'
+  | 'wither'
+  | 'phasing'
+  | 'banding'
 
 // Turn structure. Combat is split so priority is granted in each step.
 export const STEPS = [
@@ -75,11 +97,25 @@ export interface GameObject {
   /** counters on the object (e.g. "+1/+1"); manual for unimplemented cards */
   counters: Record<string, number>
   isCommander: boolean
+  /** host this Aura/Equipment is attached to (null = unattached); cleared on zone change */
+  attachedTo?: ObjId | null
+  /** current loyalty (planeswalkers); set from the definition on entering the battlefield */
+  loyalty?: number
+  /** a loyalty ability has been activated this turn (once-per-turn restriction, CR 606.3) */
+  loyaltyActivatedThisTurn?: boolean
   // combat (transient, cleared at end of combat)
-  attackingDefender: PlayerId | null // the player this creature is attacking
+  attackingDefender: PlayerId | null // the player this creature is attacking (a PW's controller if attacking a PW)
+  /** the planeswalker this creature is attacking (null = attacking the player directly) */
+  attackingPwId?: ObjId | null
   blockingAttackerId: ObjId | null // the attacker this creature is blocking
   /** took damage from a deathtouch source this turn → destroyed by SBA (704.5g) */
   deathtouched?: boolean
+  /** phased out (CR 702.26 / 502.1) — stays in the battlefield zone but is treated as though
+   *  it doesn't exist until it phases in at its controller's next untap step */
+  phasedOut?: boolean
+  /** set on a permanent phased out INDIRECTLY (an attachment dragged out with its host) — it
+   *  phases back in only when the host (this id) phases in, per CR 702.26e */
+  phasedOutBy?: ObjId
 }
 
 export type StackItemKind = 'spell' | 'ability'
@@ -93,8 +129,24 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks'
+  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep'
   targets: (ObjId | PlayerId)[]
+  /** chosen X for an {X} spell (resolves the effect with this value) */
+  x?: number
+  /** chosen mode index for a modal ("choose one") spell */
+  mode?: number
+  /** which loyalty ability is resolving (index into def.loyaltyAbilities) */
+  loyaltyIndex?: number
+  /** cycling's ability on the stack: on resolution its controller draws a card (CR 702.29) */
+  cycling?: boolean
+  /** ward's triggered ability on the stack (CR 702.21): on resolution, counter `triggeringId`
+   *  unless its controller (`payer`) pays `cost`. */
+  ward?: { triggeringId: ObjId; cost: string; payer: PlayerId }
+  /** cascade's triggered ability on the stack (CR 702.85): on resolution, dig the controller's
+   *  library for a nonland with mana value < `mv`. */
+  cascade?: { mv: number }
+  /** whether this spell was cast kicked (its optional kicker cost was paid) — CR 702.33 */
+  kicked?: boolean
 }
 
 export interface PlayerRState {
@@ -102,6 +154,8 @@ export interface PlayerRState {
   seat: number
   name: string
   life: number
+  /** poison counters (infect) — a player with 10+ loses the game (CR 704.5c) */
+  poison: number
   manaPool: ManaPool
   landsPlayedThisTurn: number
   hasLost: boolean
@@ -129,9 +183,9 @@ export interface RulesGameState {
   /** players who have passed priority since the last stack change / step start */
   passed: PlayerId[]
   /** engine is waiting for a player decision (no priority until it's made) */
-  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice'; player: PlayerId } | null
+  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade'; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
-  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' } | null
+  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep' } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
   pendingScry: { player: PlayerId; cardIds: ObjId[] } | null
   /**
@@ -159,6 +213,39 @@ export interface RulesGameState {
     count: number
     queue: PlayerId[]
   } | null
+  /**
+   * A FORCED discard (Mind Rot / "each player discards"): the current chooser
+   * discards `count` cards of their choice from their hand; `queue` holds the
+   * remaining players (each-player discards). Distinguishes a forced discard from
+   * the cleanup-step discard (which has pendingDiscard null and uses hand−7).
+   */
+  pendingDiscard: {
+    player: PlayerId
+    count: number
+    queue: PlayerId[]
+  } | null
+  /**
+   * An active WARD trigger resolving (CR 702.21): the spell/ability's controller
+   * (`player`) must pay `cost` or the triggering spell/ability (`triggeringId` on the
+   * stack) is countered. Battlefield/stack ids are public → no hidden information.
+   */
+  pendingWard: {
+    player: PlayerId
+    triggeringId: ObjId
+    cost: string
+  } | null
+  /**
+   * An active CASCADE (CR 702.85): after exiling from the top of the library until a nonland
+   * hit (`hitId`, mana value < the cascade spell's), the caster MAY cast it for free; `exiledIds`
+   * are all the cards exiled this way (the hit + the passed-over cards), which go to the bottom
+   * of the library in a random order once the decision is made. The exiled cards are FACE-UP in
+   * exile (public), so this carries no hidden information; the return-to-library re-mints them.
+   */
+  pendingCascade: {
+    player: PlayerId
+    hitId: ObjId
+    exiledIds: ObjId[]
+  } | null
   /** true only on the very first turn's first player (skips their draw) */
   firstTurnSkipDraw: boolean
   /**
@@ -177,6 +264,8 @@ export interface RulesGameState {
   setPT: { objId: ObjId; power: number; toughness: number }[]
   /** until-end-of-turn "loses all abilities" (CR 613 layer 6) — object ids */
   loseAbilities: ObjId[]
+  /** until-end-of-turn granted protection from a colour (CR 613 layer 6); cleared each cleanup */
+  protectionGrants: { objId: ObjId; color: ManaColor }[]
   objects: Record<ObjId, GameObject>
   zones: {
     perPlayer: Record<PlayerId, Record<NonStackZone, ObjId[]>>
@@ -204,13 +293,21 @@ export interface RulesClientCard {
   /** current power/toughness incl. counters & continuous effects (null = not a creature) */
   power: number | null
   toughness: number | null
+  /** current loyalty (planeswalkers only; null otherwise) */
+  loyalty: number | null
   isCommander: boolean
+  /** host this Aura/Equipment is attached to (null/absent = unattached) */
+  attachedTo?: ObjId | null
   /** true = an assisted-table fallback (printed body known, rules player-run) */
   unimplemented: boolean
   /** evergreen combat keywords the engine enforces (shown on the card) */
   keywords: Keyword[]
   attackingDefender: PlayerId | null
+  /** the planeswalker this creature is attacking (so clients draw the arrow at it, not the player) */
+  attackingPwId: ObjId | null
   blockingAttackerId: ObjId | null
+  /** phased out — still public (its identity is known) but treated as not existing (CR 702.26) */
+  phasedOut?: boolean
   hidden: boolean
 }
 
@@ -264,6 +361,8 @@ export interface LegalActions {
   declarableBlockerIds: ObjId[]
   /** players your attackers may be sent at (alive opponents) */
   attackablePlayerIds: PlayerId[]
+  /** planeswalkers your attackers may be sent at (opponents' planeswalkers) */
+  attackablePlaneswalkerIds: ObjId[]
   /** the attackers currently assigned against YOU (when declaring blocks) */
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
@@ -277,10 +376,32 @@ export interface LegalActions {
   sacrificeableIds: ObjId[]
   /** a triggered ability of yours needs a target chosen */
   needsTriggerTargets: boolean
-  triggerTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | null
+  triggerTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
   triggerSourceName: string | null
   /** non-mana activated abilities you can use right now (cost = mana part, '' if none; sacCost = creatures to sacrifice as a cost) */
-  activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | null; cost: string; sacCost: number }[]
+  activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null; cost: string; sacCost: number }[]
+  /** your Equipment that can be equipped right now (sorcery speed, cost affordable, you control a creature) */
+  equippableIds: ObjId[]
+  /** loyalty abilities you may activate now (your planeswalkers, once/turn, cost affordable) */
+  loyaltyActivations: { objId: ObjId; abilityIndex: number; cost: number }[]
+  /** hand cards you can cycle right now (instant speed, cost affordable) — CR 702.29 */
+  cyclable: { objId: ObjId; cost: string }[]
+  /** castable cards that have a kicker — the client offers a "kick" toggle (cost = kicker's mana) — CR 702.33 */
+  kickable: { objId: ObjId; cost: string }[]
+  /** a ward trigger is resolving and YOU must decide to pay or let your spell/ability be countered (CR 702.21) */
+  needsWard: boolean
+  /** the ward cost you'd pay, and whether your current mana pool covers it */
+  wardCost: string
+  wardAffordable: boolean
+  /** a cascade hit is waiting on YOU: cast the revealed card free or decline (CR 702.85) */
+  needsCascade: boolean
+  /** the exiled nonland "hit" you may cast for free */
+  cascadeHitId: ObjId | null
+  /** the hit's single client-deliverable target kind (creature/permanent/anyTarget/player); null when
+   *  the hit needs no target OR needs input the client can't yet supply (modal / multi-target / spell / graveyardCard) */
+  cascadeTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+  /** true when the hit can be free-cast with NO client input (non-modal, zero targets) → offer a plain "Cast free" */
+  cascadeCanFreeCast: boolean
 }
 
 export const emptyPool = (): ManaPool => ({ W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 })

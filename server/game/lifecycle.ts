@@ -125,7 +125,7 @@ async function createEnforcedGame(lobby: LobbyWithSeats): Promise<{ gameId: stri
   if (unknown.length) {
     const rows = await db.card.findMany({
       where: { name: { in: unknown } },
-      select: { name: true, typeLine: true, manaCost: true, power: true, toughness: true, oracleText: true, colors: true },
+      select: { name: true, typeLine: true, manaCost: true, power: true, toughness: true, loyalty: true, oracleText: true, colors: true },
     })
     for (const row of rows) registerFallback(row)
   }

@@ -10,11 +10,11 @@ import { getDef, registerImplementedToken } from './registry'
 import { mintCardId } from '../../game/rng'
 // currentPower is safe to import: characteristics is already in this module's
 // transitive graph via engine (effects→engine→characteristics); called at runtime only.
-import { currentPower } from '../characteristics'
+import { currentKeywords, currentPower } from '../characteristics'
 // fireEntersTriggers/openSacrifice are hoisted function exports; the effects→engine
 // edge is a call-time-only cycle (invoked inside effect bodies, never at module
 // init), so it is safe — mirrors the existing effects→registry (getDef) cycle.
-import { fireEntersTriggers, openSacrifice, remintForHiddenEntry } from '../engine'
+import { fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
 
 // intrinsic-keyword check (avoids an effects→characteristics→registry→starter
 // import cycle); granted indestructible is honored by checkSBA's damage path
@@ -25,6 +25,20 @@ const isIndestructible = (ctx: EffectContext, id: ObjId) =>
 // never treated as players — otherwise a forged target could write to a builtin.
 const isPlayerId = (ctx: EffectContext, t: ObjId | PlayerId): t is PlayerId =>
   Object.hasOwn(ctx.state.players, t)
+
+/** Colours of the effect's source (spell/ability), for protection-from-colour prevention. */
+const sourceColors = (ctx: EffectContext): string[] => {
+  const src = ctx.state.objects[ctx.sourceId]
+  return src ? getDef(src.defName).colors ?? [] : []
+}
+/** True if a creature has protection from any of `colors` — printed OR granted (CR 702.16 / 613 layer 6). */
+const protectedFromColors = (ctx: EffectContext, obj: { id: ObjId; defName: string }, colors: string[]): boolean => {
+  const prot = [
+    ...(getDef(obj.defName).protectionFrom ?? []),
+    ...ctx.state.protectionGrants.filter((g) => g.objId === obj.id).map((g) => g.color),
+  ]
+  return prot.some((c) => colors.includes(c))
+}
 
 /** Deal N damage to each target (creature → marked damage; player → life loss). */
 export const dealDamage = (n: number): Effect => (ctx) => {
@@ -38,6 +52,9 @@ export const dealDamage = (n: number): Effect => (ctx) => {
     }
   }
 }
+
+/** Deal `base` damage to each target — or `kicked` damage if the spell was kicked (CR 702.33). */
+export const dealDamageKicked = (base: number, kicked: number): Effect => (ctx) => dealDamage(ctx.kicked ? kicked : base)(ctx)
 
 /**
  * Destroy all creatures (board wipe). Skips `unimplemented` (assisted-table)
@@ -55,10 +72,57 @@ export const destroyAllCreatures = (): Effect => (ctx) => {
   )
 }
 
+/**
+ * Two target creatures fight (CR 701.12): each deals damage equal to its power to
+ * the other, simultaneously. Expects [creatureA, creatureB] in ctx.targets; if
+ * either has already left the battlefield, no fight happens (needs both).
+ */
+export const fight = (): Effect => (ctx) => {
+  const pair = ctx.targets.filter((t): t is ObjId => isCreatureOnBattlefield(ctx.state, t))
+  if (pair.length < 2) return
+  const [a, b] = pair as [ObjId, ObjId]
+  const oa = ctx.state.objects[a]!
+  const ob = ctx.state.objects[b]!
+  const pa = Math.max(0, currentPower(ctx.state, oa))
+  const pb = Math.max(0, currentPower(ctx.state, ob))
+  // keywords are read layer-6-aware (currentKeywords), exactly like combat damage —
+  // honors granted deathtouch/lifelink and "loses all abilities"
+  const kwA = currentKeywords(ctx.state, oa)
+  const kwB = currentKeywords(ctx.state, ob)
+  // protection from [colour]: fight damage is dealt by the CREATURES, so it's prevented when
+  // the recipient is protected from the OTHER creature's colour (CR 702.16e, the D). A source
+  // whose damage is fully prevented deals none — so no deathtouch and no lifelink for it.
+  const aDealsToB = pa > 0 && !protectedFromColors(ctx, ob, getDef(oa.defName).colors ?? [])
+  const bDealsToA = pb > 0 && !protectedFromColors(ctx, oa, getDef(ob.defName).colors ?? [])
+  if (aDealsToB) {
+    // wither/infect deal fight damage to a creature as -1/-1 counters (CR 702.79a / 702.90a)
+    if (kwA.includes('wither') || kwA.includes('infect')) ob.counters['-1/-1'] = (ob.counters['-1/-1'] ?? 0) + pa
+    else ob.damageMarked += pa
+    if (kwA.includes('deathtouch')) ob.deathtouched = true
+  }
+  if (bDealsToA) {
+    if (kwB.includes('wither') || kwB.includes('infect')) oa.counters['-1/-1'] = (oa.counters['-1/-1'] ?? 0) + pb
+    else oa.damageMarked += pb
+    if (kwB.includes('deathtouch')) oa.deathtouched = true
+  }
+  logLine(ctx.state, `${getDef(oa.defName).name} and ${getDef(ob.defName).name} fight.`)
+  // lifelink applies to ANY damage a source deals (CR 702.15e), including fight damage
+  if (aDealsToB && kwA.includes('lifelink')) {
+    ctx.state.players[oa.controllerId]!.life += pa
+    logLine(ctx.state, `${ctx.state.players[oa.controllerId]!.name} gains ${pa} life (lifelink).`)
+  }
+  if (bDealsToA && kwB.includes('lifelink')) {
+    ctx.state.players[ob.controllerId]!.life += pb
+    logLine(ctx.state, `${ctx.state.players[ob.controllerId]!.name} gains ${pb} life (lifelink).`)
+  }
+}
+
 /** Deal N damage to each creature (sweeper). Skips `unimplemented` creatures (assisted table). */
 export const damageAllCreatures = (n: number): Effect => (ctx) => {
+  const cols = sourceColors(ctx)
   for (const c of battlefieldCreatures(ctx.state)) {
     if (getDef(c.defName).unimplemented) continue
+    if (protectedFromColors(ctx, c, cols)) continue // protection from the source's colour
     c.damageMarked += n
   }
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each creature.`)
@@ -147,6 +211,49 @@ export const returnToHand = (): Effect => (ctx) => {
   }
 }
 
+/**
+ * Each target player mills N (puts the top N of their library into their graveyard).
+ * Library → graveyard is hidden → public: the milled cards are legitimately revealed
+ * (they go face-up to a public zone) and need NO re-mint; the rest of the library
+ * stays hidden. Milling an empty/short library just mills what's there.
+ */
+export const mill = (n: number): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    const lib = ctx.state.zones.perPlayer[t]!.library
+    const moved = Math.min(n, lib.length)
+    for (let i = 0; i < moved; i++) moveTo(ctx.state, lib[0]!, 'graveyard') // always the current top
+    logLine(ctx.state, `${ctx.state.players[t]!.name} mills ${moved} card${moved === 1 ? '' : 's'}.`)
+  }
+}
+
+/**
+ * Return each target graveyard card to its OWNER's hand (recursion — Raise Dead,
+ * Regrowth). LEAK-CRITICAL: graveyard → hand is public → hidden, so the id MUST be
+ * re-minted (invariant #3) or an opponent who recorded the public graveyard id could
+ * track it into the hidden hand.
+ */
+export const returnFromGraveyard = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'graveyard') continue
+    const nm = getDef(obj.defName).name
+    const who = ctx.state.players[obj.ownerId]!.name
+    // A COMMANDER goes to the command zone, never a hidden hand: it's exempt from
+    // re-mint and its id is broadcast as player.commanderId, so a hidden-hand commander
+    // would let an opponent track that id (invariant #3) — matches returnToHand/exileTarget.
+    if (obj.isCommander) {
+      moveTo(ctx.state, t, 'command')
+      logLine(ctx.state, `${who} returns ${nm} from their graveyard to the command zone.`)
+      continue
+    }
+    moveTo(ctx.state, t, 'hand') // non-battlefield zones are owner-side → the owner's hand
+    remintForHiddenEntry(ctx.state, t, true) // public → hidden: re-mint the id
+    logLine(ctx.state, `${who} returns ${nm} from their graveyard to their hand.`)
+  }
+}
+
 /** Controller draws N cards. */
 export const drawCards = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) drawOne(ctx.state, ctx.controllerId)
@@ -201,6 +308,19 @@ export const playersSacrifice = (who: 'target' | 'each', count = 1): Effect => (
   openSacrifice(ctx.state, players, count)
 }
 
+/**
+ * Force a discard. `who: 'target'` → each targeted player discards `count` cards of
+ * their choice; `who: 'each'` → every player still in the game (APNAP order). Players
+ * with an empty hand are skipped; the engine prompts the rest one at a time (r.discard).
+ */
+export const playersDiscard = (who: 'target' | 'each', count = 1): Effect => (ctx) => {
+  const players =
+    who === 'target'
+      ? ctx.state.turnOrder.filter((p) => ctx.targets.includes(p) && !ctx.state.players[p]!.hasLost)
+      : apnapOrder(ctx.state, ctx.state.activePlayer)
+  openDiscard(ctx.state, players, count)
+}
+
 /** Scry N: pause for the controller to look at the top N and bottom any (CR 701.18). */
 export const scry = (n: number): Effect => (ctx) => {
   const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
@@ -240,6 +360,49 @@ export const pump = (power: number, toughness: number): Effect => (ctx) => {
       ctx.state,
       `${getDef(ctx.state.objects[t]!.defName).name} gets +${power}/+${toughness} until end of turn.`,
     )
+  }
+}
+
+/**
+ * Each creature a TARGET PLAYER controls gets -base/-base until end of turn — or
+ * -kicked/-kicked if the spell was kicked (Marsh Casualties). Negative toughness that
+ * reaches 0 kills via SBA (checked after resolution). Applies via the same until-EOT
+ * pump machinery as `pump`.
+ */
+export const weakenControlledCreatures = (base: number, kicked: number): Effect => (ctx) => {
+  const n = ctx.kicked ? kicked : base
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    // skip `unimplemented` (assisted-table) creatures — the engine never auto-modifies a
+    // card whose rules it doesn't know (mirrors damageAllCreatures / destroyAllCreatures /
+    // earthquakeX); those are hand-run.
+    for (const c of battlefieldCreatures(ctx.state, t)) {
+      if (getDef(c.defName).unimplemented) continue
+      ctx.state.pumps.push({ objId: c.id, power: -n, toughness: -n })
+    }
+    logLine(ctx.state, `Creatures ${ctx.state.players[t]!.name} controls get -${n}/-${n} until end of turn.`)
+  }
+}
+
+/**
+ * Every creature (both players') gets -N/-N until end of turn — Languish. Skips
+ * `unimplemented` (assisted-table) creatures like the other mass-creature effects;
+ * 0-toughness dies by SBA after resolution. Pumps expire at cleanup.
+ */
+export const weakenAllCreatures = (n: number): Effect => (ctx) => {
+  for (const c of battlefieldCreatures(ctx.state)) {
+    if (getDef(c.defName).unimplemented) continue
+    ctx.state.pumps.push({ objId: c.id, power: -n, toughness: -n })
+  }
+  logLine(ctx.state, `All creatures get -${n}/-${n} until end of turn.`)
+}
+
+/** Grant protection from the given colour(s) to each target creature until end of turn (CR 613 layer 6). */
+export const grantProtection = (colors: ManaColor[]): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
+    for (const color of colors) ctx.state.protectionGrants.push({ objId: t, color })
+    logLine(ctx.state, `${getDef(ctx.state.objects[t]!.defName).name} gains protection from ${colors.join('/')} until end of turn.`)
   }
 }
 
@@ -318,6 +481,26 @@ export const destroyPermanentGrantToken = (spec: TokenSpec): Effect => (ctx) => 
   }
 }
 
+/** Controller gains X life and draws X cards, where X = lands they control (Nissa ult). */
+export const gainAndDrawEqualToLands = (): Effect => (ctx) => {
+  const x = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.filter((id) =>
+    getDef(ctx.state.objects[id]!.defName).types.includes('Land'),
+  ).length
+  ctx.state.players[ctx.controllerId]!.life += x
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${x} life.`)
+  for (let i = 0; i < x; i++) drawOne(ctx.state, ctx.controllerId)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws ${x} card${x === 1 ? '' : 's'}.`)
+}
+
+/** Put N loyalty counters on each OTHER planeswalker the controller controls (Ajani −2 rider). */
+export const addLoyaltyToOtherPlaneswalkers = (n: number): Effect => (ctx) => {
+  for (const id of ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield) {
+    const o = ctx.state.objects[id]
+    if (!o || o.id === ctx.sourceId) continue
+    if (getDef(o.defName).types.includes('Planeswalker')) o.loyalty = (o.loyalty ?? 0) + n
+  }
+}
+
 /** Controller gains N life. */
 export const gainLife = (n: number): Effect => (ctx) => {
   ctx.state.players[ctx.controllerId]!.life += n
@@ -355,6 +538,15 @@ export const dealToEachOpponent = (n: number): Effect => (ctx) => {
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each opponent.`)
 }
 
+/** Deal N damage to EACH player, including the source's controller (Flame Rift — symmetric). */
+export const dealToEachPlayer = (n: number): Effect => (ctx) => {
+  for (const pid of ctx.state.turnOrder) {
+    const p = ctx.state.players[pid]!
+    if (!p.hasLost) p.life -= n
+  }
+  logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each player.`)
+}
+
 /** Set each target creature's base power/toughness until end of turn (CR 613 layer 7b). */
 export const setBasePT = (power: number, toughness: number): Effect => (ctx) => {
   for (const t of ctx.targets) {
@@ -383,6 +575,31 @@ export const pumpSelf = (power: number, toughness: number): Effect => (ctx) => {
 /** Add mana to the controller's pool (mana abilities — no stack). */
 export const addMana = (...colors: ManaColor[]): Effect => (ctx) => {
   for (const c of colors) ctx.state.players[ctx.controllerId]!.manaPool[c]++
+}
+
+// ---------- X-spell effects (read ctx.x, the chosen value of X) ----------
+
+/** Deal X damage to each target (Blaze, Disintegrate-base). */
+export const dealDamageX = (): Effect => (ctx) => dealDamage(ctx.x ?? 0)(ctx)
+/** Controller draws X cards (Mind Spring). */
+export const drawCardsX = (): Effect => (ctx) => drawCards(ctx.x ?? 0)(ctx)
+/** Controller gains X life (Sphinx's Revelation rider). */
+export const gainLifeX = (): Effect => (ctx) => gainLife(ctx.x ?? 0)(ctx)
+/** Earthquake: deal X damage to each creature WITHOUT flying and to each player. */
+export const earthquakeX = (): Effect => (ctx) => {
+  const n = ctx.x ?? 0
+  const cols = sourceColors(ctx)
+  for (const c of battlefieldCreatures(ctx.state)) {
+    if (getDef(c.defName).unimplemented) continue // assisted table: skip unknown creatures
+    if (currentKeywords(ctx.state, c).includes('flying')) continue
+    if (protectedFromColors(ctx, c, cols)) continue // protection from the source's colour
+    c.damageMarked += n
+  }
+  for (const pid of ctx.state.turnOrder) {
+    const p = ctx.state.players[pid]!
+    if (!p.hasLost) p.life -= n
+  }
+  logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each non-flying creature and each player.`)
 }
 
 /** Run several effects in order. */

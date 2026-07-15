@@ -8,14 +8,14 @@
  * on anything illegal — enforcement IS the feature).
  */
 import type { GameObject, ObjId, PlayerId, RulesGameState, StackItem } from '#shared/rules/types'
-import { currentKeywords, currentPower, currentToughness } from './characteristics'
+import { currentKeywords, currentPower, currentToughness, hostCantAttack, hostCantBlock } from './characteristics'
 import { STEPS } from '#shared/rules/types'
 import type { RulesMsgT } from '#shared/rules/messages'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
-import { getDef, registerToken } from './cards/registry'
+import { getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
-import { defIsCreature, defIsLand, defIsPermanent, type CardDefinition, type TargetSpec, type TargetFilter } from './cards/dsl'
-import type { Keyword } from '#shared/rules/types'
+import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, type CardDefinition, type TargetSpec, type TargetFilter } from './cards/dsl'
+import type { Keyword, ManaColor } from '#shared/rules/types'
 import {
   alivePlayers,
   apnapOrder,
@@ -87,6 +87,49 @@ export function checkSBA(state: RulesGameState) {
         changed = true
       }
     }
+    // CR 704.5d: a token in a zone other than the battlefield ceases to exist. Its
+    // dies/leaves-the-battlefield triggers are already on the stack (queued by
+    // moveToGraveyard before the move, using last-known info), so removing the object
+    // now is safe. Without this, a dead token lingers forever in the graveyard — and
+    // graveyard recursion could return it to hand and re-cast it for free.
+    for (const obj of Object.values(state.objects)) {
+      if (obj.zone === 'battlefield' || !isTokenDefName(obj.defName)) continue
+      pullFromCurrentZone(state, obj)
+      delete state.objects[obj.id]
+      changed = true
+    }
+    // CR 704.5m/n: an Aura attached to nothing (or an illegal host) is put into its
+    // owner's graveyard; Equipment whose host is gone simply becomes unattached.
+    for (const obj of Object.values(state.objects)) {
+      if (obj.zone !== 'battlefield') continue
+      const def = getDef(obj.defName)
+      // assisted table: never auto-destroy/auto-unattach an UNIMPLEMENTED aura/equipment
+      // (its real rules are hand-run) — mirrors the creature-death SBA guard above
+      if (def.unimplemented) continue
+      const isAura = defIsAura(def)
+      if (!isAura && !defIsEquipment(def)) continue
+      const host = obj.attachedTo ? state.objects[obj.attachedTo] : null
+      const hostOk = !!host && host.zone === 'battlefield' && defIsCreature(getDef(host.defName))
+      if (isAura && !hostOk) {
+        logLine(state, `${def.name} is put into the graveyard (nothing to enchant).`)
+        moveToGraveyard(state, obj.id)
+        changed = true
+      } else if (!isAura && obj.attachedTo && !hostOk) {
+        obj.attachedTo = null // Equipment stays on the battlefield, just unattaches
+        changed = true
+      }
+    }
+    // CR 704.5i: a planeswalker with 0 loyalty is put into its owner's graveyard
+    for (const obj of Object.values(state.objects)) {
+      if (obj.zone !== 'battlefield') continue
+      const def = getDef(obj.defName)
+      if (def.unimplemented || !def.types.includes('Planeswalker')) continue // hand-run unknown PWs
+      if ((obj.loyalty ?? 0) <= 0) {
+        logLine(state, `${def.name} has no loyalty and is put into the graveyard.`)
+        moveToGraveyard(state, obj.id)
+        changed = true
+      }
+    }
     for (const p of Object.values(state.players)) {
       if (p.hasLost) continue
       if (p.life <= 0) {
@@ -96,6 +139,10 @@ export function checkSBA(state: RulesGameState) {
       } else if (Object.values(p.commanderDamage).some((d) => d >= 21)) {
         p.hasLost = true
         logLine(state, `${p.name} loses to commander damage (21+).`)
+        changed = true
+      } else if (p.poison >= 10) {
+        p.hasLost = true
+        logLine(state, `${p.name} loses the game (10+ poison).`)
         changed = true
       }
     }
@@ -171,6 +218,34 @@ function advanceSacrificeQueue(state: RulesGameState) {
   if (!state.pending && state.status === 'active') grantPriority(state, state.activePlayer)
 }
 
+// ---------- forced discard (Mind Rot / each-player discards) ----------
+
+/** Open a forced-discard prompt for the first player in `players` with cards in hand;
+ *  the rest queue (each discards `count`). No-op if nobody has cards. */
+export function openDiscard(state: RulesGameState, players: PlayerId[], count: number) {
+  const queue = players.filter((pid) => !state.players[pid]!.hasLost && zoneArr(state, pid, 'hand').length > 0)
+  if (!queue.length) return
+  promptDiscard(state, queue[0]!, queue.slice(1), count)
+}
+function promptDiscard(state: RulesGameState, player: PlayerId, queue: PlayerId[], count: number) {
+  state.pending = { kind: 'discard', player }
+  state.pendingDiscard = { player, count, queue }
+}
+/** After a forced discard resolves, prompt the next queued player, else hand priority back. */
+function advanceDiscardQueue(state: RulesGameState) {
+  const rawQueue = state.pendingDiscard?.queue ?? []
+  const count = state.pendingDiscard?.count ?? 1
+  state.pending = null
+  state.pendingDiscard = null
+  const idx = rawQueue.findIndex((pid) => !state.players[pid]!.hasLost && zoneArr(state, pid, 'hand').length > 0)
+  if (idx >= 0) {
+    promptDiscard(state, rawQueue[idx]!, rawQueue.slice(idx + 1), count)
+    return
+  }
+  checkSBA(state)
+  if (!state.pending && state.status === 'active') grantPriority(state, state.activePlayer)
+}
+
 /**
  * Invariant #3: re-mint an object's id when it enters a hidden zone (hand or
  * library) from a PUBLIC one, so an opponent who recorded its public id can't
@@ -232,14 +307,30 @@ function repairControlFlow(state: RulesGameState) {
   if (state.status !== 'active') return
   if (state.pending && state.players[state.pending.player]!.hasLost) {
     const { kind, player } = state.pending
+    const wardTriggeringId = state.pendingWard?.triggeringId
+    const cascadeExiled = state.pendingCascade?.exiledIds
     state.pending = null
     state.pendingTrigger = null // a departed player's trigger is removed
     state.pendingScry = null
-    if (kind === 'blockers') {
+    state.pendingWard = null
+    state.pendingCascade = null
+    if (kind === 'ward') {
+      // the payer left → they can't pay the ward → the triggering spell/ability is countered
+      const item = wardTriggeringId ? state.zones.stack.find((s) => s.id === wardTriggeringId) : undefined
+      if (item) counterStackItem(state, item)
+      grantPriority(state, state.activePlayer)
+    } else if (kind === 'cascade') {
+      // the decider left → decline the free cast; bottom everything exiled
+      if (cascadeExiled) bottomExiled(state, player, cascadeExiled)
+      grantPriority(state, state.activePlayer)
+    } else if (kind === 'blockers') {
       if (!state.blockersDone.includes(player)) state.blockersDone.push(player)
       advanceBlockersQueue(state)
     } else if (kind === 'discard') {
-      finishCleanup(state) // their hand left the game with them
+      // a FORCED discard (Mind Rot / each-player) must skip the leaver and prompt the
+      // next queued player; only the cleanup discard ends the turn
+      if (state.pendingDiscard) advanceDiscardQueue(state)
+      else finishCleanup(state) // their hand left the game with them
     } else if (kind === 'sacrifice') {
       // the departed player's own mandated sacrifice lapses, but the rest of an
       // each-player queue must still resolve — skip them, prompt the next player
@@ -290,6 +381,45 @@ function nextTurn(state: RulesGameState) {
   beginStep(state)
 }
 
+/**
+ * Phasing (CR 702.26 / 502.1). At the start of the active player's untap step, simultaneously:
+ * their phased-OUT permanents phase in, and their permanents with `phasing` (currently phased in)
+ * phase out. A permanent that phases out drags its attachments out with it (indirect phasing,
+ * CR 702.26e), tracked via `phasedOutBy` so they phase back in only with that host. Phasing in/out
+ * never counts as entering/leaving, so it fires no ETB/LTB and resets no summoning sickness.
+ */
+function runPhasing(state: RulesGameState, ap: PlayerId) {
+  const all = Object.values(state.objects)
+  // sets are disjoint (phased-out vs phased-in), so snapshotting isn't required, but compute both
+  // from the current state before mutating to keep the "simultaneous" semantics obvious
+  const phaseIn = all.filter((o) => o.phasedOut && o.phasedOutBy === undefined && o.controllerId === ap)
+  const phaseOut = all.filter(
+    (o) =>
+      !o.phasedOut &&
+      o.zone === 'battlefield' &&
+      o.controllerId === ap &&
+      currentKeywords(state, o).includes('phasing'),
+  )
+  for (const host of phaseIn) {
+    host.phasedOut = false
+    for (const att of all)
+      if (att.phasedOutBy === host.id) {
+        att.phasedOut = false
+        att.phasedOutBy = undefined
+      }
+    logLine(state, `${objName(state, host.id)} phases in.`)
+  }
+  for (const host of phaseOut) {
+    host.phasedOut = true
+    for (const att of all)
+      if (att.zone === 'battlefield' && att.attachedTo === host.id) {
+        att.phasedOut = true
+        att.phasedOutBy = host.id
+      }
+    logLine(state, `${objName(state, host.id)} phases out.`)
+  }
+}
+
 function beginStep(state: RulesGameState) {
   if (state.status === 'ended') return
   const ap = state.activePlayer
@@ -297,10 +427,13 @@ function beginStep(state: RulesGameState) {
     case 'untap': {
       const p = state.players[ap]!
       p.landsPlayedThisTurn = 0
+      // CR 502.1 — phasing happens FIRST, before permanents untap
+      runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
-        if (obj.zone === 'battlefield' && obj.controllerId === ap) {
+        if (obj.zone === 'battlefield' && obj.controllerId === ap && !obj.phasedOut) {
           obj.tapped = false
           obj.summoningSick = false
+          obj.loyaltyActivatedThisTurn = false // a new turn re-enables one loyalty ability per PW
         }
       }
       // no player receives priority during untap
@@ -324,7 +457,8 @@ function beginStep(state: RulesGameState) {
         (c) =>
           !c.tapped &&
           (!c.summoningSick || hasKw(state, c.id, 'haste')) &&
-          !hasKw(state, c.id, 'defender'),
+          !hasKw(state, c.id, 'defender') &&
+          !hostCantAttack(state, c), // e.g. Pacifism
       )
       if (!eligible.length || state.players[ap]!.hasLost) {
         // the step still occurs and grants priority (CR 508.4); the skip of the
@@ -348,6 +482,7 @@ function beginStep(state: RulesGameState) {
     case 'end_combat': {
       for (const obj of Object.values(state.objects)) {
         obj.attackingDefender = null
+        obj.attackingPwId = null
         obj.blockingAttackerId = null
       }
       state.blockOrders = {}
@@ -365,8 +500,14 @@ function beginStep(state: RulesGameState) {
       finishCleanup(state)
       return
     }
+    case 'upkeep': {
+      fireUpkeepTriggers(state) // "at the beginning of your upkeep" triggers onto the stack
+      // a targeted upkeep trigger sets pending → its controller chooses first
+      if (!state.pending) grantPriority(state, ap)
+      return
+    }
     default:
-      // upkeep, main1, begin_combat, main2, end — plain priority steps
+      // main1, begin_combat, main2, end — plain priority steps
       grantPriority(state, ap)
   }
 }
@@ -406,6 +547,7 @@ function finishCleanup(state: RulesGameState) {
   state.pumps = [] // until-end-of-turn effects wear off
   state.setPT = []
   state.loseAbilities = []
+  state.protectionGrants = []
   state.pending = null
   if (state.status === 'ended') return
   nextTurn(state)
@@ -453,16 +595,25 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
     const deadly = hasKw(state, attacker.id, 'deathtouch')
     const trample = hasKw(state, attacker.id, 'trample')
     const wasBlocked = attacker.id in state.blockOrders
+    // an attacker aimed at a planeswalker deals its damage to that PW's loyalty, not
+    // the defending player (and commander damage doesn't apply to a planeswalker)
+    const dmgTarget = attacker.attackingPwId ?? attacker.attackingDefender
+    const asCommander = attacker.attackingPwId ? undefined : attacker.isCommander ? attacker.id : undefined
     if (!wasBlocked) {
-      hits.push({
-        source: attacker.id,
-        target: attacker.attackingDefender,
-        amount: power,
-        fromCommander: attacker.isCommander ? attacker.id : undefined,
-      })
+      hits.push({ source: attacker.id, target: dmgTarget, amount: power, fromCommander: asCommander })
       continue
     }
     const blockers = (state.blockOrders[attacker.id] ?? []).filter((b) => isCreatureOnBattlefield(state, b))
+    // BANDING (CR 702.22h, defensive — faithful subset): if any blocker has banding, the DEFENDING
+    // player assigns this attacker's combat damage. The deterministic optimal defence is to funnel
+    // ALL of it onto the banding creature, sparing the rest of the block and negating trample
+    // (excess is assigned, not trampled). Offensive banding + attacking-as-a-band are out of scope
+    // (documented) — they need multi-attacker bands / an interactive assignment order this model lacks.
+    const bandSink = blockers.find((b) => hasKw(state, b, 'banding'))
+    if (bandSink) {
+      hits.push({ source: attacker.id, target: bandSink, amount: power })
+      continue
+    }
     let remaining = power
     blockers.forEach((blockerId, idx) => {
       if (remaining <= 0) return
@@ -479,12 +630,7 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
     // must NOT gate this on blockers.length (this branch is blocked-only; an
     // unblocked attacker already took the early return above)
     if (trample && remaining > 0) {
-      hits.push({
-        source: attacker.id,
-        target: attacker.attackingDefender,
-        amount: remaining,
-        fromCommander: attacker.isCommander ? attacker.id : undefined,
-      })
+      hits.push({ source: attacker.id, target: dmgTarget, amount: remaining, fromCommander: asCommander })
     }
   }
   // blockers strike back (still on battlefield, still blocking a live attacker)
@@ -499,22 +645,52 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
   // apply simultaneously
   for (const hit of hits) {
     const deadly = hasKw(state, hit.source, 'deathtouch')
+    let dealt = false // did this hit actually land on a valid recipient?
+    const infect = hasKw(state, hit.source, 'infect')
     if (Object.hasOwn(state.players, hit.target)) {
       const victim = state.players[hit.target as PlayerId]!
-      victim.life -= hit.amount
-      if (hit.fromCommander) {
+      dealt = true
+      if (infect) {
+        // infect deals damage to players as poison counters, not life loss (CR 702.90b) — and
+        // it is NOT commander damage
+        victim.poison += hit.amount
+        logLine(state, `${victim.name} gets ${hit.amount} poison counter${hit.amount === 1 ? '' : 's'} (${victim.poison} total).`)
+      } else if (hit.fromCommander) {
+        victim.life -= hit.amount
         victim.commanderDamage[hit.fromCommander] = (victim.commanderDamage[hit.fromCommander] ?? 0) + hit.amount
         logLine(state, `${victim.name} takes ${hit.amount} commander damage (${victim.commanderDamage[hit.fromCommander]} total).`)
       } else {
+        victim.life -= hit.amount
         logLine(state, `${victim.name} takes ${hit.amount} combat damage.`)
       }
     } else if (isCreatureOnBattlefield(state, hit.target)) {
       const t = state.objects[hit.target as ObjId]!
-      t.damageMarked += hit.amount
-      if (deadly && hit.amount > 0) t.deathtouched = true
+      // protection from [colour]: prevent combat damage from a source of that colour (the D)
+      const srcCols = state.objects[hit.source] ? getDef(state.objects[hit.source]!.defName).colors ?? [] : []
+      if (protectionColorsOf(state, t).some((c) => srcCols.includes(c))) {
+        logLine(state, `${getDef(t.defName).name} is protected — ${hit.amount} damage prevented.`)
+      } else if (infect || hasKw(state, hit.source, 'wither')) {
+        // wither/infect deal damage to creatures as -1/-1 counters (CR 702.90a / 702.79a)
+        t.counters['-1/-1'] = (t.counters['-1/-1'] ?? 0) + hit.amount
+        dealt = true
+        if (deadly && hit.amount > 0) t.deathtouched = true
+        logLine(state, `${getDef(t.defName).name} gets ${hit.amount} -1/-1 counter${hit.amount === 1 ? '' : 's'}.`)
+      } else {
+        t.damageMarked += hit.amount
+        dealt = true
+        if (deadly && hit.amount > 0) t.deathtouched = true
+      }
+    } else if (isPlaneswalkerOnBattlefield(state, hit.target)) {
+      // combat damage to a planeswalker removes that much loyalty (CR 120.3c); SBA kills it at 0
+      const pw = state.objects[hit.target as ObjId]!
+      pw.loyalty = (pw.loyalty ?? 0) - hit.amount
+      dealt = true
+      logLine(state, `${getDef(pw.defName).name} loses ${hit.amount} loyalty (combat damage).`)
     }
-    // lifelink: the SOURCE's controller gains life equal to the damage dealt
-    if (hit.amount > 0 && hasKw(state, hit.source, 'lifelink')) {
+    // lifelink: gain life ONLY for damage actually dealt — a target that left the
+    // battlefield before this sub-step (e.g. a planeswalker killed by first strike)
+    // receives none, so lifelink gains nothing (CR 119.3 / 702.15e)
+    if (dealt && hit.amount > 0 && hasKw(state, hit.source, 'lifelink')) {
       const controller = state.objects[hit.source]?.controllerId
       if (controller && state.players[controller]) {
         state.players[controller]!.life += hit.amount
@@ -539,18 +715,53 @@ function resolveTop(state: RulesGameState) {
 
 /** The triggered ability on `def` for a given trigger kind. */
 function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
-  return kind === 'dies' ? def.dies : kind === 'attacks' ? def.attacks : def.enters
+  return kind === 'dies' ? def.dies : kind === 'attacks' ? def.attacks : kind === 'upkeep' ? def.upkeep : def.enters
+}
+
+const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
+  etb: 'enters-the-battlefield',
+  dies: 'dies',
+  attacks: 'attacks',
+  upkeep: 'upkeep',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
 function resolveAbility(state: RulesGameState, item: StackItem) {
+  // cycling's ability (CR 702.29): the card was already discarded as a cost; the ability
+  // resolving just draws a card for its controller.
+  if (item.cycling) {
+    drawOne(state, item.controllerId)
+    logLine(state, `${name(state, item.controllerId)} draws a card (cycling).`)
+    checkSBA(state)
+    return
+  }
+  // ward's ability (CR 702.21): if the triggering spell/ability is still on the stack, the
+  // payer must pay the ward cost or it's countered — open a pay-or-counter decision.
+  if (item.ward) {
+    const target = state.zones.stack.find((s) => s.id === item.ward!.triggeringId)
+    if (!target) return // already resolved / countered — ward does nothing
+    state.pending = { kind: 'ward', player: item.ward.payer }
+    state.pendingWard = { player: item.ward.payer, triggeringId: item.ward.triggeringId, cost: item.ward.cost }
+    logLine(state, `Ward: ${name(state, item.ward.payer)} must pay ${item.ward.cost} or ${getDef(target.defName).name} is countered.`)
+    return
+  }
+  // cascade's ability (CR 702.85): dig the library and open the may-cast-free decision
+  if (item.cascade) {
+    resolveCascade(state, item)
+    return
+  }
   const def = getDef(item.defName)
-  const ability = item.abilityIndex != null ? def.abilities?.[item.abilityIndex] : abilityFor(def, item.trigger ?? 'etb')
+  const ability =
+    item.loyaltyIndex != null
+      ? def.loyaltyAbilities?.[item.loyaltyIndex]
+      : item.abilityIndex != null
+        ? def.abilities?.[item.abilityIndex]
+        : abilityFor(def, item.trigger ?? 'etb')
   if (!ability) return
   const specs = flattenSpecs(ability.targets)
   let targets = item.targets
   if (specs.length) {
-    targets = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId))
+    targets = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
     if (!targets.length) {
       logLine(state, `${def.name}'s ability fizzles (targets are gone).`)
       return
@@ -565,25 +776,29 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
   const obj = state.objects[item.id]
   if (!obj) return
   const def = getDef(item.defName)
-  const specs = flattenTargetSpecs(def)
+  const chosen = activeSpell(def, item.mode) // the picked mode for a modal spell, else the plain spell
+  const specs = flattenSpecs(chosen?.targets)
+  let auraTarget: ObjId | null = null
   if (specs.length) {
-    const stillLegal = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId))
+    const stillLegal = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
     if (!stillLegal.length) {
       logLine(state, `${def.name} fizzles (all targets illegal).`)
       moveToGraveyard(state, obj.id)
       checkSBA(state)
       return
     }
-    def.spell?.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: stillLegal })
+    chosen?.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: stillLegal, x: item.x, kicked: item.kicked })
+    if (defIsAura(def)) auraTarget = stillLegal[0] as ObjId // an Aura enters attached to its target
   } else {
-    def.spell?.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: [] })
+    chosen?.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: [], x: item.x, kicked: item.kicked })
   }
 
   if (defIsPermanent(def)) {
     logLine(state, `${def.name} enters the battlefield.`)
     obj.controllerId = item.controllerId
     obj.summoningSick = defIsCreature(def)
-    moveTo(state, obj.id, 'battlefield')
+    moveTo(state, obj.id, 'battlefield') // moveTo initialises loyalty for a planeswalker (CR 306.5b)
+    if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
     if (def.entersTapped) obj.tapped = true // e.g. Worn Powerstone (cast, enters tapped)
     fireEntersTriggers(state, obj.id)
   } else {
@@ -614,44 +829,291 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
         : subjectIsCreature &&
           !(w.excludeSelf && isSelf) &&
           !(w.controllerOnly && subject.controllerId !== p.controllerId)
-      if (fires) triggerEnters(state, p.id, p.defName, p.controllerId)
+      if (fires) queueTriggeredAbility(state, p.id, 'etb')
     }
   }
 }
 
-/** An enters-the-battlefield trigger: non-targeted → straight on the stack; targeted →
- *  pending target choice (removed instead if no legal target exists, CR 603.3c). */
-function triggerEnters(state: RulesGameState, sourceId: ObjId, defName: string, controllerId: PlayerId) {
-  const def = getDef(defName)
-  const specs = flattenSpecs(def.enters?.targets)
+/**
+ * Put a triggered ability (etb / dies / attacks / upkeep) on the stack, reading
+ * the source object's current definition + controller. Non-targeted → straight on
+ * the stack; targeted → pending target choice (removed instead if no legal target
+ * exists, CR 603.3c). The dies trigger keeps its own bespoke pusher in state.ts
+ * (it must snapshot watchers BEFORE the zone change).
+ */
+function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, kind: NonNullable<StackItem['trigger']>) {
+  const obj = state.objects[sourceId]
+  if (!obj) return
+  const def = getDef(obj.defName)
+  const ability = abilityFor(def, kind)
+  if (!ability) return
+  const controllerId = obj.controllerId
+  const label = TRIGGER_LABEL[kind]
+  const specs = flattenSpecs(ability.targets)
   if (!specs.length) {
-    state.zones.stack.push({ id: mintCardId(), kind: 'ability', trigger: 'etb', controllerId, defName, sourceId, abilityIndex: null, targets: [] })
-    logLine(state, `${def.name}'s enters-the-battlefield ability triggers.`)
+    state.zones.stack.push({ id: mintCardId(), kind: 'ability', trigger: kind, controllerId, defName: obj.defName, sourceId, abilityIndex: null, targets: [] })
+    logLine(state, `${def.name}'s ${label} ability triggers.`)
     return
   }
-  if (!specs.every((spec) => hasAnyLegalTarget(state, spec, controllerId))) {
+  if (!specs.every((spec) => hasAnyLegalTarget(state, spec, controllerId, def.colors ?? []))) {
     logLine(state, `${def.name}'s trigger has no legal target and is removed.`)
     return
   }
   state.pending = { kind: 'trigger', player: controllerId }
-  state.pendingTrigger = { sourceId, defName, controllerId, trigger: 'etb' }
-  logLine(state, `${def.name}'s enters-the-battlefield ability triggers — ${name(state, controllerId)} chooses a target.`)
+  state.pendingTrigger = { sourceId, defName: obj.defName, controllerId, trigger: kind }
+  logLine(state, `${def.name}'s ${label} ability triggers — ${name(state, controllerId)} chooses a target.`)
+}
+
+/**
+ * Ward (CR 702.21): after a spell/ability (`triggeringId`, already on the stack) targets
+ * permanents, put a ward trigger on the stack ABOVE it for each targeted permanent that
+ * has ward and is controlled by an OPPONENT of `caster`. On resolution the ward trigger
+ * makes `caster` pay the ward cost or the spell/ability is countered.
+ */
+function queueWardTriggers(state: RulesGameState, triggeringId: ObjId, targets: (ObjId | PlayerId)[], caster: PlayerId) {
+  for (const t of targets) {
+    const obj = state.objects[t as ObjId]
+    if (!obj || obj.zone !== 'battlefield') continue
+    const cost = getDef(obj.defName).ward
+    if (!cost || obj.controllerId === caster) continue // ward only fires for an OPPONENT's spell/ability
+    state.zones.stack.push({
+      id: mintCardId(),
+      kind: 'ability',
+      ward: { triggeringId, cost, payer: caster },
+      controllerId: obj.controllerId,
+      defName: obj.defName,
+      sourceId: obj.id,
+      abilityIndex: null,
+      targets: [],
+    })
+    logLine(state, `${getDef(obj.defName).name}'s ward triggers.`)
+  }
+}
+
+/** Remove a spell/ability from the stack (ward counter). A spell goes to its graveyard; a
+ *  (synthetic) ability is just spliced off. */
+function counterStackItem(state: RulesGameState, item: StackItem) {
+  logLine(state, `${getDef(item.defName).name} is countered by ward.`)
+  if (item.kind === 'spell') {
+    moveToGraveyard(state, item.id) // pulls it off the stack, into the graveyard
+  } else {
+    const i = state.zones.stack.findIndex((s) => s.id === item.id)
+    if (i >= 0) state.zones.stack.splice(i, 1)
+  }
+}
+
+/** Mana value (converted mana cost) of a card definition — generic + all coloured pips. */
+function manaValue(def: CardDefinition): number {
+  const c = parseManaCost(def.manaCost)
+  return c.generic + (['W', 'U', 'B', 'R', 'G', 'C'] as const).reduce((n, col) => n + c.colored[col], 0)
+}
+
+/** Cascade (CR 702.85): put a cascade trigger on the stack ABOVE the just-cast spell. */
+function queueCascade(state: RulesGameState, casterId: PlayerId, sourceId: ObjId, mv: number) {
+  state.zones.stack.push({
+    id: mintCardId(),
+    kind: 'ability',
+    cascade: { mv },
+    controllerId: casterId,
+    defName: state.objects[sourceId]!.defName,
+    sourceId,
+    abilityIndex: null,
+    targets: [],
+  })
+  logLine(state, `${getDef(state.objects[sourceId]!.defName).name}'s cascade triggers.`)
+}
+
+/** Resolve a cascade trigger: exile from the top of the caster's library until a nonland with
+ *  mana value < the cascade spell's; if found, open the may-cast-free decision, else bottom all. */
+function resolveCascade(state: RulesGameState, item: StackItem) {
+  const player = item.controllerId
+  const mv = item.cascade!.mv
+  const lib = zoneArr(state, player, 'library')
+  const exiledIds: ObjId[] = []
+  let hitId: ObjId | null = null
+  while (lib.length) {
+    const topId = lib[0]!
+    moveTo(state, topId, 'exile') // exiled face-up (public) — id unchanged (exile is public)
+    exiledIds.push(topId)
+    const def = getDef(state.objects[topId]!.defName)
+    if (!defIsLand(def) && manaValue(def) < mv) {
+      hitId = topId
+      break
+    }
+  }
+  logLine(state, `Cascade exiles ${exiledIds.length} card${exiledIds.length === 1 ? '' : 's'}${hitId ? `, hitting ${getDef(state.objects[hitId]!.defName).name}` : ' (no hit)'}.`)
+  if (hitId) {
+    state.pending = { kind: 'cascade', player }
+    state.pendingCascade = { player, hitId, exiledIds }
+  } else {
+    bottomExiled(state, player, exiledIds) // library exhausted: bottom everything
+  }
+}
+
+/** Free-cast a card from exile (cascade): validate targets, then put it on the stack for {0}. */
+function freeCastFromExile(state: RulesGameState, cardId: ObjId, controllerId: PlayerId, targets: (ObjId | PlayerId)[], mode: number | undefined) {
+  const obj = state.objects[cardId]
+  if (!obj || obj.zone !== 'exile') throw new RulesError('BAD_CASCADE', 'That card is no longer exiled')
+  const def = getDef(obj.defName)
+  const chosen = activeSpell(def, mode)
+  const specs = flattenSpecs(chosen?.targets)
+  if (targets.length !== specs.length)
+    throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
+  targets.forEach((t, i) => {
+    if (!isLegalTarget(state, specs[i]!, t, controllerId, getDef(obj.defName).colors ?? [])) throw new RulesError('BAD_TARGETS', 'Illegal target')
+  })
+  pullFromCurrentZone(state, obj)
+  obj.zone = 'stack'
+  state.zones.stack.push({
+    id: obj.id,
+    kind: 'spell',
+    controllerId,
+    defName: obj.defName,
+    sourceId: obj.id,
+    abilityIndex: null,
+    targets: [...targets],
+    mode: def.modes?.length ? (mode ?? 0) : undefined,
+    // free cast: no mana paid; X is 0 (x omitted)
+  })
+  logLine(state, `${name(state, controllerId)} casts ${def.name} for free (cascade).`)
+  // ward still applies to a free cast that targets an opponent's warded permanent
+  queueWardTriggers(state, obj.id, targets, controllerId)
+  // a cascade free-cast is still "casting a spell" (CR 702.85e) → prowess triggers
+  applyProwess(state, controllerId, def)
+}
+
+/** Put the given exiled cards on the bottom of `player`'s library in a random order, then
+ *  re-mint the whole library so the (publicly revealed) exiled ids can't be tracked. */
+function bottomExiled(state: RulesGameState, player: PlayerId, ids: ObjId[]) {
+  const order = shuffleInPlace([...ids])
+  for (const id of order) if (state.objects[id]?.zone === 'exile') moveTo(state, id, 'library') // appends → bottom
+  remintLibrary(state, player)
+  if (ids.length) logLine(state, `${name(state, player)} puts ${ids.length} card${ids.length === 1 ? '' : 's'} on the bottom of their library.`)
+}
+
+/** Prowess (CR 702.108): casting a NONCREATURE spell pumps the caster's prowess creatures +1/+1
+ *  until end of turn. Shared by the normal cast (r.cast) and the cascade free-cast. */
+function applyProwess(state: RulesGameState, caster: PlayerId, def: CardDefinition) {
+  if (def.types.includes('Creature')) return
+  for (const c of battlefieldCreatures(state, caster))
+    if (currentKeywords(state, c).includes('prowess')) {
+      state.pumps.push({ objId: c.id, power: 1, toughness: 1 })
+      logLine(state, `${objName(state, c.id)} gets +1/+1 (prowess).`)
+    }
+}
+
+const LANDWALK: [Keyword, string][] = [
+  ['islandwalk', 'Island'],
+  ['swampwalk', 'Swamp'],
+  ['mountainwalk', 'Mountain'],
+  ['forestwalk', 'Forest'],
+  ['plainswalk', 'Plains'],
+]
+/** True if `player` controls a land with the given subtype (for landwalk evasion). */
+function controlsLandType(state: RulesGameState, player: PlayerId, subtype: string): boolean {
+  return state.zones.perPlayer[player]!.battlefield.some((id) => {
+    const def = getDef(state.objects[id]!.defName)
+    return defIsLand(def) && (def.subtypes?.includes(subtype) ?? false)
+  })
+}
+const sharesColor = (a: CardDefinition, b: CardDefinition): boolean => (a.colors ?? []).some((c) => (b.colors ?? []).includes(c))
+/** Colours this permanent has protection from — printed (`def.protectionFrom`) + granted (until-EOT
+ *  `state.protectionGrants`, CR 613 layer 6). */
+const protectionColorsOf = (state: RulesGameState, obj: GameObject): ManaColor[] => [
+  ...(getDef(obj.defName).protectionFrom ?? []),
+  ...state.protectionGrants.filter((g) => g.objId === obj.id).map((g) => g.color),
+]
+
+/**
+ * Why `blocker` may NOT block `attacker` (evasion — CR 509.1b / 702), or null if it legally can.
+ * Centralises flying + the evasion keywords so `r.blockers` (and any future block-legality check)
+ * share one source of truth.
+ */
+function blockRestriction(state: RulesGameState, blocker: GameObject, attacker: GameObject): string | null {
+  const a = objName(state, attacker.id)
+  const b = objName(state, blocker.id)
+  const akw = currentKeywords(state, attacker)
+  const bkw = currentKeywords(state, blocker)
+  const aDef = getDef(attacker.defName)
+  const bDef = getDef(blocker.defName)
+  if (aDef.cantBeBlocked) return `${a} can't be blocked`
+  // landwalk: unblockable if the defending player controls a land of that type
+  if (attacker.attackingDefender)
+    for (const [kw, sub] of LANDWALK)
+      if (akw.includes(kw) && controlsLandType(state, attacker.attackingDefender, sub)) return `${a} can't be blocked (${kw})`
+  // flying: only flyers/reach may block
+  if (akw.includes('flying') && !bkw.includes('flying') && !bkw.includes('reach')) return `${b} can't block a flyer`
+  // shadow: symmetric — a creature can block or be blocked ONLY by creatures with shadow
+  if (akw.includes('shadow') !== bkw.includes('shadow')) return `${b} can't block (shadow)`
+  // horsemanship: one-directional — can't be blocked except by creatures with horsemanship
+  if (akw.includes('horsemanship') && !bkw.includes('horsemanship')) return `${b} can't block (horsemanship)`
+  // fear: only artifact or black creatures may block
+  if (akw.includes('fear') && !bDef.types.includes('Artifact') && !(bDef.colors?.includes('B') ?? false)) return `${b} can't block (fear)`
+  // intimidate: only artifact creatures or creatures sharing a colour with the attacker
+  if (akw.includes('intimidate') && !bDef.types.includes('Artifact') && !sharesColor(aDef, bDef)) return `${b} can't block (intimidate)`
+  // skulk: can't be blocked by a creature with greater power
+  if (akw.includes('skulk') && currentPower(state, blocker) > currentPower(state, attacker)) return `${b} has greater power (skulk)`
+  // protection from [colour]: can't be blocked by a creature of that colour (CR 702.16, the B)
+  if (protectionColorsOf(state, attacker).some((c) => (bDef.colors ?? []).includes(c))) return `${b} can't block (protection)`
+  return null
+}
+
+/** Fire "at the beginning of your upkeep" triggers for the active player's permanents. */
+function fireUpkeepTriggers(state: RulesGameState) {
+  const ap = state.activePlayer
+  for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
+    const obj = state.objects[id]
+    if (!obj || !getDef(obj.defName).upkeep) continue
+    queueTriggeredAbility(state, id, 'upkeep')
+    // LIMITATION: if a TARGETED upkeep trigger pends, later upkeep permanents this
+    // turn are dropped (not deferred). No implemented card has a targeted upkeep
+    // trigger; add a trigger queue before shipping one.
+    if (state.pending) break
+  }
 }
 
 // ---------- targeting ----------
+
+/** The active spell body for a (possibly modal) card given the chosen mode index. */
+function activeSpell(def: CardDefinition, mode: number | null | undefined) {
+  return def.modes?.length ? def.modes[mode ?? 0] : def.spell
+}
+/** How many {X} symbols the mana cost has (X spells multiply the chosen X by this). */
+function xCountOf(def: CardDefinition): number {
+  return (def.manaCost?.match(/\{X\}/g) ?? []).length
+}
 
 function flattenSpecs(specs?: TargetSpec[]): TargetSpec[] {
   const out: TargetSpec[] = []
   for (const spec of specs ?? []) for (let i = 0; i < spec.count; i++) out.push(spec)
   return out
 }
-function flattenTargetSpecs(def: CardDefinition): TargetSpec[] {
-  return flattenSpecs(def.spell?.targets)
-}
 
 /** Prototype-safe "is this id a permanent on the battlefield?" (any permanent type). */
 function isPermanentOnBattlefield(state: RulesGameState, t: ObjId | PlayerId): boolean {
-  return Object.hasOwn(state.objects, t) && state.objects[t as ObjId]!.zone === 'battlefield'
+  // a phased-out permanent is treated as not existing → not a legal target (CR 702.26e)
+  return Object.hasOwn(state.objects, t) && state.objects[t as ObjId]!.zone === 'battlefield' && !state.objects[t as ObjId]!.phasedOut
+}
+
+/** Is `id` a planeswalker on the battlefield controlled by one of `opponents`? (legal attack target) */
+function isAttackablePlaneswalker(state: RulesGameState, id: ObjId | PlayerId, opponents: PlayerId[]): boolean {
+  const o = Object.hasOwn(state.objects, id) ? state.objects[id as ObjId] : undefined
+  return !!o && o.zone === 'battlefield' && getDef(o.defName).types.includes('Planeswalker') && opponents.includes(o.controllerId)
+}
+/** Is `id` a planeswalker on the battlefield? (combat-damage-to-loyalty routing) */
+function isPlaneswalkerOnBattlefield(state: RulesGameState, id: ObjId | PlayerId): boolean {
+  const o = Object.hasOwn(state.objects, id) ? state.objects[id as ObjId] : undefined
+  return !!o && o.zone === 'battlefield' && getDef(o.defName).types.includes('Planeswalker')
+}
+
+/** Does a graveyard card satisfy the type part of a filter? (owner is checked by callers) */
+function graveyardCardMatches(state: RulesGameState, id: ObjId, filter: TargetFilter | undefined): boolean {
+  const obj = state.objects[id]
+  if (!obj || obj.zone !== 'graveyard') return false
+  const def = getDef(obj.defName)
+  if (filter?.types && !filter.types.some((ty) => def.types.includes(ty))) return false
+  if (filter?.excludeTypes && filter.excludeTypes.some((ty) => def.types.includes(ty))) return false
+  return true
 }
 
 /** Does `obj` satisfy `spec.filter` (types/subtypes/controller) for the targeting player? */
@@ -667,29 +1129,55 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
 }
 
 /** Is there at least one legal target for `spec` right now? (drives CR 603.3c trigger removal + client castability) */
-export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byController: PlayerId): boolean {
+export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
   if (spec.kind === 'spell') return state.zones.stack.some((s) => s.kind === 'spell')
-  if (spec.kind === 'player' || spec.kind === 'anyTarget') return alivePlayers(state).length > 0
+  if (spec.kind === 'player')
+    return spec.filter?.controller === 'opponent' ? opponentsOf(state, byController).length > 0 : alivePlayers(state).length > 0
+  if (spec.kind === 'anyTarget') return alivePlayers(state).length > 0
+  if (spec.kind === 'graveyardCard') {
+    // a card in a graveyard (recursion). "your graveyard" = owned by the caster.
+    const owners = spec.filter?.controller === 'you' ? [byController] : state.turnOrder
+    for (const pid of owners)
+      for (const id of state.zones.perPlayer[pid]!.graveyard)
+        if (graveyardCardMatches(state, id, spec.filter)) return true
+    return false
+  }
   // creature / permanent (possibly filtered): scan battlefield for a legal target
   for (const pid of state.turnOrder)
     for (const id of state.zones.perPlayer[pid]!.battlefield)
-      if (isLegalTarget(state, spec, id, byController)) return true
+      if (isLegalTarget(state, spec, id, byController, srcColors)) return true
   return false
 }
 
-function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | PlayerId, byController: PlayerId): boolean {
+function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | PlayerId, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
   if (spec.kind === 'spell') return state.zones.stack.some((s) => s.kind === 'spell' && s.id === (t as ObjId))
   // Object.hasOwn (not `in`) so prototype keys can't masquerade as players
   const isPlayer = Object.hasOwn(state.players, t) && !state.players[t as PlayerId]!.hasLost
   // isCreatureOnBattlefield already guards prototype keys (real object + zone check)
   const isCreature = isCreatureOnBattlefield(state, t)
   const isPermanent = isPermanentOnBattlefield(state, t)
-  // hexproof: a permanent can't be targeted by its controller's opponents
   if (isPermanent) {
     const obj = state.objects[t as ObjId]!
-    if (obj.controllerId !== byController && currentKeywords(state, obj).includes('hexproof')) return false
+    const kws = currentKeywords(state, obj)
+    // shroud: can't be targeted by anyone, including its controller (CR 702.18)
+    if (kws.includes('shroud')) return false
+    // hexproof: a permanent can't be targeted by its controller's opponents
+    if (obj.controllerId !== byController && kws.includes('hexproof')) return false
+    // protection from [colour]: can't be targeted by a source of that colour (any controller — CR 702.16e)
+    if (protectionColorsOf(state, obj).some((c) => srcColors.includes(c))) return false
   }
-  if (spec.kind === 'player') return isPlayer
+  if (spec.kind === 'player') {
+    if (spec.filter?.controller === 'opponent') return isPlayer && t !== byController
+    if (spec.filter?.controller === 'you') return isPlayer && t === byController
+    return isPlayer
+  }
+  if (spec.kind === 'graveyardCard') {
+    const obj = Object.hasOwn(state.objects, t) ? state.objects[t as ObjId] : undefined
+    if (!obj || obj.zone !== 'graveyard') return false
+    if (spec.filter?.controller === 'you' && obj.ownerId !== byController) return false
+    if (spec.filter?.controller === 'opponent' && obj.ownerId === byController) return false
+    return graveyardCardMatches(state, t as ObjId, spec.filter)
+  }
   if (spec.kind === 'creature')
     return isCreature && matchesFilter(state, state.objects[t as ObjId]!, spec.filter, byController)
   if (spec.kind === 'permanent')
@@ -762,7 +1250,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
     case 'r.tapMana': {
       requirePriority(state, actor)
       const obj = state.objects[msg.objId]
-      if (!obj || obj.zone !== 'battlefield' || obj.controllerId !== actor)
+      if (!obj || obj.zone !== 'battlefield' || obj.phasedOut || obj.controllerId !== actor)
         throw new RulesError('NOT_YOURS', "You don't control that permanent")
       if (state.loseAbilities.includes(obj.id)) throw new RulesError('NO_MANA_ABILITY', 'That permanent has lost all abilities')
       const ability = getDef(obj.defName).abilities?.find((a) => a.kind === 'activated' && a.isMana)
@@ -797,7 +1285,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
     case 'r.activate': {
       requirePriority(state, actor)
       const obj = state.objects[msg.objId]
-      if (!obj || obj.zone !== 'battlefield' || obj.controllerId !== actor)
+      if (!obj || obj.zone !== 'battlefield' || obj.phasedOut || obj.controllerId !== actor)
         throw new RulesError('NOT_YOURS', "You don't control that permanent")
       if (state.loseAbilities.includes(obj.id)) throw new RulesError('NO_ABILITY', 'That permanent has lost all abilities')
       const ability = getDef(obj.defName).abilities?.[msg.abilityIndex]
@@ -834,14 +1322,16 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // targets chosen now (like casting)
       const specs = flattenSpecs(ability.targets)
+      const srcColors = getDef(obj.defName).colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
       msg.targets.forEach((t, i) => {
-        if (!isLegalTarget(state, specs[i]!, t, actor)) throw new RulesError('BAD_TARGETS', 'Illegal target')
+        if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
       })
       if (ability.cost.tap) obj.tapped = true
+      const abilityStackId = mintCardId()
       state.zones.stack.push({
-        id: mintCardId(),
+        id: abilityStackId,
         kind: 'ability',
         abilityIndex: msg.abilityIndex,
         controllerId: actor,
@@ -856,6 +1346,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)}.`)
         moveToGraveyard(state, id)
       }
+      // ward (CR 702.21): a targeted opponent-controlled permanent with ward triggers now
+      queueWardTriggers(state, abilityStackId, msg.targets, actor)
       grantPriority(state, actor) // CR 116.4: caster/activator keeps priority; pass chain restarts
       break
     }
@@ -873,15 +1365,33 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
         throw new RulesError('TIMING', 'That can only be cast in your main phase with an empty stack')
 
-      const specs = flattenTargetSpecs(def)
+      // modal "choose one": validate the chosen mode; targets come from that mode
+      if (def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
+        throw new RulesError('BAD_MODE', 'Choose a valid mode')
+      const chosen = activeSpell(def, msg.mode)
+      const specs = flattenSpecs(chosen?.targets)
+      const srcColors = def.colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
       msg.targets.forEach((t, i) => {
-        if (!isLegalTarget(state, specs[i]!, t, actor)) throw new RulesError('BAD_TARGETS', 'Illegal target')
+        if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
       })
 
+      // X spells: the chosen X is added to the generic cost, once per {X} symbol
+      const xCount = xCountOf(def)
+      if (xCount > 0 && msg.x == null) throw new RulesError('NEEDS_X', 'Choose a value for X')
+      const x = msg.x ?? 0
       const cost = parseManaCost(def.manaCost)
       if (fromCommand) cost.generic += 2 * state.players[actor]!.commanderTax // commander tax (CR 903.8)
+      cost.generic += x * xCount
+      // kicker (CR 702.33): an optional additional cost chosen as the spell is cast
+      const kicked = !!msg.kicked
+      if (kicked) {
+        if (!def.kickerCost) throw new RulesError('NO_KICKER', 'That spell has no kicker')
+        const kc = parseManaCost(def.kickerCost)
+        cost.generic += kc.generic
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += kc.colored[c]
+      }
       const payment = planPayment(cost, state.players[actor]!.manaPool)
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
       const pool = state.players[actor]!.manaPool
@@ -898,6 +1408,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         sourceId: obj.id,
         abilityIndex: null,
         targets: msg.targets,
+        x: xCount > 0 ? x : undefined,
+        mode: def.modes?.length ? (msg.mode ?? 0) : undefined,
+        kicked: kicked || undefined,
       })
       const targetNames = msg.targets.map((t) =>
         Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),
@@ -906,6 +1419,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         state,
         `${name(state, actor)} casts ${def.name}${fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
+      // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
+      queueWardTriggers(state, obj.id, msg.targets, actor)
+      // cascade (CR 702.85): "when you cast this spell" — trigger goes on the stack above it
+      if (def.cascade) queueCascade(state, actor, obj.id, manaValue(def))
+      // prowess (CR 702.108): applied directly at cast (same end state as the stacked trigger,
+      // which resolves before the spell; prowess pumps are effectively never responded to)
+      applyProwess(state, actor, def)
       // caster receives priority again (rule 601.2i / 117.3c)
       grantPriority(state, actor)
       break
@@ -920,15 +1440,18 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (seenAttackers.has(attackerId)) throw new RulesError('BAD_ATTACKER', 'A creature attacks once')
         seenAttackers.add(attackerId)
         const obj = state.objects[attackerId]
-        if (!obj || obj.zone !== 'battlefield' || obj.controllerId !== actor || !defIsCreature(getDef(obj.defName)))
+        if (!obj || obj.zone !== 'battlefield' || obj.phasedOut || obj.controllerId !== actor || !defIsCreature(getDef(obj.defName)))
           throw new RulesError('BAD_ATTACKER', 'Not a creature you control')
         if (obj.tapped) throw new RulesError('BAD_ATTACKER', `${objName(state, attackerId)} is tapped`)
         if (obj.summoningSick && !hasKw(state, attackerId, 'haste'))
           throw new RulesError('BAD_ATTACKER', `${objName(state, attackerId)} has summoning sickness`)
         if (hasKw(state, attackerId, 'defender'))
           throw new RulesError('BAD_ATTACKER', `${objName(state, attackerId)} has defender and can't attack`)
-        if (!opponents.includes(defenderId))
-          throw new RulesError('BAD_ATTACKER', 'You can only attack an opponent still in the game')
+        if (hostCantAttack(state, obj))
+          throw new RulesError('BAD_ATTACKER', `${objName(state, attackerId)} can't attack`)
+        // the defender is an alive opponent, OR a planeswalker an opponent controls
+        if (!opponents.includes(defenderId) && !isAttackablePlaneswalker(state, defenderId, opponents))
+          throw new RulesError('BAD_ATTACKER', 'Attack an opponent, or a planeswalker they control')
       }
       state.pending = null
       if (!msg.attacks.length) {
@@ -942,15 +1465,47 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       for (const { attackerId, defenderId } of msg.attacks) {
         const obj = state.objects[attackerId]!
         if (!hasKw(state, attackerId, 'vigilance')) obj.tapped = true // vigilance: stays untapped
-        obj.attackingDefender = defenderId
+        const pw = state.objects[defenderId]
+        if (pw && getDef(pw.defName).types.includes('Planeswalker')) {
+          obj.attackingDefender = pw.controllerId // the defending player is the PW's controller (for blocks)
+          obj.attackingPwId = defenderId
+        } else {
+          obj.attackingDefender = defenderId
+          obj.attackingPwId = null
+        }
       }
       logLine(
         state,
         `${name(state, actor)} attacks: ${msg.attacks
-          .map((a) => `${objName(state, a.attackerId)} → ${name(state, a.defenderId)}`)
+          .map((a) => `${objName(state, a.attackerId)} → ${Object.hasOwn(state.players, a.defenderId) ? name(state, a.defenderId) : objName(state, a.defenderId)}`)
           .join(', ')}.`,
       )
-      grantPriority(state, actor)
+      // exalted (CR 702.90): if exactly ONE creature attacked, each exalted permanent its
+      // controller controls pumps that lone attacker +1/+1 (stacks). battle cry (CR 702.91):
+      // each attacker with battle cry gives every OTHER attacking creature +1/+0. Both applied
+      // directly — same end state as the stacked triggers, which resolve before combat damage.
+      if (msg.attacks.length === 1) {
+        const loneId = msg.attacks[0]!.attackerId
+        const exalted = battlefieldCreatures(state, actor).filter((c) => currentKeywords(state, c).includes('exalted')).length
+        for (let i = 0; i < exalted; i++) state.pumps.push({ objId: loneId, power: 1, toughness: 1 })
+        if (exalted) logLine(state, `${objName(state, loneId)} gets +${exalted}/+${exalted} (exalted).`)
+      }
+      for (const { attackerId } of msg.attacks) {
+        if (!currentKeywords(state, state.objects[attackerId]!).includes('battle cry')) continue
+        for (const other of msg.attacks) if (other.attackerId !== attackerId) state.pumps.push({ objId: other.attackerId, power: 1, toughness: 0 })
+        logLine(state, `${objName(state, attackerId)} shouts a battle cry (+1/+0 to each other attacker).`)
+      }
+      // "whenever this attacks" triggers go on the stack now (CR 508.4), in the
+      // order the attackers were declared; the attacker chooses the order among
+      // simultaneous ones (declaration order is a fine deterministic approximation)
+      for (const { attackerId } of msg.attacks) {
+        if (getDef(state.objects[attackerId]!.defName).attacks) queueTriggeredAbility(state, attackerId, 'attacks')
+        // same LIMITATION as upkeep: a targeted attacks trigger pending would drop
+        // later attackers' triggers (none of the implemented attacks triggers target)
+        if (state.pending) break
+      }
+      // a targeted attacks trigger set pending → its controller chooses first
+      if (!state.pending) grantPriority(state, actor)
       break
     }
 
@@ -962,15 +1517,16 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (seen.has(blockerId)) throw new RulesError('BAD_BLOCKER', 'A creature can block only one attacker')
         seen.add(blockerId)
         const blocker = state.objects[blockerId]
-        if (!blocker || blocker.zone !== 'battlefield' || blocker.controllerId !== actor || !defIsCreature(getDef(blocker.defName)))
+        if (!blocker || blocker.zone !== 'battlefield' || blocker.phasedOut || blocker.controllerId !== actor || !defIsCreature(getDef(blocker.defName)))
           throw new RulesError('BAD_BLOCKER', 'Not a creature you control')
         if (blocker.tapped) throw new RulesError('BAD_BLOCKER', `${objName(state, blockerId)} is tapped`)
+        if (hostCantBlock(state, blocker)) throw new RulesError('BAD_BLOCKER', `${objName(state, blockerId)} can't block`)
         const attacker = state.objects[attackerId]
         if (!attacker || attacker.attackingDefender !== actor)
           throw new RulesError('BAD_BLOCKER', 'That creature is not attacking you')
-        // evasion: only flyers/reach may block a flyer (CR 509.1b)
-        if (hasKw(state, attackerId, 'flying') && !hasKw(state, blockerId, 'flying') && !hasKw(state, blockerId, 'reach'))
-          throw new RulesError('BAD_BLOCKER', `${objName(state, blockerId)} can't block a flyer`)
+        // evasion: flying / fear / intimidate / skulk / shadow / horsemanship / landwalk / unblockable
+        const restriction = blockRestriction(state, blocker, attacker)
+        if (restriction) throw new RulesError('BAD_BLOCKER', restriction)
       }
       // menace: an attacker must be blocked by two or more creatures (CR 509.1c)
       const blockerCount = new Map<ObjId, number>()
@@ -982,6 +1538,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       for (const { blockerId, attackerId } of msg.blocks) {
         state.objects[blockerId]!.blockingAttackerId = attackerId
         ;(state.blockOrders[attackerId] ??= []).push(blockerId)
+        // flanking (CR 702.25): a blocker WITHOUT flanking that blocks a flanking attacker gets
+        // -1/-1 until EOT (per flanking instance) — applied directly; SBA can then kill a
+        // 0-toughness blocker before combat damage
+        if (hasKw(state, attackerId, 'flanking') && !hasKw(state, blockerId, 'flanking')) {
+          const n = currentKeywords(state, state.objects[attackerId]!).filter((k) => k === 'flanking').length || 1
+          for (let i = 0; i < n; i++) state.pumps.push({ objId: blockerId, power: -1, toughness: -1 })
+          logLine(state, `${objName(state, blockerId)} gets -${n}/-${n} (flanking).`)
+        }
       }
       logLine(
         state,
@@ -989,6 +1553,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           ? `${name(state, actor)} blocks with ${msg.blocks.map((b) => objName(state, b.blockerId)).join(', ')}.`
           : `${name(state, actor)} declares no blockers.`,
       )
+      checkSBA(state) // a flanking -1/-1 may reduce a blocker to 0 toughness
       state.blockersDone.push(actor)
       advanceBlockersQueue(state) // next attacked defender declares, or AP gets priority
       break
@@ -998,14 +1563,17 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (state.pending?.kind !== 'discard' || state.pending.player !== actor)
         throw new RulesError('NOT_PENDING', 'Not waiting for your discard')
       const hand = zoneArr(state, actor, 'hand')
-      const need = hand.length - 7
+      const forced = state.pendingDiscard // a Mind-Rot-style forced discard vs the cleanup discard
+      // forced: discard min(count, hand); cleanup: discard down to 7
+      const need = forced ? Math.min(forced.count, hand.length) : hand.length - 7
       const ids = [...new Set(msg.objIds)]
       if (ids.length !== need) throw new RulesError('BAD_DISCARD', `Discard exactly ${need}`)
       for (const id of ids)
         if (!hand.includes(id)) throw new RulesError('BAD_DISCARD', 'Not in your hand')
       for (const id of ids) moveToGraveyard(state, id)
       logLine(state, `${name(state, actor)} discards ${ids.length} card${ids.length > 1 ? 's' : ''}.`)
-      finishCleanup(state)
+      if (forced) advanceDiscardQueue(state)
+      else finishCleanup(state)
       break
     }
 
@@ -1095,19 +1663,168 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       break
     }
 
+    case 'r.equip': {
+      requirePriority(state, actor)
+      if (msg.equipmentId === msg.creatureId) throw new RulesError('BAD_EQUIP', "Equipment can't equip itself")
+      const equip = state.objects[msg.equipmentId]
+      if (!equip || equip.zone !== 'battlefield' || equip.phasedOut || equip.controllerId !== actor || !defIsEquipment(getDef(equip.defName)))
+        throw new RulesError('NOT_EQUIPMENT', "That isn't your Equipment on the battlefield")
+      // assisted table: an unimplemented Equipment's equip cost is unknown — the engine
+      // must NOT auto-equip it at a fabricated {0} cost; it's hand-run via overrides
+      if (getDef(equip.defName).unimplemented)
+        throw new RulesError('UNIMPLEMENTED', 'Equip this card by hand — its rules are not automated')
+      // equip is sorcery-speed (CR 301.5c): your main phase, empty stack
+      if (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length)
+        throw new RulesError('TIMING', 'Equip only during your main phase with an empty stack')
+      const creature = state.objects[msg.creatureId]
+      if (!creature || creature.zone !== 'battlefield' || creature.phasedOut || creature.controllerId !== actor || !defIsCreature(getDef(creature.defName)))
+        throw new RulesError('BAD_EQUIP', 'Attach to a creature you control')
+      // protection from [colour]: can't be equipped by a coloured Equipment of that colour (the E)
+      if (protectionColorsOf(state, creature).some((c) => (getDef(equip.defName).colors ?? []).includes(c)))
+        throw new RulesError('BAD_EQUIP', `${objName(state, creature.id)} has protection from that Equipment`)
+      // pay the equip cost from the pool (atomic — throws before attaching)
+      const cost = parseManaCost(getDef(equip.defName).equipCost)
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(cost, pool)
+      if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      // immediate attach (documented simplification: equip does not use the stack here)
+      equip.attachedTo = creature.id
+      state.passed = [] // an action restarts the pass chain (CR 116.4)
+      logLine(state, `${name(state, actor)} equips ${objName(state, equip.id)} to ${objName(state, creature.id)}.`)
+      checkSBA(state)
+      break
+    }
+
+    case 'r.cycle': {
+      requirePriority(state, actor) // cycling is instant speed — any time you have priority
+      const obj = requireInHand(state, actor, msg.objId)
+      const def = getDef(obj.defName)
+      if (!def.cyclingCost) throw new RulesError('NO_CYCLING', "That card doesn't have cycling")
+      // pay the mana part of the cost (atomic — throws before the discard)
+      const cost = parseManaCost(def.cyclingCost)
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(cost, pool)
+      if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      // "Discard this card" is the rest of the cost — paid now (hand→graveyard). No re-mint:
+      // the hand id was never serialised to opponents (hand is count-only), so revealing it
+      // in the public graveyard leaks nothing (invariants #2/#3).
+      moveTo(state, obj.id, 'graveyard')
+      logLine(state, `${name(state, actor)} cycles ${def.name}.`)
+      // cycling uses the stack (CR 702.29c): the draw is its effect, resolved after priority
+      state.zones.stack.push({
+        id: mintCardId(),
+        kind: 'ability',
+        cycling: true,
+        controllerId: actor,
+        defName: obj.defName,
+        sourceId: obj.id,
+        abilityIndex: null,
+        targets: [],
+      })
+      grantPriority(state, actor) // activator keeps priority; pass chain restarts (CR 116.4)
+      break
+    }
+
+    case 'r.ward': {
+      if (state.pending?.kind !== 'ward' || state.pending.player !== actor || !state.pendingWard)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your ward payment')
+      const pw = state.pendingWard
+      const item = state.zones.stack.find((s) => s.id === pw.triggeringId)
+      state.pending = null
+      state.pendingWard = null
+      if (item) {
+        const pool = state.players[actor]!.manaPool
+        const payment = planPayment(parseManaCost(pw.cost), pool)
+        if (msg.pay && payment.covered) {
+          for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+          logLine(state, `${name(state, actor)} pays ${pw.cost} for ward.`)
+        } else {
+          // declined, or can't actually afford it → the spell/ability is countered
+          counterStackItem(state, item)
+        }
+      }
+      // resume: active player gets priority; the pass/resolve loop continues the stack
+      if (state.status === 'active') grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.cascade': {
+      if (state.pending?.kind !== 'cascade' || state.pending.player !== actor || !state.pendingCascade)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your cascade')
+      const pc = state.pendingCascade
+      const hit = state.objects[pc.hitId]
+      const willCast = msg.cast && !!hit && hit.zone === 'exile'
+      // validate targets BEFORE any mutation so a bad choice leaves the decision open to retry
+      if (willCast) freeCastFromExile(state, pc.hitId, actor, msg.targets, msg.mode)
+      state.pending = null
+      state.pendingCascade = null
+      // the passed-over cards (+ the hit if declined) go to the bottom in a random order
+      const toBottom = pc.exiledIds.filter((id) => id !== pc.hitId)
+      if (!willCast) toBottom.push(pc.hitId)
+      bottomExiled(state, actor, toBottom)
+      if (state.status === 'active') grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.loyalty': {
+      requirePriority(state, actor)
+      const pw = state.objects[msg.objId]
+      const pwDef = pw && getDef(pw.defName)
+      if (!pw || !pwDef || pw.zone !== 'battlefield' || pw.controllerId !== actor || !pwDef.types.includes('Planeswalker'))
+        throw new RulesError('NOT_YOURS', "That isn't your planeswalker on the battlefield")
+      // loyalty abilities are sorcery-speed (CR 606.3) and once per turn per planeswalker
+      if (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length)
+        throw new RulesError('TIMING', 'Loyalty abilities are used in your main phase with an empty stack')
+      if (pw.loyaltyActivatedThisTurn) throw new RulesError('ONCE_PER_TURN', 'That planeswalker already used a loyalty ability this turn')
+      const la = pwDef.loyaltyAbilities?.[msg.abilityIndex]
+      if (!la) throw new RulesError('NO_ABILITY', 'No such loyalty ability')
+      // pay the loyalty cost: a negative cost needs enough loyalty (CR 606.5)
+      const newLoyalty = (pw.loyalty ?? 0) + la.cost
+      if (newLoyalty < 0) throw new RulesError('CANT_PAY', 'Not enough loyalty for that ability')
+      const specs = flattenSpecs(la.targets)
+      const srcColors = getDef(pw.defName).colors ?? [] // for protection-from-colour target checks
+      if (msg.targets.length !== specs.length)
+        throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
+      msg.targets.forEach((t, i) => {
+        if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
+      })
+      pw.loyalty = newLoyalty // loyalty cost is paid as the ability is activated
+      pw.loyaltyActivatedThisTurn = true
+      const loyaltyStackId = mintCardId()
+      state.zones.stack.push({
+        id: loyaltyStackId,
+        kind: 'ability',
+        loyaltyIndex: msg.abilityIndex,
+        controllerId: actor,
+        defName: pw.defName,
+        sourceId: pw.id,
+        abilityIndex: null,
+        targets: [...msg.targets],
+      })
+      logLine(state, `${name(state, actor)} activates ${pwDef.name}'s ${la.cost >= 0 ? '+' : ''}${la.cost} ability (loyalty ${pw.loyalty}).`)
+      // ward (CR 702.21): a targeted loyalty ability an opponent controls also triggers ward
+      queueWardTriggers(state, loyaltyStackId, msg.targets, actor)
+      grantPriority(state, actor) // activator keeps priority (CR 605.3 / 116.4)
+      break
+    }
+
     case 'r.chooseTargets': {
       if (state.pending?.kind !== 'trigger' || state.pending.player !== actor || !state.pendingTrigger)
         throw new RulesError('NOT_PENDING', 'Not waiting for your target choice')
       const pt = state.pendingTrigger
       const def = getDef(pt.defName)
       const specs = flattenSpecs(abilityFor(def, pt.trigger)?.targets)
+      const srcColors = def.colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
       msg.targets.forEach((t, i) => {
-        if (!isLegalTarget(state, specs[i]!, t, actor)) throw new RulesError('BAD_TARGETS', 'Illegal target')
+        if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
       })
+      const triggerStackId = mintCardId()
       state.zones.stack.push({
-        id: mintCardId(),
+        id: triggerStackId,
         kind: 'ability',
         trigger: pt.trigger,
         controllerId: pt.controllerId,
@@ -1120,6 +1837,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       logLine(state, `${def.name} targets ${tnames.join(', ')}.`)
       state.pending = null
       state.pendingTrigger = null
+      // ward (CR 702.21): a targeted TRIGGERED ability an opponent controls also triggers ward
+      queueWardTriggers(state, triggerStackId, msg.targets, pt.controllerId)
       grantPriority(state, state.activePlayer)
       break
     }

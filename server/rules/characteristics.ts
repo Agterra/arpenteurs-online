@@ -11,6 +11,7 @@
  */
 import type { GameObject, Keyword, RulesGameState } from '#shared/rules/types'
 import type { AffectsFilter } from './cards/dsl'
+import { defIsCreature } from './cards/dsl'
 import { getDef } from './cards/registry'
 
 /** Net +1/+1 minus -1/-1 counters on a permanent (other counters don't change P/T). */
@@ -49,8 +50,14 @@ function staticPT(state: RulesGameState, obj: GameObject): { p: number; t: numbe
   for (const pid of state.turnOrder) {
     for (const id of state.zones.perPlayer[pid]!.battlefield) {
       const src = state.objects[id]
-      if (!src || state.loseAbilities.includes(id)) continue // a source with no abilities gives no anthem
-      const statics = getDef(src.defName).statics
+      if (!src || src.phasedOut || state.loseAbilities.includes(id)) continue // phased-out / no-ability source gives no anthem/grant
+      const def = getDef(src.defName)
+      // Aura/Equipment attached to this host contributes its P/T grant (CR 613 layer 7c)
+      if (src.attachedTo === obj.id && def.grantsToHost) {
+        p += def.grantsToHost.power ?? 0
+        t += def.grantsToHost.toughness ?? 0
+      }
+      const statics = def.statics
       if (!statics) continue
       objSubtypes ??= getDef(obj.defName).subtypes ?? []
       for (const s of statics) {
@@ -70,13 +77,22 @@ export function currentKeywords(state: RulesGameState, obj: GameObject): Keyword
   // from other permanents still apply.
   const base = state.loseAbilities.includes(obj.id) ? [] : (getDef(obj.defName).keywords ?? [])
   if (obj.zone !== 'battlefield') return [...base]
+  // keyword grants ("creatures you control have vigilance", auras/equipment) reach
+  // only CREATURES — a land/artifact/planeswalker never receives a granted keyword
+  if (!defIsCreature(getDef(obj.defName))) return [...base]
   let objSubtypes: string[] | null = null
   let set: Set<Keyword> | null = null
   for (const pid of state.turnOrder) {
     for (const id of state.zones.perPlayer[pid]!.battlefield) {
       const src = state.objects[id]
-      if (!src || state.loseAbilities.includes(id)) continue // no-ability source grants nothing
-      const grants = getDef(src.defName).staticKeywords
+      if (!src || src.phasedOut || state.loseAbilities.includes(id)) continue // phased-out / no-ability source grants nothing
+      const def = getDef(src.defName)
+      // keywords granted by an Aura/Equipment attached to this host (CR 613 layer 6)
+      if (src.attachedTo === obj.id && def.grantsToHost?.keywords?.length) {
+        set ??= new Set<Keyword>(base)
+        for (const kw of def.grantsToHost.keywords) set.add(kw)
+      }
+      const grants = def.staticKeywords
       if (!grants) continue
       objSubtypes ??= getDef(obj.defName).subtypes ?? []
       for (const g of grants) {
@@ -103,6 +119,20 @@ function pumpPT(state: RulesGameState, obj: GameObject): { p: number; t: number 
   }
   return { p, t }
 }
+
+/** Does any Aura/Equipment attached to `obj` impose a can't-attack / can't-block restriction? */
+function hostRestriction(state: RulesGameState, obj: GameObject, which: 'cantAttack' | 'cantBlock'): boolean {
+  if (obj.zone !== 'battlefield') return false
+  for (const pid of state.turnOrder) {
+    for (const id of state.zones.perPlayer[pid]!.battlefield) {
+      const src = state.objects[id]
+      if (src && !src.phasedOut && src.attachedTo === obj.id && (getDef(src.defName).grantsToHost?.[which] ?? false)) return true
+    }
+  }
+  return false
+}
+export const hostCantAttack = (state: RulesGameState, obj: GameObject) => hostRestriction(state, obj, 'cantAttack')
+export const hostCantBlock = (state: RulesGameState, obj: GameObject) => hostRestriction(state, obj, 'cantBlock')
 
 export function currentPower(state: RulesGameState, obj: GameObject): number {
   return baseP(state, obj) + counterPT(obj) + staticPT(state, obj).p + pumpPT(state, obj).p

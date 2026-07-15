@@ -94,7 +94,8 @@ function onMenu(e: MouseEvent) {
     :class="[
       size === 'sm' ? 'w-[4.5rem]' : 'w-24',
       card.tapped ? 'rotate-90' : '',
-      card.summoningSick ? 'opacity-70' : '',
+      card.phasedOut ? 'opacity-40 grayscale' : '',
+      card.summoningSick && !card.phasedOut ? 'opacity-70' : '',
       glow ? 'ring-2 ring-primary shadow-lg shadow-primary/40 cursor-pointer' : '',
       selected ? 'ring-2 ring-amber-400' : '',
       targetable ? 'ring-2 ring-rose-400 cursor-crosshair' : '',
@@ -130,6 +131,13 @@ function onMenu(e: MouseEvent) {
       title="Not automated — run its rules manually"
     >M</span>
 
+    <!-- phased-out marker: on the battlefield but treated as not existing until it phases in -->
+    <span
+      v-if="card.phasedOut"
+      class="absolute inset-x-0 top-1/2 -translate-y-1/2 bg-sky-500/80 py-0.5 text-center text-[8px] font-bold uppercase tracking-wide text-white shadow"
+      title="Phased out — treated as though it doesn't exist until it phases in"
+    >Phased</span>
+
     <!-- +1/+1 and other counters -->
     <span
       v-if="counters.length"
@@ -160,6 +168,13 @@ function onMenu(e: MouseEvent) {
     >
       <span v-for="c in kwCodes" :key="c">{{ c }}</span>
     </span>
+
+    <!-- planeswalker loyalty -->
+    <span
+      v-if="card.loyalty != null"
+      class="absolute bottom-0 right-0 flex items-center gap-0.5 rounded-tl rounded-br-md bg-indigo-700 px-1 text-[9px] font-bold text-white shadow"
+      title="Loyalty"
+    >◆{{ card.loyalty }}</span>
 
     <!-- effective power/toughness when counters have changed it -->
     <span
