@@ -1,12 +1,11 @@
-# Deploy identifier baked into the image so the running app self-reports what's
-# live (shown in-app + at /api/version). Git short sha, with a -dirty suffix if
-# the tree has uncommitted changes; falls back to "dev" outside a git repo.
-GIT_SHA := $(shell git rev-parse --short=7 HEAD 2>/dev/null)
-GIT_DIRTY := $(shell git diff --quiet 2>/dev/null || echo -dirty)
-BUILD_TAG := $(if $(GIT_SHA),$(GIT_SHA)$(GIT_DIRTY),dev)
+# Human-readable app version, from package.json. This is the single version
+# identifier: it tags the built image (arpenteurs-app:$(APP_VERSION)) and is what
+# the app reports in-app + at /api/version. Bump package.json to release.
+APP_VERSION := $(shell node -p "require('./package.json').version" 2>/dev/null || echo dev)
+export APP_VERSION
 
 deploy:
-	BUILD_TAG=$(BUILD_TAG) docker --context homelab compose --env-file .env.deploy up -d --build
+	docker --context homelab compose --env-file .env.deploy up -d --build
 
 seed-database:
 	docker --context homelab compose --env-file .env.deploy run --rm app node --max-old-space-size=4096 scripts/import-cards.ts

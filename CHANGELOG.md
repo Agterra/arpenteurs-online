@@ -20,8 +20,9 @@ First deployed release.
   external `proxy` network behind the standalone Traefik (TLS via Let's Encrypt),
   with a one-shot `migrate` service (`prisma migrate deploy`) and a loopback-only
   Postgres. `make deploy` / `make seed-database` wrap it.
-- Version tracking: `package.json` version + `NUXT_PUBLIC_BUILD_TAG` deploy
-  identifier, surfaced via an in-app badge and the `/api/version` endpoint.
+- Version tracking: the `package.json` semver is the single version identifier —
+  it tags the built image (`arpenteurs-app:<version>`) and is surfaced via an
+  in-app badge and the `/api/version` endpoint. Bump `package.json` to release.
 - Catalog import scripts (`scripts/import-cards.ts`, `scripts/import-tokens.ts`)
   are shipped in the runtime image so the deployed DB can be seeded with
   `make seed-database`.

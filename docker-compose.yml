@@ -46,9 +46,9 @@ services:
   migrate:
     build:
       context: .
-      args:
-        BUILD_TAG: ${BUILD_TAG:-dev}
-    image: arpenteurs-app
+    # Tagged with the app's semver (from package.json via `make`) so the image
+    # on the host self-identifies. Falls back to :dev for a bare `compose up`.
+    image: arpenteurs-app:${APP_VERSION:-dev}
     command: ["pnpm", "exec", "prisma", "migrate", "deploy"]
     environment:
       DATABASE_URL: postgresql://mtg:${POSTGRES_PASSWORD:-mtg}@db:5432/mtg?schema=public
@@ -62,9 +62,7 @@ services:
   app:
     build:
       context: .
-      args:
-        BUILD_TAG: ${BUILD_TAG:-dev}
-    image: arpenteurs-app
+    image: arpenteurs-app:${APP_VERSION:-dev}
     restart: unless-stopped
     environment:
       NUXT_DATABASE_URL: postgresql://mtg:${POSTGRES_PASSWORD:-mtg}@db:5432/mtg?schema=public

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Unobtrusive but legible "what's deployed" indicator, fixed in the bottom-right
-// corner. Reads the build-time version + deploy tag from public runtime config.
-const { version, buildTag } = useRuntimeConfig().public
-const label = buildTag && buildTag !== 'dev' ? `v${version} · ${buildTag}` : `v${version}`
+// corner. Shows the human-readable semver from package.json (build-time).
+const { version } = useRuntimeConfig().public
+const label = `v${version}`
 </script>
 
 <template>

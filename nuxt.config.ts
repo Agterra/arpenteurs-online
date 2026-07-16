@@ -22,12 +22,9 @@ export default defineNuxtConfig({
     adminToken: '',
     scryfallUserAgent: 'arpenteurs/0.1 (louis@gravyr.fr)',
     public: {
-      // Semantic app version from package.json (build-time).
+      // Semantic app version from package.json — the single human-readable
+      // version identifier, baked at build. Bump package.json to cut a release.
       version: pkgVersion,
-      // Deploy identifier — git short sha / image tag. Baked at docker build via
-      // NUXT_PUBLIC_BUILD_TAG, and overridable at container runtime (Nuxt reads
-      // NUXT_PUBLIC_* at server start and propagates to the client via payload).
-      buildTag: 'dev',
     },
   },
 })
