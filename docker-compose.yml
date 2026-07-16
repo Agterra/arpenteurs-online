@@ -1,19 +1,103 @@
+# Arpenteurs — deploy stack for the homelab host (docker context `homelab`).
+#
+# The homelab runs a standalone Traefik that owns the shared external `proxy`
+# network and is the ONLY container binding :80/:443 (see
+# ~/Documents/perso/homelab/traefik). This app attaches to `proxy` and is routed
+# purely by the labels below — it never binds a host port. That single-proxy-hop
+# topology is load-bearing: rate-limit keys (server/utils/clientIp.ts) trust the
+# RIGHTMOST X-Forwarded-For, i.e. exactly one trusted proxy. Do NOT add a second
+# proxy hop or expose the Nitro port directly, or per-IP throttles become
+# client-spoofable.
+#
+# Deploy (Traefik must already be up on the same context):
+#   docker --context homelab compose --env-file .env.deploy up -d --build
+#
+# Required env (put in .env.deploy on the deploy host):
+#   APP_HOST=arpenteurs.example.com     # the public DNS name Traefik routes
+#   NUXT_ADMIN_TOKEN=<strong-secret>    # /admin stays disabled while unset/placeholder
+#   POSTGRES_PASSWORD=<strong-secret>   # defaults to `mtg` for local dev
+
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: mtg
-      POSTGRES_PASSWORD: mtg
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mtg}
       POSTGRES_DB: mtg
     ports:
-      - "5436:5432"
+      # Loopback-only: keeps `pnpm db:up` working for local dev (localhost:5436)
+      # without exposing Postgres on the homelab host's external interfaces.
+      # The app does NOT use this — it reaches Postgres over the `internal` net.
+      - "127.0.0.1:5436:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
+    networks:
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mtg -d mtg"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # One-shot: apply pending Prisma migrations, then exit. The app waits for this
+  # to complete successfully before starting. Reuses the runtime image, which
+  # ships the full node_modules + Prisma CLI for exactly this step (see Dockerfile).
+  migrate:
+    build:
+      context: .
+      args:
+        BUILD_TAG: ${BUILD_TAG:-dev}
+    image: arpenteurs-app
+    command: ["pnpm", "exec", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://mtg:${POSTGRES_PASSWORD:-mtg}@db:5432/mtg?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      args:
+        BUILD_TAG: ${BUILD_TAG:-dev}
+    image: arpenteurs-app
+    restart: unless-stopped
+    environment:
+      NUXT_DATABASE_URL: postgresql://mtg:${POSTGRES_PASSWORD:-mtg}@db:5432/mtg?schema=public
+      # Same value under DATABASE_URL so the catalog import scripts (run via
+      # `make seed-database` → `compose run app …`) find it; the app runtime
+      # itself prefers NUXT_DATABASE_URL, so this is inert for normal serving.
+      DATABASE_URL: postgresql://mtg:${POSTGRES_PASSWORD:-mtg}@db:5432/mtg?schema=public
+      # Public https origin — validated against WS upgrade Origin headers (CSWSH defense).
+      NUXT_PUBLIC_ORIGIN: https://${APP_HOST}
+      NUXT_ADMIN_TOKEN: ${NUXT_ADMIN_TOKEN:-}
+      NUXT_SCRYFALL_USER_AGENT: ${NUXT_SCRYFALL_USER_AGENT:-arpenteurs/0.1 (louis@gravyr.fr)}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - proxy
+      - internal
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.arpenteurs.rule=Host(`${APP_HOST}`)
+      - traefik.http.routers.arpenteurs.entrypoints=websecure
+      - traefik.http.routers.arpenteurs.tls.certresolver=le
+      - traefik.http.services.arpenteurs.loadbalancer.server.port=3000
+
+networks:
+  # Owned by the standalone Traefik stack; we only attach to it.
+  proxy:
+    external: true
+  # Private network for app <-> db traffic only.
+  internal:
 
 volumes:
   dbdata:
