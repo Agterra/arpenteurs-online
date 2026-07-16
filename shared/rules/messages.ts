@@ -31,6 +31,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
     x: z.number().int().min(0).max(99).optional(), // chosen X for an {X} spell
     mode: z.number().int().min(0).max(9).optional(), // chosen mode for a modal spell
     kicked: z.boolean().optional(), // whether the optional kicker cost was paid
+    adventure: z.boolean().optional(), // cast the Adventure half (CR 715) rather than the creature
+    convoke: z.array(Id).max(20).optional(), // creatures tapped to help pay via convoke (CR 702.51)
   }),
   z.object({
     type: z.literal('r.attackers'),

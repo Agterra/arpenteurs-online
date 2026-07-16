@@ -116,6 +116,12 @@ export interface GameObject {
   /** set on a permanent phased out INDIRECTLY (an attachment dragged out with its host) — it
    *  phases back in only when the host (this id) phases in, per CR 702.26e */
   phasedOutBy?: ObjId
+  /** Adventure (CR 715): this card is in exile having been cast as its adventure half; its owner
+   *  may cast the creature side from exile. Cleared when it leaves exile. */
+  adventured?: boolean
+  /** Monstrosity (CR 701.31): this creature has become monstrous — its monstrosity ability can't
+   *  make it monstrous again. (Adapt has no flag; it checks for existing +1/+1 counters instead.) */
+  monstrous?: boolean
 }
 
 export type StackItemKind = 'spell' | 'ability'
@@ -147,6 +153,15 @@ export interface StackItem {
   cascade?: { mv: number }
   /** whether this spell was cast kicked (its optional kicker cost was paid) — CR 702.33 */
   kicked?: boolean
+  /** Saga chapter ability on the stack (CR 714): the 1-based chapter number resolving (its
+   *  effect is `def.saga.chapters[sagaChapter - 1]`). */
+  sagaChapter?: number
+  /** Adventure (CR 715): this spell is the adventure half — on resolution it exiles the card
+   *  (adventured) instead of going to the graveyard, rather than resolving as the creature. */
+  adventure?: boolean
+  /** Flashback (CR 702.34): this spell was cast from the graveyard via flashback — it is exiled
+   *  as it leaves the stack (resolved or countered) instead of returning to the graveyard. */
+  flashback?: boolean
 }
 
 export interface PlayerRState {
@@ -185,7 +200,7 @@ export interface RulesGameState {
   /** engine is waiting for a player decision (no priority until it's made) */
   pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade'; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
-  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep' } | null
+  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
   pendingScry: { player: PlayerId; cardIds: ObjId[] } | null
   /**
@@ -308,6 +323,8 @@ export interface RulesClientCard {
   blockingAttackerId: ObjId | null
   /** phased out — still public (its identity is known) but treated as not existing (CR 702.26) */
   phasedOut?: boolean
+  /** in exile "on an adventure" — its owner may cast the creature side from exile (CR 715) */
+  adventured?: boolean
   hidden: boolean
 }
 

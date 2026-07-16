@@ -128,13 +128,16 @@ export const damageAllCreatures = (n: number): Effect => (ctx) => {
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each creature.`)
 }
 
-/** Counter each target spell on the stack — it's removed and put into its owner's graveyard. */
+/** Counter each target spell on the stack — put it into its owner's graveyard, EXCEPT a flashed-
+ *  back spell, which is exiled as it leaves the stack (CR 702.34e) so it can't be recast. (A
+ *  countered Adventure goes to the graveyard — its exile is only on resolution, CR 715.3d.) */
 export const counterTarget = (): Effect => (ctx) => {
   for (const t of ctx.targets) {
     const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
     if (!item) continue // already resolved / countered
     logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name}.`)
-    moveToGraveyard(ctx.state, item.id) // pulls it off the stack, into the graveyard
+    if (item.flashback) moveTo(ctx.state, item.id, 'exile')
+    else moveToGraveyard(ctx.state, item.id) // pulls it off the stack, into the graveyard
   }
 }
 
@@ -395,6 +398,29 @@ export const weakenAllCreatures = (n: number): Effect => (ctx) => {
     ctx.state.pumps.push({ objId: c.id, power: -n, toughness: -n })
   }
   logLine(ctx.state, `All creatures get -${n}/-${n} until end of turn.`)
+}
+
+/** Adapt N (CR 701.44): if this creature has NO +1/+1 counters, put N +1/+1 counters on it. */
+export const adapt = (n: number): Effect => (ctx) => {
+  const o = ctx.state.objects[ctx.sourceId]
+  if (!o || o.zone !== 'battlefield') return
+  if ((o.counters['+1/+1'] ?? 0) > 0) {
+    logLine(ctx.state, `${getDef(o.defName).name} doesn't adapt (it already has +1/+1 counters).`)
+    return
+  }
+  o.counters['+1/+1'] = (o.counters['+1/+1'] ?? 0) + n
+  logLine(ctx.state, `${getDef(o.defName).name} adapts — gets ${n} +1/+1 counter${n === 1 ? '' : 's'}.`)
+}
+
+/** Monstrosity N (CR 701.31): if this creature isn't monstrous, put N +1/+1 counters on it and it
+ *  becomes monstrous. (The "activate only if not monstrous" restriction is enforced here at
+ *  resolution — a documented simplification; the engine has no per-ability activation condition.) */
+export const monstrosity = (n: number): Effect => (ctx) => {
+  const o = ctx.state.objects[ctx.sourceId]
+  if (!o || o.zone !== 'battlefield' || o.monstrous) return
+  o.counters['+1/+1'] = (o.counters['+1/+1'] ?? 0) + n
+  o.monstrous = true
+  logLine(ctx.state, `${getDef(o.defName).name} becomes monstrous — gets ${n} +1/+1 counter${n === 1 ? '' : 's'}.`)
 }
 
 /** Grant protection from the given colour(s) to each target creature until end of turn (CR 613 layer 6). */

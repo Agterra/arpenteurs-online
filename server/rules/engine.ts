@@ -14,7 +14,7 @@ import type { RulesMsgT } from '#shared/rules/messages'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
-import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, type CardDefinition, type TargetSpec, type TargetFilter } from './cards/dsl'
+import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 import {
   alivePlayers,
@@ -70,6 +70,22 @@ export function checkSBA(state: RulesGameState) {
         setCounter(obj, '-1/-1', minus - n)
         changed = true
       }
+    }
+    // CR 714.4: sacrifice a Saga once its lore counters ≥ its final chapter number AND no chapter
+    // ability of it is still on the stack or awaiting a target (the last chapter has fully resolved).
+    for (const obj of Object.values(state.objects)) {
+      if (obj.zone !== 'battlefield') continue
+      const def = getDef(obj.defName)
+      if (!defIsSaga(def) || def.unimplemented) continue
+      const finalChapter = def.saga!.chapters.length
+      if ((obj.counters.lore ?? 0) < finalChapter) continue
+      const chapterPending =
+        state.zones.stack.some((s) => s.sagaChapter != null && s.sourceId === obj.id) ||
+        (state.pendingTrigger?.sagaChapter != null && state.pendingTrigger.sourceId === obj.id)
+      if (chapterPending) continue
+      logLine(state, `${def.name} is sacrificed (final chapter complete).`)
+      moveToGraveyard(state, obj.id)
+      changed = true
     }
     for (const obj of battlefieldCreatures(state)) {
       const def = getDef(obj.defName)
@@ -506,6 +522,11 @@ function beginStep(state: RulesGameState) {
       if (!state.pending) grantPriority(state, ap)
       return
     }
+    case 'main1': {
+      advanceSagas(state) // CR 714.3: "after your draw step" add a lore counter to each of AP's Sagas
+      if (!state.pending) grantPriority(state, ap)
+      return
+    }
     default:
       // main1, begin_combat, main2, end — plain priority steps
       grantPriority(state, ap)
@@ -750,6 +771,26 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
     resolveCascade(state, item)
     return
   }
+  // Saga chapter ability (CR 714): resolve def.saga.chapters[n-1]; the SBA sacrifice (after the
+  // final chapter leaves the stack) is handled in checkSBA.
+  if (item.sagaChapter != null) {
+    const chapter = getDef(item.defName).saga?.chapters[item.sagaChapter - 1]
+    if (chapter) {
+      const specs = flattenSpecs(chapter.targets)
+      let targets = item.targets
+      if (specs.length) {
+        targets = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
+        if (!targets.length) {
+          logLine(state, `${getDef(item.defName).name}'s chapter ${item.sagaChapter} fizzles (targets are gone).`)
+          checkSBA(state)
+          return
+        }
+      }
+      chapter.effect({ state, controllerId: item.controllerId, sourceId: item.sourceId, targets })
+    }
+    checkSBA(state)
+    return
+  }
   const def = getDef(item.defName)
   const ability =
     item.loyaltyIndex != null
@@ -776,6 +817,29 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
   const obj = state.objects[item.id]
   if (!obj) return
   const def = getDef(item.defName)
+  // Adventure (CR 715.3d): resolve the adventure's effect, then EXILE the card ("on an adventure")
+  // so its owner may later cast the creature from exile — not the normal graveyard/permanent path.
+  if (item.adventure && def.adventure) {
+    const adv = def.adventure
+    const specs = flattenSpecs(adv.targets)
+    if (specs.length) {
+      const stillLegal = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, def.colors ?? []))
+      if (!stillLegal.length) {
+        logLine(state, `${adv.name} fizzles (all targets illegal).`)
+        moveToGraveyard(state, obj.id) // didn't resolve → graveyard, not exile (715.3d only on resolution)
+        checkSBA(state)
+        return
+      }
+      adv.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: stillLegal, x: item.x })
+    } else {
+      adv.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: [], x: item.x })
+    }
+    moveTo(state, obj.id, 'exile') // exile is public (face-up) — id unchanged, mirrors cascade exile
+    obj.adventured = true
+    logLine(state, `${adv.name} goes on an adventure (exiled — the creature can be cast from exile).`)
+    checkSBA(state)
+    return
+  }
   const chosen = activeSpell(def, item.mode) // the picked mode for a modal spell, else the plain spell
   const specs = flattenSpecs(chosen?.targets)
   let auraTarget: ObjId | null = null
@@ -783,7 +847,7 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     const stillLegal = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
     if (!stillLegal.length) {
       logLine(state, `${def.name} fizzles (all targets illegal).`)
-      moveToGraveyard(state, obj.id)
+      spellToRest(state, obj.id, item) // flashback → exile, else graveyard
       checkSBA(state)
       return
     }
@@ -801,10 +865,26 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
     if (def.entersTapped) obj.tapped = true // e.g. Worn Powerstone (cast, enters tapped)
     fireEntersTriggers(state, obj.id)
+    // Saga (CR 714.2b/3): a lore counter is added as it enters → chapter I triggers
+    if (defIsSaga(def)) {
+      obj.counters.lore = 1
+      queueSagaChapter(state, obj.id, 1)
+    }
   } else {
-    moveToGraveyard(state, obj.id)
+    spellToRest(state, obj.id, item)
   }
   checkSBA(state)
+}
+
+/** Where an instant/sorcery goes as it leaves the stack: EXILE if it was flashed back (CR 702.34e),
+ *  otherwise the graveyard. Used on resolution and on fizzle. */
+function spellToRest(state: RulesGameState, id: ObjId, item: StackItem) {
+  if (item.flashback) {
+    moveTo(state, id, 'exile') // exile is public — id unchanged; can't be flashed back again
+    logLine(state, `${getDef(item.defName).name} is exiled (flashback).`)
+  } else {
+    moveToGraveyard(state, id)
+  }
 }
 
 /**
@@ -862,6 +942,33 @@ function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, kind: Non
   state.pending = { kind: 'trigger', player: controllerId }
   state.pendingTrigger = { sourceId, defName: obj.defName, controllerId, trigger: kind }
   logLine(state, `${def.name}'s ${label} ability triggers — ${name(state, controllerId)} chooses a target.`)
+}
+
+/**
+ * Put a Saga chapter ability on the stack (CR 714.2c). Non-targeted → straight on the stack;
+ * targeted → pending target choice (removed instead if no legal target, CR 603.3c) via the same
+ * pendingTrigger flow as other triggers, tagged with `sagaChapter`.
+ */
+function queueSagaChapter(state: RulesGameState, sourceId: ObjId, chapter: number) {
+  const obj = state.objects[sourceId]
+  if (!obj) return
+  const def = getDef(obj.defName)
+  const ability = def.saga?.chapters[chapter - 1]
+  if (!ability) return
+  const controllerId = obj.controllerId
+  const specs = flattenSpecs(ability.targets)
+  if (!specs.length) {
+    state.zones.stack.push({ id: mintCardId(), kind: 'ability', sagaChapter: chapter, controllerId, defName: obj.defName, sourceId, abilityIndex: null, targets: [] })
+    logLine(state, `${def.name} — chapter ${chapter} triggers.`)
+    return
+  }
+  if (!specs.every((spec) => hasAnyLegalTarget(state, spec, controllerId, def.colors ?? []))) {
+    logLine(state, `${def.name}'s chapter ${chapter} has no legal target and is removed.`)
+    return
+  }
+  state.pending = { kind: 'trigger', player: controllerId }
+  state.pendingTrigger = { sourceId, defName: obj.defName, controllerId, trigger: 'etb', sagaChapter: chapter }
+  logLine(state, `${def.name} — chapter ${chapter} triggers — ${name(state, controllerId)} chooses a target.`)
 }
 
 /**
@@ -1068,6 +1175,24 @@ function fireUpkeepTriggers(state: RulesGameState) {
     // LIMITATION: if a TARGETED upkeep trigger pends, later upkeep permanents this
     // turn are dropped (not deferred). No implemented card has a targeted upkeep
     // trigger; add a trigger queue before shipping one.
+    if (state.pending) break
+  }
+}
+
+/**
+ * CR 714.3: after the active player's draw step (i.e. as their precombat main phase begins), put
+ * a lore counter on each Saga they control; the newly-reached chapter ability triggers. Mirrors
+ * fireUpkeepTriggers' documented limitation: if a targeted chapter pends, later Sagas this turn are
+ * dropped — no implemented multi-Saga-same-turn-targeted case exists yet.
+ */
+function advanceSagas(state: RulesGameState) {
+  const ap = state.activePlayer
+  for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
+    const obj = state.objects[id]
+    if (!obj || !defIsSaga(getDef(obj.defName))) continue
+    const lore = (obj.counters.lore ?? 0) + 1
+    obj.counters.lore = lore
+    queueSagaChapter(state, id, lore)
     if (state.pending) break
   }
 }
@@ -1354,21 +1479,33 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
 
     case 'r.cast': {
       requirePriority(state, actor)
-      // castable from your hand, or your commander from the command zone
       const candidate = state.objects[msg.objId]
+      const castingAdventure = !!msg.adventure
+      // castable from your hand, your commander from the command zone, or (Adventure, CR 715) the
+      // creature side of a card you own that's in exile having been cast as its adventure
       const fromCommand =
         !!candidate && candidate.zone === 'command' && candidate.ownerId === actor && candidate.isCommander
-      const obj = fromCommand ? candidate! : requireInHand(state, actor, msg.objId)
+      const fromExileAdv =
+        !castingAdventure && !!candidate && candidate.zone === 'exile' && candidate.adventured === true && candidate.ownerId === actor
+      // Flashback (CR 702.34): cast an instant/sorcery from your graveyard for its flashback cost
+      const fromFlashback =
+        !castingAdventure && !!candidate && candidate.zone === 'graveyard' && candidate.ownerId === actor && !!getDef(candidate.defName).flashbackCost
+      const obj = fromCommand || fromExileAdv || fromFlashback ? candidate! : requireInHand(state, actor, msg.objId)
       const def = getDef(obj.defName)
-      if (defIsLand(def)) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
-      const instantSpeed = def.types.includes('Instant') || hasKw(state, obj.id, 'flash')
+      if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
+      // the "face" being cast: the adventure half, or the card's main face
+      const adv = castingAdventure ? def.adventure! : null
+      const faceTypes = adv ? adv.types : def.types
+      const faceManaCost = adv ? adv.manaCost : fromFlashback ? def.flashbackCost! : def.manaCost
+      if (defIsLand(def) && !adv) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
+      const instantSpeed = faceTypes.includes('Instant') || (!adv && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
         throw new RulesError('TIMING', 'That can only be cast in your main phase with an empty stack')
 
-      // modal "choose one": validate the chosen mode; targets come from that mode
-      if (def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
+      // modal "choose one": validate the chosen mode; targets come from that mode (main face only)
+      if (!adv && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
         throw new RulesError('BAD_MODE', 'Choose a valid mode')
-      const chosen = activeSpell(def, msg.mode)
+      const chosen = adv ? { targets: adv.targets, effect: adv.effect } : activeSpell(def, msg.mode)
       const specs = flattenSpecs(chosen?.targets)
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
@@ -1377,28 +1514,51 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
       })
 
-      // X spells: the chosen X is added to the generic cost, once per {X} symbol
-      const xCount = xCountOf(def)
+      // X spells: the chosen X is added to the generic cost, once per {X} symbol (main face only)
+      const xCount = adv ? 0 : xCountOf(def)
       if (xCount > 0 && msg.x == null) throw new RulesError('NEEDS_X', 'Choose a value for X')
       const x = msg.x ?? 0
-      const cost = parseManaCost(def.manaCost)
+      const cost = parseManaCost(faceManaCost)
       if (fromCommand) cost.generic += 2 * state.players[actor]!.commanderTax // commander tax (CR 903.8)
       cost.generic += x * xCount
-      // kicker (CR 702.33): an optional additional cost chosen as the spell is cast
-      const kicked = !!msg.kicked
+      // kicker (CR 702.33): an optional additional cost chosen as the spell is cast (main face only)
+      const kicked = !adv && !!msg.kicked
       if (kicked) {
         if (!def.kickerCost) throw new RulesError('NO_KICKER', 'That spell has no kicker')
         const kc = parseManaCost(def.kickerCost)
         cost.generic += kc.generic
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += kc.colored[c]
       }
+      // convoke (CR 702.51): tap creatures you control to pay for {1} or a matching-colour pip
+      // (main face only). Validated + planned against a local `cost` here; creatures are tapped
+      // only after the remaining mana payment is confirmed below (no partial mutation on failure).
+      const convokeIds = !adv && def.convoke ? (msg.convoke ?? []) : []
+      const convokeCreatures: GameObject[] = []
+      if (convokeIds.length) {
+        const seen = new Set<ObjId>()
+        for (const id of convokeIds) {
+          if (seen.has(id)) throw new RulesError('BAD_CONVOKE', 'A creature can convoke once')
+          seen.add(id)
+          const c = state.objects[id]
+          if (!c || c.zone !== 'battlefield' || c.phasedOut || c.controllerId !== actor || !defIsCreature(getDef(c.defName)) || c.tapped)
+            throw new RulesError('BAD_CONVOKE', 'Convoke needs your untapped creatures')
+          const cols = getDef(c.defName).colors ?? []
+          const payColor = (['W', 'U', 'B', 'R', 'G'] as const).find((col) => cols.includes(col) && cost.colored[col] > 0)
+          if (payColor) cost.colored[payColor]--
+          else if (cost.generic > 0) cost.generic--
+          else throw new RulesError('BAD_CONVOKE', 'A convoked creature has nothing left to pay for')
+          convokeCreatures.push(c)
+        }
+      }
       const payment = planPayment(cost, state.players[actor]!.manaPool)
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
       const pool = state.players[actor]!.manaPool
       for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      for (const c of convokeCreatures) c.tapped = true // convoke is paid by tapping (CR 702.51c)
 
       pullFromCurrentZone(state, obj)
       obj.zone = 'stack'
+      obj.adventured = false // whether cast from hand or recast from exile, it's now on the stack
       if (fromCommand) state.players[actor]!.commanderTax++
       state.zones.stack.push({
         id: obj.id,
@@ -1409,23 +1569,26 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         abilityIndex: null,
         targets: msg.targets,
         x: xCount > 0 ? x : undefined,
-        mode: def.modes?.length ? (msg.mode ?? 0) : undefined,
+        mode: !adv && def.modes?.length ? (msg.mode ?? 0) : undefined,
         kicked: kicked || undefined,
+        adventure: castingAdventure || undefined,
+        flashback: fromFlashback || undefined,
       })
       const targetNames = msg.targets.map((t) =>
         Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),
       )
       logLine(
         state,
-        `${name(state, actor)} casts ${def.name}${fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
+        `${name(state, actor)} casts ${adv ? adv.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)
       // cascade (CR 702.85): "when you cast this spell" — trigger goes on the stack above it
       if (def.cascade) queueCascade(state, actor, obj.id, manaValue(def))
       // prowess (CR 702.108): applied directly at cast (same end state as the stacked trigger,
-      // which resolves before the spell; prowess pumps are effectively never responded to)
-      applyProwess(state, actor, def)
+      // which resolves before the spell; prowess pumps are effectively never responded to). An
+      // adventure is a noncreature spell, so cast off the face's types.
+      applyProwess(state, actor, adv ? { ...def, types: adv.types } : def)
       // caster receives priority again (rule 601.2i / 117.3c)
       grantPriority(state, actor)
       break
@@ -1815,7 +1978,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('NOT_PENDING', 'Not waiting for your target choice')
       const pt = state.pendingTrigger
       const def = getDef(pt.defName)
-      const specs = flattenSpecs(abilityFor(def, pt.trigger)?.targets)
+      // a Saga chapter's targets come from def.saga.chapters[n-1]; other triggers from abilityFor
+      const specs = flattenSpecs(
+        pt.sagaChapter != null ? def.saga?.chapters[pt.sagaChapter - 1]?.targets : abilityFor(def, pt.trigger)?.targets,
+      )
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
@@ -1826,7 +1992,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       state.zones.stack.push({
         id: triggerStackId,
         kind: 'ability',
-        trigger: pt.trigger,
+        trigger: pt.sagaChapter != null ? undefined : pt.trigger,
+        sagaChapter: pt.sagaChapter,
         controllerId: pt.controllerId,
         defName: pt.defName,
         sourceId: pt.sourceId,

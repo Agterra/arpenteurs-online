@@ -108,6 +108,16 @@ export interface TriggeredAbility {
 /** The trigger events the engine emits. */
 export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep'
 
+/**
+ * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
+ * (it enters with one lore counter → chapter I; another is added after each of the controller's
+ * draw steps). Like a triggered ability, it may choose targets when it goes on the stack.
+ */
+export interface SagaChapter {
+  targets?: TargetSpec[]
+  effect: Effect
+}
+
 /** Which creatures a static effect (anthem / keyword grant) applies to. Empty = all creatures. */
 export interface AffectsFilter {
   controllerOnly?: boolean // "creatures YOU control"
@@ -175,6 +185,34 @@ export interface CardDefinition {
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
   /**
+   * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
+   * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the
+   * controller's draw steps (→ the next chapter), and sacrifices it after the final chapter's
+   * ability has left the stack. Give the card `types: ['Enchantment']`, `subtypes: ['Saga']`.
+   */
+  saga?: { chapters: SagaChapter[] }
+  /**
+   * Adventure (CR 715): the card is a creature (the main def carries its creature body/cost) that
+   * may instead be cast as this instant/sorcery "adventure". When the adventure resolves it is
+   * EXILED (not put into the graveyard) and its owner may afterwards cast the creature from exile.
+   * `manaCost`/`types` are the adventure half's; `spell` is its effect + targets.
+   */
+  adventure?: { name: string; types: CardType[]; manaCost: string } & SpellAbility
+  /**
+   * Flashback (CR 702.34): "You may cast this card from your graveyard by paying [cost]. Then
+   * exile it." Set to the mana part of the flashback cost (e.g. '{4}{R}'). The engine lets the
+   * owner cast the instant/sorcery from their graveyard for this cost, and exiles it as it leaves
+   * the stack (on resolution OR if countered) instead of returning it to the graveyard. Mana-only
+   * flashback (life/other additional costs are deferred).
+   */
+  flashbackCost?: string
+  /**
+   * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
+   * number of untapped creatures you control; each pays for {1} or one mana of that creature's
+   * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.
+   */
+  convoke?: boolean
+  /**
    * True for "assisted table" fallbacks auto-built from the catalog: the engine
    * knows the printed body (types/P·T/cost) but NOT the card's rules text. Such
    * cards are castable and fight, but their effects are player-run via manual
@@ -233,6 +271,7 @@ export interface CardDefinition {
   protectionFrom?: ManaColor[]
 }
 
+export const defIsSaga = (def: CardDefinition) => !!def.saga
 export const defIsAura = (def: CardDefinition) => def.subtypes?.includes('Aura') ?? false
 export const defIsEquipment = (def: CardDefinition) => def.subtypes?.includes('Equipment') ?? false
 

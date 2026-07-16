@@ -59,6 +59,7 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     attackingPwId: obj.attackingPwId ?? null,
     blockingAttackerId: obj.blockingAttackerId,
     phasedOut: obj.phasedOut ?? false,
+    adventured: obj.adventured ?? false,
     hidden: false,
   })
 

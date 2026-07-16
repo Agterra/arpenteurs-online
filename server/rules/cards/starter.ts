@@ -5,10 +5,12 @@
  */
 import type { CardDefinition } from './dsl'
 import {
+  adapt,
   addCounters,
   addCountersToEachControlled,
   addLoyaltyToOtherPlaneswalkers,
   addMana,
+  monstrosity,
   counterTarget,
   createToken,
   damageAllCreatures,
@@ -1610,4 +1612,95 @@ export const STARTER_SET: CardDefinition[] = [
   // --- Coverage batch SUB4: banding (defensive damage-assignment control subset; CR 702.22) ---
   keyworded('Benalish Hero', '{W}', ['W'], 1, 1, ['Human', 'Soldier'], ['banding']),
   keyworded('Mesa Pegasus', '{1}{W}', ['W'], 1, 1, ['Pegasus'], ['flying', 'banding']),
+
+  // --- Coverage batch MECH1: Sagas (CR 714 — lore counters, chapter triggers, self-sacrifice) ---
+  {
+    name: 'Birth of Meletis',
+    types: ['Enchantment'],
+    subtypes: ['Saga'],
+    manaCost: '{1}{W}',
+    colors: ['W'],
+    // "(I) Create a 0/4 white Wall creature token with defender. (II) You gain 2 life.
+    //  (III) Search your library for a basic land card, reveal it, put it into your hand, shuffle."
+    saga: {
+      chapters: [
+        { effect: createToken({ name: 'Wall', power: 0, toughness: 4, subtypes: ['Wall'], keywords: ['defender'] }) },
+        { effect: gainLife(2) },
+        { effect: searchLibrary({ filter: 'basicLand', dest: 'hand', count: 1 }) },
+      ],
+    },
+  },
+
+  // --- Coverage batch MECH2: Adventure (CR 715 — cast the adventure, exile it, cast the creature later) ---
+  {
+    // Creature side: French-vanilla (lifelink). Adventure side "Swift End": destroy + lose 2 life.
+    name: 'Murderous Rider',
+    types: ['Creature'],
+    subtypes: ['Zombie', 'Knight'],
+    manaCost: '{1}{B}{B}',
+    colors: ['B'],
+    power: 2,
+    toughness: 3,
+    keywords: ['lifelink'],
+    adventure: {
+      name: 'Swift End',
+      types: ['Instant'],
+      manaCost: '{1}{B}{B}',
+      targets: [{ kind: 'creature', count: 1 }],
+      effect: sequence(destroyTarget(), loseLife(2)),
+    },
+  },
+
+  // --- Coverage batch MECH3: Flashback (CR 702.34 — cast from the graveyard, then exile) ---
+  {
+    name: 'Firebolt',
+    types: ['Sorcery'],
+    manaCost: '{R}',
+    colors: ['R'],
+    flashbackCost: '{4}{R}',
+    // "Firebolt deals 2 damage to any target. Flashback {4}{R}."
+    spell: { targets: [{ kind: 'anyTarget', count: 1 }], effect: dealDamage(2) },
+  },
+
+  // --- Coverage batch MECH4: Convoke (CR 702.51 — tap creatures to help pay a spell's cost) ---
+  {
+    // French-vanilla (trample) creature with convoke — its entire rules are captured.
+    name: 'Siege Wurm',
+    types: ['Creature'],
+    subtypes: ['Wurm'],
+    manaCost: '{4}{G}{G}',
+    colors: ['G'],
+    power: 5,
+    toughness: 5,
+    keywords: ['trample'],
+    convoke: true,
+  },
+
+  // --- Coverage batch MECH5: Monstrosity (CR 701.31) + Adapt (CR 701.44) — once-only +1/+1 counters ---
+  {
+    // French-vanilla (reach) + adapt; entire rules captured.
+    name: 'Aerie Bowmasters',
+    types: ['Creature'],
+    subtypes: ['Dinosaur'],
+    manaCost: '{3}{G}',
+    colors: ['G'],
+    power: 3,
+    toughness: 3,
+    keywords: ['reach'],
+    // "{5}{G}: Adapt 2."
+    abilities: [{ kind: 'activated', cost: { mana: '{5}{G}' }, effect: adapt(2) }],
+  },
+  {
+    // French-vanilla (reach) + monstrosity; entire rules captured.
+    name: 'Nessian Asp',
+    types: ['Creature'],
+    subtypes: ['Snake'],
+    manaCost: '{4}{G}',
+    colors: ['G'],
+    power: 4,
+    toughness: 5,
+    keywords: ['reach'],
+    // "{6}{G}: Monstrosity 4."
+    abilities: [{ kind: 'activated', cost: { mana: '{6}{G}' }, effect: monstrosity(4) }],
+  },
 ]
