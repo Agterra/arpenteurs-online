@@ -19,7 +19,7 @@ import type {
 } from '#shared/rules/types'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { getDef } from './cards/registry'
-import { defIsCreature, defIsEquipment, defIsLand } from './cards/dsl'
+import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
 import { hasAnyLegalTarget } from './engine'
@@ -153,6 +153,14 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     cascadeHitId: null,
     cascadeTargetKind: null,
     cascadeCanFreeCast: false,
+    flashbackable: [],
+    retraceable: [],
+    evokable: [],
+    bestowable: [],
+    suspendable: [],
+    adventurable: [],
+    castExileIds: [],
+    buybackable: [],
   }
   if (state.status !== 'active' || state.players[viewer]?.hasLost) return none
 
@@ -383,6 +391,61 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     }
   }
 
+  // --- alternative / other-zone casts (the client renders these as extra cast buttons) ---
+  // affordability is checked against the pre-tap `potential` pool; the server re-validates on r.cast
+  const affordable = (costStr: string | null | undefined) => !!costStr && planPayment(parseManaCost(costStr), potential).covered
+  // the plain spell's targets are all satisfiable (so a targeted alt-cast is worth offering)
+  const targetsOk = (def: CardDefinition) => {
+    const srcColors = def.colors ?? []
+    return !(def.spell?.targets?.some((t) => !hasAnyLegalTarget(state, t, viewer, srcColors)) ?? false)
+  }
+  const hasLandInHand = zoneArr(state, viewer, 'hand').some((id) => defIsLand(getDef(state.objects[id]!.defName)))
+  const haveCreatureTarget = battlefieldCreatures(state).length > 0 // bestow can enchant any creature
+
+  const flashbackable: LegalActions['flashbackable'] = []
+  const retraceable: LegalActions['retraceable'] = []
+  for (const id of zoneArr(state, viewer, 'graveyard')) {
+    const def = getDef(state.objects[id]!.defName)
+    const timingOk = def.types.includes('Instant') || isMain
+    if (def.flashbackCost && timingOk && affordable(def.flashbackCost) && targetsOk(def))
+      flashbackable.push({ objId: id, cost: def.flashbackCost })
+    if (def.retrace && timingOk && affordable(def.manaCost) && hasLandInHand && targetsOk(def))
+      retraceable.push({ objId: id, cost: def.manaCost ?? '' })
+  }
+
+  const evokable: LegalActions['evokable'] = []
+  const bestowable: LegalActions['bestowable'] = []
+  const suspendable: LegalActions['suspendable'] = []
+  const adventurable: LegalActions['adventurable'] = []
+  for (const id of zoneArr(state, viewer, 'hand')) {
+    const def = getDef(state.objects[id]!.defName)
+    if (def.evokeCost && isMain && affordable(def.evokeCost) && targetsOk(def)) evokable.push({ objId: id, cost: def.evokeCost })
+    if (def.bestowCost && isMain && affordable(def.bestowCost) && haveCreatureTarget) bestowable.push({ objId: id, cost: def.bestowCost })
+    if (def.suspend && (def.types.includes('Instant') || isMain) && affordable(def.suspend.cost)) suspendable.push({ objId: id, cost: def.suspend.cost })
+    if (def.adventure) {
+      const adv = def.adventure
+      const advTimingOk = adv.types.includes('Instant') || isMain
+      const advTargetsOk = !(adv.targets?.some((t) => !hasAnyLegalTarget(state, t, viewer, def.colors ?? [])) ?? false)
+      if (advTimingOk && affordable(adv.manaCost) && advTargetsOk) adventurable.push({ objId: id, cost: adv.manaCost, name: adv.name })
+    }
+  }
+
+  // exiled adventurer cards whose creature side you can cast from exile (sorcery speed)
+  const castExileIds: ObjId[] = []
+  if (isMain) {
+    for (const id of zoneArr(state, viewer, 'exile')) {
+      const o = state.objects[id]!
+      if (o.adventured && o.ownerId === viewer && affordable(getDef(o.defName).manaCost)) castExileIds.push(id)
+    }
+  }
+
+  // castable cards with buyback → the client offers a "buyback" toggle (like kicker)
+  const buybackable: LegalActions['buybackable'] = []
+  for (const id of castableIds) {
+    const bc = getDef(state.objects[id]!.defName).buybackCost
+    if (bc) buybackable.push({ objId: id, cost: bc })
+  }
+
   return {
     ...none,
     hasPriority: true,
@@ -396,5 +459,13 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     loyaltyActivations,
     cyclable,
     kickable,
+    flashbackable,
+    retraceable,
+    evokable,
+    bestowable,
+    suspendable,
+    adventurable,
+    castExileIds,
+    buybackable,
   }
 }

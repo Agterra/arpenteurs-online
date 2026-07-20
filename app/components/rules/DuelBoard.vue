@@ -78,6 +78,8 @@ const POOL_COLORS: ManaColor[] = ['W', 'U', 'B', 'R', 'G', 'C']
 // ---------- interaction state ----------
 
 type TargetClass = 'any' | 'creature' | 'permanent' | 'spell' | 'player'
+/** which alternative cast is being paid for (extra r.cast flag / other zone / other action) */
+type AltKind = 'flashback' | 'retrace' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend'
 /** starter cards that need a target as they're cast (defName → target class). */
 const TARGETED_STARTERS: Record<string, TargetClass> = {
   shock: 'any',
@@ -151,7 +153,7 @@ const GRAVEYARD_STARTERS: Record<string, 'creature' | 'any'> = {
   regrowth: 'any',
 }
 
-const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number } | null>(null)
+const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number; alt?: AltKind; altCost?: string } | null>(null)
 const attackAssign = ref<{ attackerId: ObjId; defenderId: PlayerId }[]>([])
 const pendingAttacker = ref<ObjId | null>(null)
 const selDiscard = ref<Set<ObjId>>(new Set())
@@ -177,6 +179,10 @@ const casting = ref<{
   cycling?: boolean // paying a cycling cost (→ r.cycle) rather than casting
   kickerCost?: string // the spell's kicker cost, if it has one (enables the kick toggle)
   kicked?: boolean // whether the player chose to pay the kicker
+  // alternative cast being paid for (extra r.cast flag / different zone / different action)
+  alt?: AltKind
+  buybackCost?: string // enables the buyback toggle
+  buyback?: boolean // whether the player chose to pay buyback
 } | null>(null)
 // modal "choose one": pick a mode before targeting/payment
 const modalPick = ref<{ card: RulesClientCard; modes: { label: string; spec: TargetClass | null }[] } | null>(null)
@@ -218,9 +224,11 @@ watch(
       const c = casting.value
       const ok = c.cycling
         ? l.cyclable.some((cy) => cy.objId === c.cardId)
-        : c.abilityIndex == null
-          ? l.castableIds.includes(c.cardId)
-          : l.activations.some((a) => a.objId === c.cardId && a.abilityIndex === c.abilityIndex)
+        : c.alt // alt-casts (flashback/evoke/bestow/…) aren't in castableIds; the server re-validates on confirm
+          ? true
+          : c.abilityIndex == null
+            ? l.castableIds.includes(c.cardId)
+            : l.activations.some((a) => a.objId === c.cardId && a.abilityIndex === c.abilityIndex)
       if (!ok) casting.value = null
     }
   },
@@ -241,6 +249,11 @@ const castCost = computed(() => {
     cost.generic += kc.generic
     for (const col of POOL_COLORS) cost.colored[col] += kc.colored[col]
   }
+  if (c.buyback && c.buybackCost) {
+    const bc = parseManaCost(c.buybackCost)
+    cost.generic += bc.generic
+    for (const col of POOL_COLORS) cost.colored[col] += bc.colored[col]
+  }
   return cost
 })
 // displayed cost string — append the kicker's pips when the player has chosen to kick
@@ -252,9 +265,10 @@ const castCovered = computed(
   () => !!castCost.value && !!me.value && planPayment(castCost.value, me.value.manaPool).covered,
 )
 
-function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode: number | null = null) {
+function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode: number | null = null, alt?: AltKind, altCost?: string) {
   targeting.value = null
-  const costStr = display.value[card.defName ?? '']?.manaCost ?? ''
+  // alt-cast pays its own cost (flashback/evoke/bestow/suspend/adventure/retrace); else the printed cost
+  const costStr = altCost ?? display.value[card.defName ?? '']?.manaCost ?? ''
   casting.value = {
     cardId: card.id,
     defName: card.defName ?? '',
@@ -262,10 +276,14 @@ function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode
     abilityIndex: null,
     costStr,
     x: 0,
-    xCount: (costStr.match(/\{X\}/g) ?? []).length,
+    xCount: alt ? 0 : (costStr.match(/\{X\}/g) ?? []).length, // X isn't chosen on alt-casts here
     mode,
-    kickerCost: legal.value?.kickable.find((k) => k.objId === card.id)?.cost,
+    // kicker/buyback toggles are only for a normal cast (not alt-casts)
+    kickerCost: alt ? undefined : legal.value?.kickable.find((k) => k.objId === card.id)?.cost,
     kicked: false,
+    alt,
+    buybackCost: alt ? undefined : legal.value?.buybackable.find((b) => b.objId === card.id)?.cost,
+    buyback: false,
   }
 }
 /** toggle whether the current cast pays its kicker (recomputes the required cost). */
@@ -280,6 +298,7 @@ function confirmCast() {
   const c = casting.value
   if (!c || !castCovered.value) return
   if (c.cycling) send({ type: 'r.cycle', objId: c.cardId })
+  else if (c.alt === 'suspend') send({ type: 'r.suspend', objId: c.cardId })
   else if (c.abilityIndex == null)
     send({
       type: 'r.cast',
@@ -288,9 +307,21 @@ function confirmCast() {
       x: c.xCount > 0 ? c.x : undefined,
       mode: c.mode ?? undefined,
       kicked: c.kicked || undefined,
+      buyback: c.buyback || undefined,
+      // alt-cast flags the server reads (flashback/retrace/exile are auto-detected by zone,
+      // so they need no flag — retrace only needs the land to discard)
+      adventure: c.alt === 'adventure' || undefined,
+      bestow: c.alt === 'bestow' || undefined,
+      evoke: c.alt === 'evoke' || undefined,
+      retraceLand: c.alt === 'retrace' ? firstLandInHand() : undefined,
     })
   else send({ type: 'r.activate', objId: c.cardId, abilityIndex: c.abilityIndex, targets: c.targets as string[] })
   casting.value = null
+}
+/** first land card in your hand — discarded as the retrace additional cost (CR 702.81). */
+function firstLandInHand(): ObjId | undefined {
+  const ids = st.value?.zones.perPlayer[you.value]?.hand ?? []
+  return ids.find((id) => (display.value[cardOf(id)?.defName ?? '']?.typeLine ?? '').includes('Land'))
 }
 /** open the mana-payment panel for cycling a hand card (pays cyclingCost → r.cycle). */
 function beginCyclePayment(objId: ObjId, cost: string) {
@@ -299,6 +330,49 @@ function beginCyclePayment(objId: ObjId, cost: string) {
 }
 /** the cycling cost for a hand card if it can be cycled right now, else null. */
 const cycleCost = (id: ObjId): string | null => legal.value?.cyclable.find((c) => c.objId === id)?.cost ?? null
+
+// alternative-cast target class per card (the redacted client doesn't carry DSL target specs,
+// so — like TARGETED_STARTERS — the alt-cast targets are curated by card name)
+const ALT_TARGET_CLASS: Record<string, TargetClass> = {
+  firebolt: 'any', // flashback → 2 damage to any target
+  "raven's crime": 'player', // retrace → target player discards
+  'murderous rider': 'creature', // adventure (Swift End) → destroy target creature
+  'nyxborn rollicker': 'creature', // bestow → enchant a creature
+}
+function altTargetClass(kind: AltKind, name: string): TargetClass | null {
+  if (kind === 'evoke' || kind === 'exile' || kind === 'suspend') return null // no target
+  return ALT_TARGET_CLASS[name.toLowerCase()] ?? null
+}
+/** begin an alternative cast (flashback / retrace / evoke / bestow / adventure / cast-from-exile /
+ *  suspend): collect a target first if the face needs one, else open the payment panel directly. */
+function beginAltCast(card: RulesClientCard, kind: AltKind, cost: string) {
+  modalPick.value = null
+  multiTargeting.value = null
+  graveyardTargeting.value = null
+  const spec = altTargetClass(kind, card.defName ?? '')
+  if (spec) targeting.value = { objId: card.id, spec, alt: kind, altCost: cost }
+  else beginPayment(card, [], null, kind, cost)
+}
+/** toggle whether the current cast pays its buyback cost (CR 702.27). */
+function toggleBuyback() {
+  if (casting.value?.buybackCost) casting.value.buyback = !casting.value.buyback
+}
+/** lookups the board uses to render alt-cast buttons on cards. */
+const flashbackCostOf = (id: ObjId): string | null => legal.value?.flashbackable.find((f) => f.objId === id)?.cost ?? null
+const retraceCostOf = (id: ObjId): string | null => legal.value?.retraceable.find((f) => f.objId === id)?.cost ?? null
+const evokeCostOf = (id: ObjId): string | null => legal.value?.evokable.find((f) => f.objId === id)?.cost ?? null
+const bestowCostOf = (id: ObjId): string | null => legal.value?.bestowable.find((f) => f.objId === id)?.cost ?? null
+const suspendCostOf = (id: ObjId): string | null => legal.value?.suspendable.find((f) => f.objId === id)?.cost ?? null
+const adventureOf = (id: ObjId) => legal.value?.adventurable.find((f) => f.objId === id) ?? null
+const canCastFromExile = (id: ObjId): boolean => legal.value?.castExileIds.includes(id) ?? false
+/** graveyard cards with a flashback or retrace cast available right now (shown in a small strip). */
+const gyAltIds = computed<ObjId[]>(() => {
+  const fb = legal.value?.flashbackable.map((f) => f.objId) ?? []
+  const rt = legal.value?.retraceable.map((f) => f.objId) ?? []
+  return [...new Set([...fb, ...rt])]
+})
+/** exiled adventurer cards whose creature side you can cast from exile right now. */
+const exileAltIds = computed<ObjId[]>(() => legal.value?.castExileIds ?? [])
 function cancelCast() {
   casting.value = null
 }
@@ -453,7 +527,7 @@ function onBattlefieldClick(id: ObjId) {
     return
   }
   if (targeting.value) {
-    if (isValidTarget(id)) beginPayment(cardOf(targeting.value.objId)!, [id], targeting.value.mode ?? null)
+    if (isValidTarget(id)) beginPayment(cardOf(targeting.value.objId)!, [id], targeting.value.mode ?? null, targeting.value.alt, targeting.value.altCost)
     return
   }
   if (l.needsAttackers && l.declarableAttackerIds.includes(id)) {
@@ -524,19 +598,19 @@ function onOpponentClick(pid: PlayerId) {
   if (canActivateTargetPlayer.value) return void sendActivate(pid)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [pid] })
   if (canCascadeTargetPlayer.value) return void sendCascade(true, [pid])
-  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [pid], targeting.value!.mode ?? null)
+  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [pid], targeting.value!.mode ?? null, targeting.value!.alt, targeting.value!.altCost)
 }
 
 /** clicking a spell on the stack while casting a counter (targeting.spec === 'spell'). */
 function onStackTarget(stackId: ObjId) {
-  if (targeting.value?.spec === 'spell') beginPayment(cardOf(targeting.value.objId)!, [stackId], targeting.value.mode ?? null)
+  if (targeting.value?.spec === 'spell') beginPayment(cardOf(targeting.value.objId)!, [stackId], targeting.value.mode ?? null, targeting.value.alt, targeting.value.altCost)
 }
 
 function onSelfClick() {
   if (canActivateTargetPlayer.value) return void sendActivate(you.value)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [you.value] })
   if (canCascadeTargetPlayer.value) return void sendCascade(true, [you.value])
-  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [you.value], targeting.value!.mode ?? null)
+  if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [you.value], targeting.value!.mode ?? null, targeting.value!.alt, targeting.value!.altCost)
 }
 
 function isValidTarget(id: ObjId): boolean {
@@ -1203,7 +1277,17 @@ onBeforeUnmount(() => {
               >
                 <span class="flex items-center gap-0.5">Kicker <ManaSymbols :value="casting.kickerCost" :size="12" /></span>
               </UButton>
-              <UButton size="xs" icon="i-lucide-sparkles" :disabled="!castCovered" @click="confirmCast">{{ casting.cycling ? 'Cycle' : castIsAbility ? 'Activate' : 'Cast' }}</UButton>
+              <UButton
+                v-if="casting.buybackCost"
+                size="xs"
+                :variant="casting.buyback ? 'solid' : 'soft'"
+                :color="casting.buyback ? 'primary' : 'neutral'"
+                icon="i-lucide-rotate-ccw"
+                @click="toggleBuyback"
+              >
+                <span class="flex items-center gap-0.5">Buyback <ManaSymbols :value="casting.buybackCost" :size="12" /></span>
+              </UButton>
+              <UButton size="xs" icon="i-lucide-sparkles" :disabled="!castCovered" @click="confirmCast">{{ casting.cycling ? 'Cycle' : casting.alt === 'suspend' ? 'Suspend' : castIsAbility ? 'Activate' : 'Cast' }}</UButton>
               <UButton size="xs" variant="ghost" color="neutral" @click="cancelCast">Cancel</UButton>
             </div>
             <div v-if="legal?.needsAttackers" class="rounded-lg border border-red-400 bg-red-500/10 px-3 py-1.5 text-xs font-medium">
@@ -1336,6 +1420,31 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
+            <!-- casts available from your graveyard / exile (flashback, retrace, adventure creature) -->
+            <div v-if="gyAltIds.length || exileAltIds.length" class="mt-2 flex flex-wrap items-end gap-2">
+              <span class="self-center text-[10px] uppercase tracking-wide text-dimmed">From graveyard / exile</span>
+              <div v-for="id in gyAltIds" :key="`gy${id}`" class="flex flex-col items-center gap-1">
+                <RulesCard :card="st.cards[id]!" :display="display[st.cards[id]!.defName ?? '']" size="sm" @preview="hoverDisplay = $event" />
+                <UButton
+                  v-if="flashbackCostOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'flashback', flashbackCostOf(id)!)"
+                >Flashback {{ flashbackCostOf(id) }}</UButton>
+                <UButton
+                  v-if="retraceCostOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'retrace', retraceCostOf(id)!)"
+                >Retrace {{ retraceCostOf(id) }}</UButton>
+              </div>
+              <div v-for="id in exileAltIds" :key="`ex${id}`" class="flex flex-col items-center gap-1">
+                <RulesCard :card="st.cards[id]!" :display="display[st.cards[id]!.defName ?? '']" size="sm" @preview="hoverDisplay = $event" />
+                <UButton
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'exile', display[cardOf(id)?.defName ?? '']?.manaCost ?? '')"
+                >Cast {{ display[cardOf(id)?.defName ?? '']?.manaCost }}</UButton>
+              </div>
+            </div>
+
             <div class="mt-2 flex flex-wrap gap-2">
               <div v-for="id in myHandIds" :key="id" class="flex flex-col items-center gap-1">
                 <RulesCard
@@ -1359,6 +1468,28 @@ onBeforeUnmount(() => {
                 >
                   Cycle {{ cycleCost(id) }}
                 </UButton>
+                <!-- alternative casts (evoke / bestow / suspend / adventure) — the server offers these -->
+                <UButton
+                  v-if="evokeCostOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'evoke', evokeCostOf(id)!)"
+                >Evoke {{ evokeCostOf(id) }}</UButton>
+                <UButton
+                  v-if="bestowCostOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'bestow', bestowCostOf(id)!)"
+                >Bestow {{ bestowCostOf(id) }}</UButton>
+                <UButton
+                  v-if="suspendCostOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-hourglass"
+                  @click.stop="beginAltCast(cardOf(id)!, 'suspend', suspendCostOf(id)!)"
+                >Suspend {{ suspendCostOf(id) }}</UButton>
+                <UButton
+                  v-if="adventureOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'adventure', adventureOf(id)!.cost)"
+                >{{ adventureOf(id)!.name }} {{ adventureOf(id)!.cost }}</UButton>
               </div>
               <span v-if="!myHandIds.length" class="self-center text-xs text-dimmed">Empty hand</span>
             </div>

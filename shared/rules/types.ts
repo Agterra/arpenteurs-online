@@ -433,6 +433,23 @@ export interface LegalActions {
   cascadeTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
   /** true when the hit can be free-cast with NO client input (non-modal, zero targets) → offer a plain "Cast free" */
   cascadeCanFreeCast: boolean
+  // ---- alternative / other-zone casts the client renders as extra cast buttons ----
+  /** graveyard cards castable via flashback right now (CR 702.34) — `r.cast` from the graveyard */
+  flashbackable: { objId: ObjId; cost: string }[]
+  /** graveyard cards castable via retrace right now (CR 702.81) — needs a land in hand to discard */
+  retraceable: { objId: ObjId; cost: string }[]
+  /** hand creatures castable for their evoke cost (CR 702.74) */
+  evokable: { objId: ObjId; cost: string }[]
+  /** hand creatures castable as an Aura for their bestow cost (CR 702.103) — needs a creature target */
+  bestowable: { objId: ObjId; cost: string }[]
+  /** hand cards you can suspend right now (CR 702.62) — `r.suspend` */
+  suspendable: { objId: ObjId; cost: string }[]
+  /** hand cards whose Adventure half you can cast now (CR 715) */
+  adventurable: { objId: ObjId; cost: string; name: string }[]
+  /** exiled adventurer cards whose creature side you can cast from exile (CR 715) */
+  castExileIds: ObjId[]
+  /** castable cards with a buyback cost — the client offers a "buyback" toggle (CR 702.27) */
+  buybackable: { objId: ObjId; cost: string }[]
 }
 
 export const emptyPool = (): ManaPool => ({ W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 })
