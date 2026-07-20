@@ -46,17 +46,5 @@
     "vitest": "^4.0.0",
     "vue-tsc": "^3.0.0",
     "ws": "^8.21.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma",
-      "esbuild",
-      "@parcel/watcher",
-      "@tailwindcss/oxide",
-      "unrs-resolver",
-      "vue-demi"
-    ]
   }
 }
