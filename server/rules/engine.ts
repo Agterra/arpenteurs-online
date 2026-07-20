@@ -62,6 +62,7 @@ export function checkSBA(state: RulesGameState) {
     // counters removes the same number of each.
     for (const obj of Object.values(state.objects)) {
       if (obj.zone !== 'battlefield') continue
+      // CR 704.5q: ±1/+1 / -1/-1 counters annihilate
       const plus = obj.counters['+1/+1'] ?? 0
       const minus = obj.counters['-1/-1'] ?? 0
       if (plus > 0 && minus > 0) {
@@ -70,22 +71,22 @@ export function checkSBA(state: RulesGameState) {
         setCounter(obj, '-1/-1', minus - n)
         changed = true
       }
-    }
-    // CR 714.4: sacrifice a Saga once its lore counters ≥ its final chapter number AND no chapter
-    // ability of it is still on the stack or awaiting a target (the last chapter has fully resolved).
-    for (const obj of Object.values(state.objects)) {
-      if (obj.zone !== 'battlefield') continue
-      const def = getDef(obj.defName)
-      if (!defIsSaga(def) || def.unimplemented) continue
-      const finalChapter = def.saga!.chapters.length
-      if ((obj.counters.lore ?? 0) < finalChapter) continue
-      const chapterPending =
-        state.zones.stack.some((s) => s.sagaChapter != null && s.sourceId === obj.id) ||
-        (state.pendingTrigger?.sagaChapter != null && state.pendingTrigger.sourceId === obj.id)
-      if (chapterPending) continue
-      logLine(state, `${def.name} is sacrificed (final chapter complete).`)
-      moveToGraveyard(state, obj.id)
-      changed = true
+      // CR 714.4: sacrifice a Saga once its lore counters ≥ its final chapter AND no chapter of it
+      // is still on the stack / awaiting a target (folded into this scan to avoid a second pass —
+      // `lore` is only set on Sagas, so the fast path is a single map read for every other object)
+      if (obj.counters.lore) {
+        const def = getDef(obj.defName)
+        if (defIsSaga(def) && !def.unimplemented && obj.counters.lore >= def.saga!.chapters.length) {
+          const chapterPending =
+            state.zones.stack.some((s) => s.sagaChapter != null && s.sourceId === obj.id) ||
+            (state.pendingTrigger?.sagaChapter != null && state.pendingTrigger.sourceId === obj.id)
+          if (!chapterPending) {
+            logLine(state, `${def.name} is sacrificed (final chapter complete).`)
+            moveToGraveyard(state, obj.id)
+            changed = true
+          }
+        }
+      }
     }
     for (const obj of battlefieldCreatures(state)) {
       const def = getDef(obj.defName)
@@ -518,6 +519,7 @@ function beginStep(state: RulesGameState) {
     }
     case 'upkeep': {
       fireUpkeepTriggers(state) // "at the beginning of your upkeep" triggers onto the stack
+      advanceSuspend(state) // CR 702.62c/d: remove a time counter from each suspended card; cast at 0
       // a targeted upkeep trigger sets pending → its controller chooses first
       if (!state.pending) grantPriority(state, ap)
       return
@@ -861,6 +863,8 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     logLine(state, `${def.name} enters the battlefield.`)
     obj.controllerId = item.controllerId
     obj.summoningSick = defIsCreature(def)
+    // suspend (CR 702.62e): a creature cast from suspend enters with haste
+    if (item.suspendHaste && defIsCreature(def)) obj.summoningSick = false
     moveTo(state, obj.id, 'battlefield') // moveTo initialises loyalty for a planeswalker (CR 306.5b)
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
     if (def.entersTapped) obj.tapped = true // e.g. Worn Powerstone (cast, enters tapped)
@@ -1057,8 +1061,16 @@ function resolveCascade(state: RulesGameState, item: StackItem) {
   }
 }
 
-/** Free-cast a card from exile (cascade): validate targets, then put it on the stack for {0}. */
-function freeCastFromExile(state: RulesGameState, cardId: ObjId, controllerId: PlayerId, targets: (ObjId | PlayerId)[], mode: number | undefined) {
+/** Free-cast a card from exile (cascade / suspend): validate targets, then put it on the stack for
+ *  {0}. `suspendHaste` marks a suspended creature so it enters with haste (CR 702.62e). */
+function freeCastFromExile(
+  state: RulesGameState,
+  cardId: ObjId,
+  controllerId: PlayerId,
+  targets: (ObjId | PlayerId)[],
+  mode: number | undefined,
+  opts: { reason?: 'cascade' | 'suspend'; suspendHaste?: boolean } = {},
+) {
   const obj = state.objects[cardId]
   if (!obj || obj.zone !== 'exile') throw new RulesError('BAD_CASCADE', 'That card is no longer exiled')
   const def = getDef(obj.defName)
@@ -1080,12 +1092,13 @@ function freeCastFromExile(state: RulesGameState, cardId: ObjId, controllerId: P
     abilityIndex: null,
     targets: [...targets],
     mode: def.modes?.length ? (mode ?? 0) : undefined,
+    suspendHaste: opts.suspendHaste || undefined,
     // free cast: no mana paid; X is 0 (x omitted)
   })
-  logLine(state, `${name(state, controllerId)} casts ${def.name} for free (cascade).`)
+  logLine(state, `${name(state, controllerId)} casts ${def.name} for free (${opts.reason ?? 'cascade'}).`)
   // ward still applies to a free cast that targets an opponent's warded permanent
   queueWardTriggers(state, obj.id, targets, controllerId)
-  // a cascade free-cast is still "casting a spell" (CR 702.85e) → prowess triggers
+  // a free cast is still "casting a spell" (CR 702.85e / 702.62e) → prowess triggers
   applyProwess(state, controllerId, def)
 }
 
@@ -1180,6 +1193,29 @@ function fireUpkeepTriggers(state: RulesGameState) {
 }
 
 /**
+ * Suspend (CR 702.62c/d): at the beginning of the active player's upkeep, remove a time counter
+ * from each of their suspended cards (exiled, has a `time` counter). When the last is removed, cast
+ * a NON-targeted suspended card for free (a creature gains haste). A targeted suspended card is left
+ * for a manual cast — auto-casting with a target choice is a documented follow-up.
+ */
+function advanceSuspend(state: RulesGameState) {
+  const ap = state.activePlayer
+  for (const id of [...state.zones.perPlayer[ap]!.exile]) {
+    const obj = state.objects[id]
+    if (!obj || !getDef(obj.defName).suspend || (obj.counters.time ?? 0) <= 0) continue
+    obj.counters.time = (obj.counters.time ?? 0) - 1
+    const def = getDef(obj.defName)
+    logLine(state, `${def.name} — remove a time counter (${obj.counters.time} left).`)
+    if (obj.counters.time === 0) {
+      const specs = flattenSpecs(activeSpell(def, undefined)?.targets)
+      if (specs.length === 0)
+        freeCastFromExile(state, id, ap, [], undefined, { reason: 'suspend', suspendHaste: defIsCreature(def) })
+      else logLine(state, `${def.name} must be cast manually (targeted suspend isn't auto-cast yet).`)
+    }
+  }
+}
+
+/**
  * CR 714.3: after the active player's draw step (i.e. as their precombat main phase begins), put
  * a lore counter on each Saga they control; the newly-reached chapter ability triggers. Mirrors
  * fireUpkeepTriggers' documented limitation: if a targeted chapter pends, later Sagas this turn are
@@ -1201,6 +1237,8 @@ function advanceSagas(state: RulesGameState) {
 
 /** The active spell body for a (possibly modal) card given the chosen mode index. */
 function activeSpell(def: CardDefinition, mode: number | null | undefined) {
+  // split card (CR 709): the chosen half is selected by mode (0 = left, 1 = right)
+  if (def.split) return mode === 1 ? def.split.right : def.split.left
   return def.modes?.length ? def.modes[mode ?? 0] : def.spell
 }
 /** How many {X} symbols the mana cost has (X spells multiply the chosen X by this). */
@@ -1493,17 +1531,20 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const obj = fromCommand || fromExileAdv || fromFlashback ? candidate! : requireInHand(state, actor, msg.objId)
       const def = getDef(obj.defName)
       if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
-      // the "face" being cast: the adventure half, or the card's main face
       const adv = castingAdventure ? def.adventure! : null
-      const faceTypes = adv ? adv.types : def.types
-      const faceManaCost = adv ? adv.manaCost : fromFlashback ? def.flashbackCost! : def.manaCost
-      if (defIsLand(def) && !adv) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
-      const instantSpeed = faceTypes.includes('Instant') || (!adv && hasKw(state, obj.id, 'flash'))
+      // split card (CR 709): the chosen half is selected by mode (0 = left, 1 = right)
+      if (!adv && def.split && msg.mode !== 0 && msg.mode !== 1) throw new RulesError('BAD_MODE', 'Choose a split half')
+      const splitHalf = !adv && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
+      // the "face" being cast: the adventure half, a split half, or the card's main face
+      const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : fromFlashback ? def.flashbackCost! : def.manaCost
+      if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
+      const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
         throw new RulesError('TIMING', 'That can only be cast in your main phase with an empty stack')
 
       // modal "choose one": validate the chosen mode; targets come from that mode (main face only)
-      if (!adv && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
+      if (!adv && !def.split && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
         throw new RulesError('BAD_MODE', 'Choose a valid mode')
       const chosen = adv ? { targets: adv.targets, effect: adv.effect } : activeSpell(def, msg.mode)
       const specs = flattenSpecs(chosen?.targets)
@@ -1569,7 +1610,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         abilityIndex: null,
         targets: msg.targets,
         x: xCount > 0 ? x : undefined,
-        mode: !adv && def.modes?.length ? (msg.mode ?? 0) : undefined,
+        mode: !adv && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
         kicked: kicked || undefined,
         adventure: castingAdventure || undefined,
         flashback: fromFlashback || undefined,
@@ -1579,7 +1620,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       )
       logLine(
         state,
-        `${name(state, actor)} casts ${adv ? adv.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
+        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)
@@ -1887,6 +1928,30 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         targets: [],
       })
       grantPriority(state, actor) // activator keeps priority; pass chain restarts (CR 116.4)
+      break
+    }
+
+    case 'r.suspend': {
+      requirePriority(state, actor)
+      const obj = requireInHand(state, actor, msg.objId)
+      const def = getDef(obj.defName)
+      if (!def.suspend) throw new RulesError('NO_SUSPEND', "That card doesn't have suspend")
+      // suspend at the time you could cast the card: instant speed only for an instant
+      const instantSpeed = def.types.includes('Instant')
+      if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
+        throw new RulesError('TIMING', 'Suspend only in your main phase with an empty stack')
+      // pay the suspend cost (atomic — throws before exiling)
+      const cost = parseManaCost(def.suspend.cost)
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(cost, pool)
+      if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      // exile it face-up with N time counters (exile is public — no re-mint needed; the hand id
+      // was never serialised to opponents, so revealing it now leaks nothing — invariants #2/#3)
+      moveTo(state, obj.id, 'exile')
+      obj.counters.time = def.suspend.n
+      logLine(state, `${name(state, actor)} suspends ${def.name} with ${def.suspend.n} time counter${def.suspend.n === 1 ? '' : 's'}.`)
+      grantPriority(state, actor) // a special action; the actor keeps priority, pass chain restarts
       break
     }
 

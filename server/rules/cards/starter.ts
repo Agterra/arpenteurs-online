@@ -1703,4 +1703,40 @@ export const STARTER_SET: CardDefinition[] = [
     // "{6}{G}: Monstrosity 4."
     abilities: [{ kind: 'activated', cost: { mana: '{6}{G}' }, effect: monstrosity(4) }],
   },
+
+  // --- Coverage batch MECH6: Split cards (CR 709 — two halves on one card, pick one to cast) ---
+  {
+    name: 'Assault // Battery',
+    types: ['Instant', 'Sorcery'],
+    manaCost: '{R}', // off-stack display only; each half carries its own cost
+    colors: ['R', 'G'],
+    split: {
+      left: { name: 'Assault', types: ['Instant'], manaCost: '{R}', targets: [{ kind: 'anyTarget', count: 1 }], effect: dealDamage(2) },
+      right: { name: 'Battery', types: ['Sorcery'], manaCost: '{3}{G}', effect: createToken({ name: 'Elephant', power: 3, toughness: 3, subtypes: ['Elephant'] }) },
+    },
+  },
+
+  // --- Coverage batch MECH7: Suspend (CR 702.62 — exile with time counters, cast when the last is removed) ---
+  {
+    // French-vanilla (flying) + suspend; entire rules captured. A creature cast from suspend has haste.
+    name: 'Errant Ephemeron',
+    types: ['Creature'],
+    subtypes: ['Illusion'],
+    manaCost: '{6}{U}',
+    colors: ['U'],
+    power: 6,
+    toughness: 4,
+    keywords: ['flying'],
+    suspend: { n: 4, cost: '{1}{U}' },
+  },
+  {
+    // Non-targeted suspend sorcery: auto-casts when the last time counter is removed.
+    name: 'Search for Tomorrow',
+    types: ['Sorcery'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    suspend: { n: 2, cost: '{G}' },
+    // "Search your library for a basic land card and put it onto the battlefield."
+    spell: { effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield' }) },
+  },
 ]

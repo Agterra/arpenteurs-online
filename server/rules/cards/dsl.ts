@@ -173,6 +173,16 @@ export interface CardDefinition {
   /** modal ("choose one") spell: the caster picks one mode at cast time */
   modes?: SpellMode[]
   /**
+   * Split card (CR 709): two instant/sorcery halves on one card, each with its own name / types /
+   * mana cost / effect. The caster picks a half at cast time via `mode` (0 = left, 1 = right); the
+   * card goes to the graveyard on resolution like any instant/sorcery. (Fuse is not supported.)
+   * Give the card `types` covering both halves (e.g. `['Instant','Sorcery']`).
+   */
+  split?: {
+    left: { name: string; types: CardType[]; manaCost: string } & SpellAbility
+    right: { name: string; types: CardType[]; manaCost: string } & SpellAbility
+  }
+  /**
    * Triggered abilities (CR 603). Each fires on its event, is put on the stack
    * when its controller next gets priority, and resolves like a spell. If it has
    * `targets` the controller chooses them (removed if none legal — 603.3c).
@@ -212,6 +222,14 @@ export interface CardDefinition {
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.
    */
   convoke?: boolean
+  /**
+   * Suspend (CR 702.62): "Suspend N—[cost]. Rather than cast this card, you may pay [cost] and
+   * exile it with N time counters. At the beginning of your upkeep, remove a time counter; when
+   * the last is removed, cast it without paying its mana cost (if a creature, it gains haste)."
+   * `cost` is the mana part. NON-targeted suspend spells auto-cast when the last counter is removed;
+   * targeted-suspend auto-cast (with a target choice) + creature haste are documented follow-ups.
+   */
+  suspend?: { n: number; cost: string }
   /**
    * True for "assisted table" fallbacks auto-built from the catalog: the engine
    * knows the printed body (types/P·T/cost) but NOT the card's rules text. Such

@@ -20,7 +20,7 @@ import type {
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { getDef } from './cards/registry'
 import { defIsCreature, defIsEquipment, defIsLand } from './cards/dsl'
-import { currentKeywords, currentPower, currentToughness, hostCantAttack, hostCantBlock } from './characteristics'
+import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
 import { hasAnyLegalTarget } from './engine'
 
@@ -33,7 +33,12 @@ function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean 
 }
 
 export function redactRulesState(state: RulesGameState, viewer: PlayerId): RulesClientState {
-  const toClientCard = (obj: RulesGameState['objects'][string]): RulesClientCard => ({
+  const toClientCard = (obj: RulesGameState['objects'][string]): RulesClientCard => {
+    // cache the def and compute effective P/T ONCE per object (redaction is the fuzzer's hot path)
+    const def = getDef(obj.defName)
+    const isCrea = defIsCreature(def)
+    const pt = isCrea ? currentPT(state, obj) : null
+    return {
     id: obj.id,
     defName: obj.defName,
     ownerId: obj.ownerId,
@@ -45,15 +50,12 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     counters: obj.counters,
     // effective P/T only when the printed body is numeric (a "*"/CDA body has
     // an undefined base — leave it unknown rather than reporting a bogus 0)
-    power: defIsCreature(getDef(obj.defName)) && getDef(obj.defName).power != null ? currentPower(state, obj) : null,
-    toughness:
-      defIsCreature(getDef(obj.defName)) && getDef(obj.defName).toughness != null ? currentToughness(state, obj) : null,
-    loyalty: getDef(obj.defName).types.includes('Planeswalker')
-      ? (obj.loyalty ?? getDef(obj.defName).loyalty ?? 0)
-      : null,
+    power: pt && def.power != null ? pt.power : null,
+    toughness: pt && def.toughness != null ? pt.toughness : null,
+    loyalty: def.types.includes('Planeswalker') ? (obj.loyalty ?? def.loyalty ?? 0) : null,
     isCommander: obj.isCommander,
     attachedTo: obj.attachedTo ?? null,
-    unimplemented: getDef(obj.defName).unimplemented ?? false,
+    unimplemented: def.unimplemented ?? false,
     keywords: currentKeywords(state, obj),
     attackingDefender: obj.attackingDefender,
     attackingPwId: obj.attackingPwId ?? null,
@@ -61,7 +63,8 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     phasedOut: obj.phasedOut ?? false,
     adventured: obj.adventured ?? false,
     hidden: false,
-  })
+    }
+  }
 
   const cards: Record<ObjId, RulesClientCard> = {}
   for (const obj of Object.values(state.objects)) {

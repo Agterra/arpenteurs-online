@@ -439,7 +439,12 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // as dead code (a planeswalker never castable / never attacked)
     expect(pwLoyaltyFired).toBeGreaterThan(0)
     expect(pwAttacked).toBeGreaterThan(0)
-  }, 180_000)
+    // Execution budget only — NOT part of the leak assertion. This fuzzes 4 games (2/3/4-player)
+    // to a 1500-step cap, redacting the full state for every viewer after EVERY action (history-
+    // aware). The 3/4-player games run to the cap (random play rarely ends them), so the work is
+    // large but BOUNDED — it cannot hang. Generous timeout so CPU-load variance can't flake CI;
+    // the leak coverage (seeds, step depth, per-action check) is unchanged.
+  }, 420_000)
 
   // Deterministic coverage of the graveyard→hand recursion re-mint (invariant #3),
   // run through the SAME history-aware machinery as the fuzzer. The random loop can't

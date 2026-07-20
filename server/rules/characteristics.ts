@@ -134,10 +134,23 @@ function hostRestriction(state: RulesGameState, obj: GameObject, which: 'cantAtt
 export const hostCantAttack = (state: RulesGameState, obj: GameObject) => hostRestriction(state, obj, 'cantAttack')
 export const hostCantBlock = (state: RulesGameState, obj: GameObject) => hostRestriction(state, obj, 'cantBlock')
 
+/**
+ * Effective power AND toughness in a single pass (CR 613 layer 7). Computing both together does the
+ * battlefield-scanning `staticPT`/`pumpPT` work ONCE rather than twice — the redactor calls this for
+ * every object × every viewer × every action, so halving that scan is a large win for the leak
+ * fuzzer and live redaction. `currentPower`/`currentToughness` delegate here.
+ */
+export function currentPT(state: RulesGameState, obj: GameObject): { power: number; toughness: number } {
+  const c = counterPT(obj)
+  const s = staticPT(state, obj)
+  const p = pumpPT(state, obj)
+  return { power: baseP(state, obj) + c + s.p + p.p, toughness: baseT(state, obj) + c + s.t + p.t }
+}
+
 export function currentPower(state: RulesGameState, obj: GameObject): number {
-  return baseP(state, obj) + counterPT(obj) + staticPT(state, obj).p + pumpPT(state, obj).p
+  return currentPT(state, obj).power
 }
 
 export function currentToughness(state: RulesGameState, obj: GameObject): number {
-  return baseT(state, obj) + counterPT(obj) + staticPT(state, obj).t + pumpPT(state, obj).t
+  return currentPT(state, obj).toughness
 }

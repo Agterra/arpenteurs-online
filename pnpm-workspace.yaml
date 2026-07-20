@@ -1,0 +1,8 @@
+# pnpm 11 moved the build-script allowlist out of package.json#pnpm.onlyBuiltDependencies
+# (now ignored) into this file. These are the same trusted deps that were approved before.
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  vue-demi: true

@@ -162,6 +162,9 @@ export interface StackItem {
   /** Flashback (CR 702.34): this spell was cast from the graveyard via flashback — it is exiled
    *  as it leaves the stack (resolved or countered) instead of returning to the graveyard. */
   flashback?: boolean
+  /** Suspend (CR 702.62e): this spell was cast from suspend — if it's a creature it enters with
+   *  haste (until it next leaves the battlefield). */
+  suspendHaste?: boolean
 }
 
 export interface PlayerRState {

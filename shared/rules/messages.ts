@@ -49,6 +49,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.sacrifice'), objIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.equip'), equipmentId: Id, creatureId: Id }),
   z.object({ type: z.literal('r.cycle'), objId: Id }),
+  z.object({ type: z.literal('r.suspend'), objId: Id }), // suspend a card from hand (CR 702.62)
   z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
   z.object({ type: z.literal('r.cascade'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }),
   z.object({
