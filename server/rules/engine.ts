@@ -874,6 +874,12 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
       obj.counters.lore = 1
       queueSagaChapter(state, obj.id, 1)
     }
+  } else if (item.buyback) {
+    // buyback (CR 702.27): a RESOLVED spell returns to its owner's hand instead of the graveyard
+    // (public stack → hidden hand → re-mint the id, invariant #3). Fizzle still goes to graveyard.
+    moveTo(state, obj.id, 'hand')
+    remintForHiddenEntry(state, obj.id, true)
+    logLine(state, `${def.name} returns to its owner's hand (buyback).`)
   } else {
     spellToRest(state, obj.id, item)
   }
@@ -1573,6 +1579,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         cost.generic += kc.generic
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += kc.colored[c]
       }
+      // buyback (CR 702.27): optional additional cost; on resolution the spell returns to hand
+      const buyback = !adv && !splitHalf && !!msg.buyback
+      if (buyback) {
+        if (!def.buybackCost) throw new RulesError('NO_BUYBACK', 'That spell has no buyback')
+        const bc = parseManaCost(def.buybackCost)
+        cost.generic += bc.generic
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += bc.colored[c]
+      }
       // convoke (CR 702.51): tap creatures you control to pay for {1} or a matching-colour pip
       // (main face only). Validated + planned against a local `cost` here; creatures are tapped
       // only after the remaining mana payment is confirmed below (no partial mutation on failure).
@@ -1630,6 +1644,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         kicked: kicked || undefined,
         adventure: castingAdventure || undefined,
         flashback: fromFlashback || undefined,
+        buyback: buyback || undefined,
       })
       const targetNames = msg.targets.map((t) =>
         Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),

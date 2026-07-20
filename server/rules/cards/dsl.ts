@@ -224,6 +224,13 @@ export interface CardDefinition {
    */
   retrace?: boolean
   /**
+   * Buyback (CR 702.27): "You may pay an additional [cost] as you cast this spell. If you do, put
+   * it into your hand instead of into your graveyard as it resolves." Set to the mana part of the
+   * buyback cost; passed via `r.cast.buyback`. Only applies on resolution (a fizzled spell still
+   * goes to the graveyard).
+   */
+  buybackCost?: string
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.

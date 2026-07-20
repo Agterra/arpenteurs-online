@@ -165,6 +165,9 @@ export interface StackItem {
   /** Suspend (CR 702.62e): this spell was cast from suspend — if it's a creature it enters with
    *  haste (until it next leaves the battlefield). */
   suspendHaste?: boolean
+  /** Buyback (CR 702.27): the buyback cost was paid — on resolution this spell returns to its
+   *  owner's hand instead of the graveyard. */
+  buyback?: boolean
 }
 
 export interface PlayerRState {

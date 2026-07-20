@@ -1750,4 +1750,15 @@ export const STARTER_SET: CardDefinition[] = [
     // "Target player discards a card. Retrace"
     spell: { targets: [{ kind: 'player', count: 1 }], effect: playersDiscard('target', 1) },
   },
+
+  // --- Coverage batch MECH9: Buyback (CR 702.27 — pay extra, return to hand on resolve) ---
+  {
+    name: 'Capsize',
+    types: ['Instant'],
+    manaCost: '{1}{U}{U}',
+    colors: ['U'],
+    buybackCost: '{3}',
+    // "Return target permanent to its owner's hand. Buyback {3}"
+    spell: { targets: [{ kind: 'permanent', count: 1 }], effect: returnToHand() },
+  },
 ]
