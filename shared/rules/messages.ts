@@ -36,6 +36,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
     retraceLand: Id.optional(), // land discarded as the additional retrace cost (CR 702.81)
     buyback: z.boolean().optional(), // pay the buyback cost → return to hand on resolve (CR 702.27)
     bestow: z.boolean().optional(), // cast for the bestow cost as an Aura (CR 702.103)
+    evoke: z.boolean().optional(), // cast for the evoke cost → sacrifice on enter (CR 702.74)
   }),
   z.object({
     type: z.literal('r.attackers'),

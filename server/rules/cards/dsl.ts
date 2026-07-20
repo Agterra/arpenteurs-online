@@ -238,6 +238,12 @@ export interface CardDefinition {
    */
   bestowCost?: string
   /**
+   * Evoke (CR 702.74): "You may cast this spell for its evoke cost. If its evoke cost was paid,
+   * it's sacrificed when it enters the battlefield." Its enters-the-battlefield triggers still fire
+   * (they're on the stack when it's sacrificed). Set to the evoke mana cost; cast via `r.cast.evoke`.
+   */
+  evokeCost?: string
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.

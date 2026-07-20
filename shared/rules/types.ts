@@ -174,6 +174,8 @@ export interface StackItem {
   buyback?: boolean
   /** Bestow (CR 702.103): cast for the bestow cost → enters as an Aura attached to its target. */
   bestow?: boolean
+  /** Evoke (CR 702.74): cast for the evoke cost → sacrificed as it enters (ETB triggers still fire). */
+  evoke?: boolean
 }
 
 export interface PlayerRState {

@@ -1166,7 +1166,8 @@ export const STARTER_SET: CardDefinition[] = [
     power: 2,
     toughness: 2,
     keywords: ['flying'],
-    enters: { effect: drawCards(2) }, // (evoke omitted — plays as the 5-mana flyer)
+    evokeCost: '{2}{U}', // Evoke (CR 702.74) — cast for {2}{U}, sacrificed on enter (batch MECH11)
+    enters: { effect: drawCards(2) },
   },
   {
     name: 'Counterspell',
@@ -1776,4 +1777,6 @@ export const STARTER_SET: CardDefinition[] = [
     bestowCost: '{1}{G}',
     grantsToHost: { power: 1, toughness: 1 },
   },
+
+  // MECH11 (Evoke, CR 702.74) added evokeCost to the existing Mulldrifter above.
 ]

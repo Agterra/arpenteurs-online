@@ -905,6 +905,13 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
       obj.counters.lore = 1
       queueSagaChapter(state, obj.id, 1)
     }
+    // Evoke (CR 702.74): sacrifice it as it enters. Its ETB triggers were just queued above and
+    // resolve independently (they don't need the source on the battlefield), so e.g. Mulldrifter
+    // still draws two cards even though it's already dying.
+    if (item.evoke) {
+      logLine(state, `${def.name} is sacrificed (evoke).`)
+      moveToGraveyard(state, obj.id)
+    }
   } else if (item.buyback) {
     // buyback (CR 702.27): a RESOLVED spell returns to its owner's hand instead of the graveyard
     // (public stack → hidden hand → re-mint the id, invariant #3). Fizzle still goes to graveyard.
@@ -1575,12 +1582,15 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // bestow (CR 702.103): cast the creature as an Aura for its bestow cost (targets a creature)
       const castingBestow = !adv && !fromFlashback && !fromRetrace && !!msg.bestow
       if (castingBestow && !def.bestowCost) throw new RulesError('NO_BESTOW', 'That card has no bestow')
+      // evoke (CR 702.74): cast for the evoke cost, then sacrifice it as it enters
+      const castingEvoke = !adv && !castingBestow && !fromFlashback && !fromRetrace && !!msg.evoke
+      if (castingEvoke && !def.evokeCost) throw new RulesError('NO_EVOKE', 'That card has no evoke')
       // split card (CR 709): the chosen half is selected by mode (0 = left, 1 = right)
       if (!adv && !castingBestow && def.split && msg.mode !== 0 && msg.mode !== 1) throw new RulesError('BAD_MODE', 'Choose a split half')
       const splitHalf = !adv && !castingBestow && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
       // the "face" being cast: the adventure half, a split half, or the card's main face
       const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
-      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : fromFlashback ? def.flashbackCost! : def.manaCost
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : fromFlashback ? def.flashbackCost! : def.manaCost
       if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
       const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && !castingBestow && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
@@ -1681,6 +1691,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         flashback: fromFlashback || undefined,
         buyback: buyback || undefined,
         bestow: castingBestow || undefined,
+        evoke: castingEvoke || undefined,
       })
       const targetNames = msg.targets.map((t) =>
         Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),
