@@ -438,6 +438,8 @@ export interface LegalActions {
   flashbackable: { objId: ObjId; cost: string }[]
   /** graveyard cards castable via retrace right now (CR 702.81) — needs a land in hand to discard */
   retraceable: { objId: ObjId; cost: string }[]
+  /** graveyard cards castable via escape right now (CR 702.139) — needs `exileCount` other GY cards */
+  escapable: { objId: ObjId; cost: string; exileCount: number }[]
   /** hand creatures castable for their evoke cost (CR 702.74) */
   evokable: { objId: ObjId; cost: string }[]
   /** hand creatures castable as an Aura for their bestow cost (CR 702.103) — needs a creature target */

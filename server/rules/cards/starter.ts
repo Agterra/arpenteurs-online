@@ -1779,4 +1779,19 @@ export const STARTER_SET: CardDefinition[] = [
   },
 
   // MECH11 (Evoke, CR 702.74) added evokeCost to the existing Mulldrifter above.
+
+  // --- Coverage batch MECH12: Escape (CR 702.139 — recast from graveyard by exiling other cards) ---
+  {
+    // Entire rules captured: ETB Goat token + "Sacrifice a creature: Scry 1" + escape.
+    name: 'Woe Strider',
+    types: ['Creature'],
+    subtypes: ['Horror'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    power: 3,
+    toughness: 2,
+    escape: { cost: '{3}{B}', exileCount: 4 },
+    enters: { effect: createToken({ name: 'Goat', power: 0, toughness: 1, subtypes: ['Goat'] }) },
+    abilities: [{ kind: 'activated', cost: { sacrifice: { count: 1, filter: 'creature' } }, effect: scry(1) }],
+  },
 ]

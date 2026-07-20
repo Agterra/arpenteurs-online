@@ -155,6 +155,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     cascadeCanFreeCast: false,
     flashbackable: [],
     retraceable: [],
+    escapable: [],
     evokable: [],
     bestowable: [],
     suspendable: [],
@@ -402,15 +403,20 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   const hasLandInHand = zoneArr(state, viewer, 'hand').some((id) => defIsLand(getDef(state.objects[id]!.defName)))
   const haveCreatureTarget = battlefieldCreatures(state).length > 0 // bestow can enchant any creature
 
+  const gy = zoneArr(state, viewer, 'graveyard')
   const flashbackable: LegalActions['flashbackable'] = []
   const retraceable: LegalActions['retraceable'] = []
-  for (const id of zoneArr(state, viewer, 'graveyard')) {
+  const escapable: LegalActions['escapable'] = []
+  for (const id of gy) {
     const def = getDef(state.objects[id]!.defName)
     const timingOk = def.types.includes('Instant') || isMain
     if (def.flashbackCost && timingOk && affordable(def.flashbackCost) && targetsOk(def))
       flashbackable.push({ objId: id, cost: def.flashbackCost })
     if (def.retrace && timingOk && affordable(def.manaCost) && hasLandInHand && targetsOk(def))
       retraceable.push({ objId: id, cost: def.manaCost ?? '' })
+    // escape: need `exileCount` OTHER cards in the graveyard to exile as the cost
+    if (def.escape && timingOk && affordable(def.escape.cost) && gy.length - 1 >= def.escape.exileCount && targetsOk(def))
+      escapable.push({ objId: id, cost: def.escape.cost, exileCount: def.escape.exileCount })
   }
 
   const evokable: LegalActions['evokable'] = []
@@ -461,6 +467,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     kickable,
     flashbackable,
     retraceable,
+    escapable,
     evokable,
     bestowable,
     suspendable,

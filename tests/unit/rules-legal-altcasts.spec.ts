@@ -19,6 +19,8 @@ describe('legal actions — alternative casts for the client', () => {
     const { state, A, B } = makeDuel()
     const bolt = putCard(state, A, 'Firebolt', 'graveyard') // flashback {4}{R}
     const raven = putCard(state, A, "Raven's Crime", 'graveyard') // retrace (needs a land in hand)
+    const woe = putCard(state, A, 'Woe Strider', 'graveyard') // escape {3}{B}, exile 4 others
+    ;[0, 1, 2, 3].forEach(() => putCard(state, A, 'Mountain', 'graveyard')) // escape fodder
     putCard(state, A, 'Mountain', 'hand') // the land for retrace
     const mull = putCard(state, A, 'Mulldrifter', 'hand') // evoke {2}{U}
     const roll = putCard(state, A, 'Nyxborn Rollicker', 'hand') // bestow {1}{G}
@@ -35,6 +37,8 @@ describe('legal actions — alternative casts for the client', () => {
     const legal = computeLegal(state, A)
     expect(legal.flashbackable.map((f) => f.objId)).toContain(bolt)
     expect(legal.retraceable.map((f) => f.objId)).toContain(raven)
+    expect(legal.escapable.map((f) => f.objId)).toContain(woe)
+    expect(legal.escapable.find((f) => f.objId === woe)?.exileCount).toBe(4)
     expect(legal.evokable.map((f) => f.objId)).toContain(mull)
     expect(legal.bestowable.map((f) => f.objId)).toContain(roll)
     expect(legal.suspendable.map((f) => f.objId)).toContain(eph)

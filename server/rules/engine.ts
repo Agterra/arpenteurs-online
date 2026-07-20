@@ -1575,7 +1575,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // Retrace (CR 702.81): cast from your graveyard for its normal cost + discard a land card
       const fromRetrace =
         !castingAdventure && !!candidate && candidate.zone === 'graveyard' && candidate.ownerId === actor && !!getDef(candidate.defName).retrace
-      const obj = fromCommand || fromExileAdv || fromFlashback || fromRetrace ? candidate! : requireInHand(state, actor, msg.objId)
+      // Escape (CR 702.139): cast from your graveyard for the escape cost + exile N other GY cards
+      const fromEscape =
+        !castingAdventure && !!candidate && candidate.zone === 'graveyard' && candidate.ownerId === actor && !!getDef(candidate.defName).escape
+      const obj = fromCommand || fromExileAdv || fromFlashback || fromRetrace || fromEscape ? candidate! : requireInHand(state, actor, msg.objId)
       const def = getDef(obj.defName)
       if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
       const adv = castingAdventure ? def.adventure! : null
@@ -1590,7 +1593,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const splitHalf = !adv && !castingBestow && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
       // the "face" being cast: the adventure half, a split half, or the card's main face
       const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
-      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : fromFlashback ? def.flashbackCost! : def.manaCost
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : def.manaCost
       if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
       const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && !castingBestow && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
@@ -1662,6 +1665,18 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           throw new RulesError('BAD_RETRACE', 'Retrace requires discarding a land card from your hand')
         retraceLand = l
       }
+      // escape (CR 702.139): exile exactly N OTHER cards from your graveyard as an additional cost
+      let escapeExile: ObjId[] = []
+      if (fromEscape) {
+        escapeExile = [...new Set(msg.escapeExile ?? [])]
+        const need = def.escape!.exileCount
+        if (escapeExile.length !== need) throw new RulesError('BAD_ESCAPE', `Exile exactly ${need} other cards`)
+        for (const id of escapeExile) {
+          const g = state.objects[id]
+          if (id === obj.id || !g || g.zone !== 'graveyard' || g.ownerId !== actor)
+            throw new RulesError('BAD_ESCAPE', 'Escape exiles other cards from your graveyard')
+        }
+      }
       const payment = planPayment(cost, state.players[actor]!.manaPool)
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
       const pool = state.players[actor]!.manaPool
@@ -1671,6 +1686,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         moveToGraveyard(state, retraceLand.id) // discard the land (hand→graveyard) as the retrace cost
         logLine(state, `${name(state, actor)} discards ${getDef(retraceLand.defName).name} (retrace).`)
       }
+      for (const id of escapeExile) moveTo(state, id, 'exile') // exile the N cards as the escape cost
+      if (escapeExile.length) logLine(state, `${name(state, actor)} exiles ${escapeExile.length} cards (escape).`)
 
       pullFromCurrentZone(state, obj)
       obj.zone = 'stack'
@@ -1698,7 +1715,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       )
       logLine(
         state,
-        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
+        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromEscape ? ' (escape)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)

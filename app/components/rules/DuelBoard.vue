@@ -79,7 +79,7 @@ const POOL_COLORS: ManaColor[] = ['W', 'U', 'B', 'R', 'G', 'C']
 
 type TargetClass = 'any' | 'creature' | 'permanent' | 'spell' | 'player'
 /** which alternative cast is being paid for (extra r.cast flag / other zone / other action) */
-type AltKind = 'flashback' | 'retrace' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend'
+type AltKind = 'flashback' | 'retrace' | 'escape' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend'
 /** starter cards that need a target as they're cast (defName → target class). */
 const TARGETED_STARTERS: Record<string, TargetClass> = {
   shock: 'any',
@@ -181,6 +181,7 @@ const casting = ref<{
   kicked?: boolean // whether the player chose to pay the kicker
   // alternative cast being paid for (extra r.cast flag / different zone / different action)
   alt?: AltKind
+  escapeCount?: number // escape: how many other graveyard cards to exile as the cost
   buybackCost?: string // enables the buyback toggle
   buyback?: boolean // whether the player chose to pay buyback
 } | null>(null)
@@ -314,6 +315,7 @@ function confirmCast() {
       bestow: c.alt === 'bestow' || undefined,
       evoke: c.alt === 'evoke' || undefined,
       retraceLand: c.alt === 'retrace' ? firstLandInHand() : undefined,
+      escapeExile: c.alt === 'escape' ? firstNOtherInGraveyard(c.cardId, c.escapeCount ?? 0) : undefined,
     })
   else send({ type: 'r.activate', objId: c.cardId, abilityIndex: c.abilityIndex, targets: c.targets as string[] })
   casting.value = null
@@ -322,6 +324,11 @@ function confirmCast() {
 function firstLandInHand(): ObjId | undefined {
   const ids = st.value?.zones.perPlayer[you.value]?.hand ?? []
   return ids.find((id) => (display.value[cardOf(id)?.defName ?? '']?.typeLine ?? '').includes('Land'))
+}
+/** first N cards in your graveyard other than `exclude` — exiled as the escape cost (CR 702.139). */
+function firstNOtherInGraveyard(exclude: ObjId, n: number): ObjId[] {
+  const ids = (st.value?.zones.perPlayer[you.value]?.graveyard ?? []).filter((id) => id !== exclude)
+  return ids.slice(0, n)
 }
 /** open the mana-payment panel for cycling a hand card (pays cyclingCost → r.cycle). */
 function beginCyclePayment(objId: ObjId, cost: string) {
@@ -340,18 +347,21 @@ const ALT_TARGET_CLASS: Record<string, TargetClass> = {
   'nyxborn rollicker': 'creature', // bestow → enchant a creature
 }
 function altTargetClass(kind: AltKind, name: string): TargetClass | null {
-  if (kind === 'evoke' || kind === 'exile' || kind === 'suspend') return null // no target
+  if (kind === 'evoke' || kind === 'exile' || kind === 'suspend' || kind === 'escape') return null // no target
   return ALT_TARGET_CLASS[name.toLowerCase()] ?? null
 }
 /** begin an alternative cast (flashback / retrace / evoke / bestow / adventure / cast-from-exile /
  *  suspend): collect a target first if the face needs one, else open the payment panel directly. */
-function beginAltCast(card: RulesClientCard, kind: AltKind, cost: string) {
+function beginAltCast(card: RulesClientCard, kind: AltKind, cost: string, escapeCount?: number) {
   modalPick.value = null
   multiTargeting.value = null
   graveyardTargeting.value = null
   const spec = altTargetClass(kind, card.defName ?? '')
   if (spec) targeting.value = { objId: card.id, spec, alt: kind, altCost: cost }
-  else beginPayment(card, [], null, kind, cost)
+  else {
+    beginPayment(card, [], null, kind, cost)
+    if (casting.value) casting.value.escapeCount = escapeCount
+  }
 }
 /** toggle whether the current cast pays its buyback cost (CR 702.27). */
 function toggleBuyback() {
@@ -360,6 +370,7 @@ function toggleBuyback() {
 /** lookups the board uses to render alt-cast buttons on cards. */
 const flashbackCostOf = (id: ObjId): string | null => legal.value?.flashbackable.find((f) => f.objId === id)?.cost ?? null
 const retraceCostOf = (id: ObjId): string | null => legal.value?.retraceable.find((f) => f.objId === id)?.cost ?? null
+const escapeInfoOf = (id: ObjId) => legal.value?.escapable.find((f) => f.objId === id) ?? null
 const evokeCostOf = (id: ObjId): string | null => legal.value?.evokable.find((f) => f.objId === id)?.cost ?? null
 const bestowCostOf = (id: ObjId): string | null => legal.value?.bestowable.find((f) => f.objId === id)?.cost ?? null
 const suspendCostOf = (id: ObjId): string | null => legal.value?.suspendable.find((f) => f.objId === id)?.cost ?? null
@@ -369,7 +380,8 @@ const canCastFromExile = (id: ObjId): boolean => legal.value?.castExileIds.inclu
 const gyAltIds = computed<ObjId[]>(() => {
   const fb = legal.value?.flashbackable.map((f) => f.objId) ?? []
   const rt = legal.value?.retraceable.map((f) => f.objId) ?? []
-  return [...new Set([...fb, ...rt])]
+  const es = legal.value?.escapable.map((f) => f.objId) ?? []
+  return [...new Set([...fb, ...rt, ...es])]
 })
 /** exiled adventurer cards whose creature side you can cast from exile right now. */
 const exileAltIds = computed<ObjId[]>(() => legal.value?.castExileIds ?? [])
@@ -1435,6 +1447,11 @@ onBeforeUnmount(() => {
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   @click.stop="beginAltCast(cardOf(id)!, 'retrace', retraceCostOf(id)!)"
                 >Retrace {{ retraceCostOf(id) }}</UButton>
+                <UButton
+                  v-if="escapeInfoOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  @click.stop="beginAltCast(cardOf(id)!, 'escape', escapeInfoOf(id)!.cost, escapeInfoOf(id)!.exileCount)"
+                >Escape {{ escapeInfoOf(id)!.cost }}</UButton>
               </div>
               <div v-for="id in exileAltIds" :key="`ex${id}`" class="flex flex-col items-center gap-1">
                 <RulesCard :card="st.cards[id]!" :display="display[st.cards[id]!.defName ?? '']" size="sm" @preview="hoverDisplay = $event" />

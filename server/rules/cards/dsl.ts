@@ -224,6 +224,13 @@ export interface CardDefinition {
    */
   retrace?: boolean
   /**
+   * Escape (CR 702.139): "You may cast this card from your graveyard by paying [cost] and exiling
+   * N other cards from your graveyard." Not self-exiled — it resolves normally (creature enters /
+   * spell to graveyard) and can be escaped again later. `cost` is the escape mana cost; the N cards
+   * to exile are passed as `r.cast.escapeExile`.
+   */
+  escape?: { cost: string; exileCount: number }
+  /**
    * Buyback (CR 702.27): "You may pay an additional [cost] as you cast this spell. If you do, put
    * it into your hand instead of into your graveyard as it resolves." Set to the mana part of the
    * buyback cost; passed via `r.cast.buyback`. Only applies on resolution (a fizzled spell still
