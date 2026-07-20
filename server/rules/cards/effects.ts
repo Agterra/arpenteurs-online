@@ -6,7 +6,7 @@
 import type { EffectContext, Effect } from './dsl'
 import type { Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
-import { getDef, registerImplementedToken } from './registry'
+import { getDef, defKey, registerImplementedToken } from './registry'
 import { mintCardId } from '../../game/rng'
 // currentPower is safe to import: characteristics is already in this module's
 // transitive graph via engine (effects→engine→characteristics); called at runtime only.
@@ -398,6 +398,28 @@ export const weakenAllCreatures = (n: number): Effect => (ctx) => {
     ctx.state.pumps.push({ objId: c.id, power: -n, toughness: -n })
   }
   logLine(ctx.state, `All creatures get -${n}/-${n} until end of turn.`)
+}
+
+/** Transform this permanent (CR 712): swap its defName to the other face. getDef then returns the
+ *  new face everywhere, so P/T / types / keywords / abilities all change together. */
+export const transform = (): Effect => (ctx) => {
+  const o = ctx.state.objects[ctx.sourceId]
+  if (!o || o.zone !== 'battlefield') return
+  const to = getDef(o.defName).transformsTo
+  if (!to) return
+  o.defName = defKey(to)
+  logLine(ctx.state, `${getDef(o.defName).name} transforms.`)
+}
+
+/** Delver-style upkeep (CR 712): look at the top card of your library; if it's an instant or
+ *  sorcery, transform this permanent. (The look isn't broadcast — a documented simplification of
+ *  the "you may reveal" clause; the transform itself is the public tell.) */
+export const lookTransformIfInstantSorcery = (): Effect => (ctx) => {
+  const topId = ctx.state.zones.perPlayer[ctx.controllerId]!.library[0]
+  if (!topId) return
+  logLine(ctx.state, `${getDef(ctx.state.objects[ctx.sourceId]!.defName).name} looks at the top card of their library.`)
+  const topTypes = getDef(ctx.state.objects[topId]!.defName).types
+  if (topTypes.includes('Instant') || topTypes.includes('Sorcery')) transform()(ctx)
 }
 
 /** Adapt N (CR 701.44): if this creature has NO +1/+1 counters, put N +1/+1 counters on it. */

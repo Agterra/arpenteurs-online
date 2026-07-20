@@ -10,7 +10,7 @@ import type {
   RulesGameState,
   RulesZone,
 } from '#shared/rules/types'
-import { getDef } from './cards/registry'
+import { getDef, defKey } from './cards/registry'
 import { defIsCreature } from './cards/dsl'
 import { mintCardId } from '../game/rng'
 import { currentKeywords } from './characteristics'
@@ -41,6 +41,11 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
   if (!obj) return
   pullFromCurrentZone(state, obj)
   obj.zone = zone
+  // a transforming DFC reverts to its FRONT face when it leaves the battlefield (CR 712.13)
+  if (zone !== 'battlefield') {
+    const d = getDef(obj.defName)
+    if (d.isBackFace && d.transformsTo) obj.defName = defKey(d.transformsTo)
+  }
   clearCombatState(state, obj)
   obj.tapped = false
   obj.damageMarked = 0

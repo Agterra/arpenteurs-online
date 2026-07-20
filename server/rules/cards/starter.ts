@@ -49,6 +49,7 @@ import {
   searchLibrary,
   sequence,
   setBasePT,
+  lookTransformIfInstantSorcery,
 } from './effects'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 
@@ -1793,5 +1794,28 @@ export const STARTER_SET: CardDefinition[] = [
     escape: { cost: '{3}{B}', exileCount: 4 },
     enters: { effect: createToken({ name: 'Goat', power: 0, toughness: 1, subtypes: ['Goat'] }) },
     abilities: [{ kind: 'activated', cost: { sacrifice: { count: 1, filter: 'creature' } }, effect: scry(1) }],
+  },
+
+  // --- Coverage batch MECH13: Transform DFC (CR 712 — two faces, defName-swap) ---
+  {
+    name: 'Delver of Secrets',
+    types: ['Creature'],
+    subtypes: ['Human', 'Wizard'],
+    manaCost: '{U}',
+    colors: ['U'],
+    power: 1,
+    toughness: 1,
+    // "At the beginning of your upkeep, look at the top card of your library. You may reveal it.
+    //  If an instant or sorcery card is revealed this way, transform Delver of Secrets."
+    upkeep: { effect: lookTransformIfInstantSorcery() },
+    back: {
+      name: 'Insectile Aberration',
+      types: ['Creature'],
+      subtypes: ['Human', 'Insect'],
+      colors: ['U'],
+      power: 3,
+      toughness: 2,
+      keywords: ['flying'],
+    },
   },
 ]

@@ -17,6 +17,16 @@ export function registerSet(defs: CardDefinition[]) {
     // divergence (two defs for one card) and illusory "coverage" (re-adding an existing card)
     if (registry.has(key)) throw new Error(`Duplicate card definition for "${def.name}"`)
     registry.set(key, def)
+    // transforming DFC (CR 712): also register the back face and cross-link them so `transform()`
+    // can swap `defName` between the two (getDef then returns the current face automatically)
+    if (def.back) {
+      const backKey = norm(def.back.name)
+      if (registry.has(backKey)) throw new Error(`Duplicate card definition for "${def.back.name}"`)
+      def.transformsTo = def.back.name
+      def.back.transformsTo = def.name
+      def.back.isBackFace = true
+      registry.set(backKey, def.back)
+    }
   }
 }
 registerSet(STARTER_SET)

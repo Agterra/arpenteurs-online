@@ -273,6 +273,17 @@ export interface CardDefinition {
   unimplemented?: boolean
   /** printed rules text (shown to players so they can hand-run an unimplemented card) */
   oracleText?: string
+  /**
+   * Transforming double-faced card (CR 712): the front face declares its back face here. The
+   * registry registers BOTH faces (front + `back.name`) and links them via `transformsTo`; the
+   * `transform()` effect swaps the object's `defName` between them, so every reader (`getDef`) sees
+   * the current face automatically. A DFC reverts to its front face when it leaves the battlefield.
+   */
+  back?: CardDefinition
+  /** engine-set: the OTHER face's registered name (both faces get one). */
+  transformsTo?: string
+  /** engine-set on the back face — used to revert to the front when leaving the battlefield. */
+  isBackFace?: boolean
   /** replacement effect: this permanent enters the battlefield tapped (e.g. Guildgates) */
   entersTapped?: boolean
   /**
