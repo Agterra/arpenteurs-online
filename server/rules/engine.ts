@@ -1528,7 +1528,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // Flashback (CR 702.34): cast an instant/sorcery from your graveyard for its flashback cost
       const fromFlashback =
         !castingAdventure && !!candidate && candidate.zone === 'graveyard' && candidate.ownerId === actor && !!getDef(candidate.defName).flashbackCost
-      const obj = fromCommand || fromExileAdv || fromFlashback ? candidate! : requireInHand(state, actor, msg.objId)
+      // Retrace (CR 702.81): cast from your graveyard for its normal cost + discard a land card
+      const fromRetrace =
+        !castingAdventure && !!candidate && candidate.zone === 'graveyard' && candidate.ownerId === actor && !!getDef(candidate.defName).retrace
+      const obj = fromCommand || fromExileAdv || fromFlashback || fromRetrace ? candidate! : requireInHand(state, actor, msg.objId)
       const def = getDef(obj.defName)
       if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
       const adv = castingAdventure ? def.adventure! : null
@@ -1591,11 +1594,24 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           convokeCreatures.push(c)
         }
       }
+      // retrace (CR 702.81): additional cost is discarding a land card from hand — validate now,
+      // discard only after the mana payment is confirmed (atomic; no partial mutation on failure)
+      let retraceLand: GameObject | null = null
+      if (fromRetrace) {
+        const l = msg.retraceLand ? state.objects[msg.retraceLand] : undefined
+        if (!l || l.zone !== 'hand' || l.ownerId !== actor || !defIsLand(getDef(l.defName)))
+          throw new RulesError('BAD_RETRACE', 'Retrace requires discarding a land card from your hand')
+        retraceLand = l
+      }
       const payment = planPayment(cost, state.players[actor]!.manaPool)
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
       const pool = state.players[actor]!.manaPool
       for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
       for (const c of convokeCreatures) c.tapped = true // convoke is paid by tapping (CR 702.51c)
+      if (retraceLand) {
+        moveToGraveyard(state, retraceLand.id) // discard the land (hand→graveyard) as the retrace cost
+        logLine(state, `${name(state, actor)} discards ${getDef(retraceLand.defName).name} (retrace).`)
+      }
 
       pullFromCurrentZone(state, obj)
       obj.zone = 'stack'
@@ -1620,7 +1636,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       )
       logLine(
         state,
-        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
+        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)

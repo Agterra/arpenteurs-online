@@ -1739,4 +1739,15 @@ export const STARTER_SET: CardDefinition[] = [
     // "Search your library for a basic land card and put it onto the battlefield."
     spell: { effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield' }) },
   },
+
+  // --- Coverage batch MECH8: Retrace (CR 702.81 — recast from graveyard by discarding a land) ---
+  {
+    name: "Raven's Crime",
+    types: ['Sorcery'],
+    manaCost: '{B}',
+    colors: ['B'],
+    retrace: true,
+    // "Target player discards a card. Retrace"
+    spell: { targets: [{ kind: 'player', count: 1 }], effect: playersDiscard('target', 1) },
+  },
 ]

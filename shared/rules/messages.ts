@@ -33,6 +33,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
     kicked: z.boolean().optional(), // whether the optional kicker cost was paid
     adventure: z.boolean().optional(), // cast the Adventure half (CR 715) rather than the creature
     convoke: z.array(Id).max(20).optional(), // creatures tapped to help pay via convoke (CR 702.51)
+    retraceLand: Id.optional(), // land discarded as the additional retrace cost (CR 702.81)
   }),
   z.object({
     type: z.literal('r.attackers'),

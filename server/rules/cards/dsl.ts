@@ -217,6 +217,13 @@ export interface CardDefinition {
    */
   flashbackCost?: string
   /**
+   * Retrace (CR 702.81): "You may cast this card from your graveyard by discarding a land card in
+   * addition to paying its other costs." Unlike flashback, the card is NOT exiled — it returns to
+   * the graveyard on resolution and can be retraced again. The land to discard is passed as
+   * `r.cast.retraceLand`.
+   */
+  retrace?: boolean
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.
