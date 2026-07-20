@@ -169,8 +169,8 @@ export function drawOne(state: RulesGameState, player: PlayerId) {
 
 export function isCreatureOnBattlefield(state: RulesGameState, id: ObjId | PlayerId): boolean {
   const obj = state.objects[id as ObjId]
-  // a phased-out permanent is treated as though it doesn't exist (CR 702.26e)
-  return !!obj && obj.zone === 'battlefield' && !obj.phasedOut && defIsCreature(getDef(obj.defName))
+  // phased-out (CR 702.26e) and bestowed-as-Aura (CR 702.103) permanents aren't creatures here
+  return !!obj && obj.zone === 'battlefield' && !obj.phasedOut && !obj.bestowed && defIsCreature(getDef(obj.defName))
 }
 
 export function battlefieldCreatures(state: RulesGameState, controller?: PlayerId): GameObject[] {
@@ -178,6 +178,7 @@ export function battlefieldCreatures(state: RulesGameState, controller?: PlayerI
     (o) =>
       o.zone === 'battlefield' &&
       !o.phasedOut && // phased-out permanents don't exist for combat/SBA/sweepers (CR 702.26e)
+      !o.bestowed && // a bestowed permanent is an Aura, not a creature (CR 702.103)
       defIsCreature(getDef(o.defName)) &&
       (controller === undefined || o.controllerId === controller),
   )

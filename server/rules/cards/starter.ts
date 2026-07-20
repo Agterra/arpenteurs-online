@@ -1761,4 +1761,19 @@ export const STARTER_SET: CardDefinition[] = [
     // "Return target permanent to its owner's hand. Buyback {3}"
     spell: { targets: [{ kind: 'permanent', count: 1 }], effect: returnToHand() },
   },
+
+  // --- Coverage batch MECH10: Bestow (CR 702.103 — cast as a creature OR as an Aura) ---
+  {
+    // Enchantment Creature — Nyxborn Satyr, 1/1. Cast as a 1/1 creature, or bestow {1}{G} as an
+    // Aura granting the enchanted creature +1/+1 (via grantsToHost). Entire rules captured.
+    name: 'Nyxborn Rollicker',
+    types: ['Enchantment', 'Creature'],
+    subtypes: ['Nyxborn', 'Satyr'],
+    manaCost: '{G}',
+    colors: ['G'],
+    power: 1,
+    toughness: 1,
+    bestowCost: '{1}{G}',
+    grantsToHost: { power: 1, toughness: 1 },
+  },
 ]

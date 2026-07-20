@@ -123,6 +123,17 @@ export function checkSBA(state: RulesGameState) {
       // assisted table: never auto-destroy/auto-unattach an UNIMPLEMENTED aura/equipment
       // (its real rules are hand-run) — mirrors the creature-death SBA guard above
       if (def.unimplemented) continue
+      // Bestow (CR 702.103d): a bestowed permanent whose enchanted creature is gone stops being an
+      // Aura and becomes a creature (it stays on the battlefield, unattached).
+      if (obj.bestowed) {
+        if (obj.attachedTo == null || !isCreatureOnBattlefield(state, obj.attachedTo)) {
+          obj.bestowed = false
+          obj.attachedTo = null
+          logLine(state, `${def.name} becomes a creature (its enchanted creature left).`)
+          changed = true
+        }
+        continue
+      }
       const isAura = defIsAura(def)
       if (!isAura && !defIsEquipment(def)) continue
       const host = obj.attachedTo ? state.objects[obj.attachedTo] : null
@@ -842,6 +853,26 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     checkSBA(state)
     return
   }
+  // Bestow (CR 702.103): enters the battlefield as an Aura attached to the target creature. If the
+  // target is gone on resolution, the spell doesn't resolve (fizzle → graveyard); it does NOT enter
+  // as a creature (that only happens when the enchanted creature later leaves — handled in checkSBA).
+  if (item.bestow) {
+    const tgt = item.targets[0]
+    if (tgt == null || !isCreatureOnBattlefield(state, tgt)) {
+      logLine(state, `${def.name} fizzles (no legal creature to enchant).`)
+      moveToGraveyard(state, obj.id)
+      checkSBA(state)
+      return
+    }
+    obj.controllerId = item.controllerId
+    obj.bestowed = true
+    moveTo(state, obj.id, 'battlefield') // moveTo clears attachedTo
+    obj.attachedTo = tgt as ObjId // set AFTER moveTo
+    logLine(state, `${def.name} enters attached to ${objName(state, tgt as ObjId)} (bestow).`)
+    fireEntersTriggers(state, obj.id)
+    checkSBA(state)
+    return
+  }
   const chosen = activeSpell(def, item.mode) // the picked mode for a modal spell, else the plain spell
   const specs = flattenSpecs(chosen?.targets)
   let auraTarget: ObjId | null = null
@@ -1541,22 +1572,26 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const def = getDef(obj.defName)
       if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
       const adv = castingAdventure ? def.adventure! : null
+      // bestow (CR 702.103): cast the creature as an Aura for its bestow cost (targets a creature)
+      const castingBestow = !adv && !fromFlashback && !fromRetrace && !!msg.bestow
+      if (castingBestow && !def.bestowCost) throw new RulesError('NO_BESTOW', 'That card has no bestow')
       // split card (CR 709): the chosen half is selected by mode (0 = left, 1 = right)
-      if (!adv && def.split && msg.mode !== 0 && msg.mode !== 1) throw new RulesError('BAD_MODE', 'Choose a split half')
-      const splitHalf = !adv && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
+      if (!adv && !castingBestow && def.split && msg.mode !== 0 && msg.mode !== 1) throw new RulesError('BAD_MODE', 'Choose a split half')
+      const splitHalf = !adv && !castingBestow && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
       // the "face" being cast: the adventure half, a split half, or the card's main face
       const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
-      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : fromFlashback ? def.flashbackCost! : def.manaCost
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : fromFlashback ? def.flashbackCost! : def.manaCost
       if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
-      const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && hasKw(state, obj.id, 'flash'))
+      const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && !castingBestow && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
         throw new RulesError('TIMING', 'That can only be cast in your main phase with an empty stack')
 
       // modal "choose one": validate the chosen mode; targets come from that mode (main face only)
-      if (!adv && !def.split && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
+      if (!adv && !castingBestow && !def.split && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
         throw new RulesError('BAD_MODE', 'Choose a valid mode')
+      // bestow forces a single "target creature" (the host); otherwise use the chosen face's targets
       const chosen = adv ? { targets: adv.targets, effect: adv.effect } : activeSpell(def, msg.mode)
-      const specs = flattenSpecs(chosen?.targets)
+      const specs = castingBestow ? flattenSpecs([{ kind: 'creature', count: 1 }]) : flattenSpecs(chosen?.targets)
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
@@ -1645,6 +1680,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         adventure: castingAdventure || undefined,
         flashback: fromFlashback || undefined,
         buyback: buyback || undefined,
+        bestow: castingBestow || undefined,
       })
       const targetNames = msg.targets.map((t) =>
         Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),

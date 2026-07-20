@@ -36,7 +36,8 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
   const toClientCard = (obj: RulesGameState['objects'][string]): RulesClientCard => {
     // cache the def and compute effective P/T ONCE per object (redaction is the fuzzer's hot path)
     const def = getDef(obj.defName)
-    const isCrea = defIsCreature(def)
+    // a bestowed permanent is an Aura, not a creature (CR 702.103) — no creature P/T while attached
+    const isCrea = defIsCreature(def) && !obj.bestowed
     const pt = isCrea ? currentPT(state, obj) : null
     return {
     id: obj.id,

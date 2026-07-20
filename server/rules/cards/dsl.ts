@@ -231,6 +231,13 @@ export interface CardDefinition {
    */
   buybackCost?: string
   /**
+   * Bestow (CR 702.103): a creature (Enchantment Creature — Aura) that may instead be cast for its
+   * bestow cost as an Aura enchanting a creature, granting the host `grantsToHost`. If the enchanted
+   * creature leaves, it stops being an Aura and becomes a creature (still on the battlefield). Set
+   * to the bestow mana cost; declare the bonus in `grantsToHost`. Cast as bestow via `r.cast.bestow`.
+   */
+  bestowCost?: string
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.

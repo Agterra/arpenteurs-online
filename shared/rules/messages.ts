@@ -35,6 +35,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
     convoke: z.array(Id).max(20).optional(), // creatures tapped to help pay via convoke (CR 702.51)
     retraceLand: Id.optional(), // land discarded as the additional retrace cost (CR 702.81)
     buyback: z.boolean().optional(), // pay the buyback cost → return to hand on resolve (CR 702.27)
+    bestow: z.boolean().optional(), // cast for the bestow cost as an Aura (CR 702.103)
   }),
   z.object({
     type: z.literal('r.attackers'),

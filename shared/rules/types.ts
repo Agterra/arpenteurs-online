@@ -122,6 +122,10 @@ export interface GameObject {
   /** Monstrosity (CR 701.31): this creature has become monstrous — its monstrosity ability can't
    *  make it monstrous again. (Adapt has no flag; it checks for existing +1/+1 counters instead.) */
   monstrous?: boolean
+  /** Bestow (CR 702.103): this permanent was cast for its bestow cost and is currently an AURA
+   *  attached to a creature (not itself a creature). If the host leaves it becomes a creature
+   *  (this flag clears). While set, it's excluded from the creature helpers. */
+  bestowed?: boolean
 }
 
 export type StackItemKind = 'spell' | 'ability'
@@ -168,6 +172,8 @@ export interface StackItem {
   /** Buyback (CR 702.27): the buyback cost was paid — on resolution this spell returns to its
    *  owner's hand instead of the graveyard. */
   buyback?: boolean
+  /** Bestow (CR 702.103): cast for the bestow cost → enters as an Aura attached to its target. */
+  bestow?: boolean
 }
 
 export interface PlayerRState {
