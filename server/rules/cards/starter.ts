@@ -1796,6 +1796,17 @@ export const STARTER_SET: CardDefinition[] = [
     abilities: [{ kind: 'activated', cost: { sacrifice: { count: 1, filter: 'creature' } }, effect: scry(1) }],
   },
 
+  // --- Coverage batch MECH14: Madness (CR 702.35 — discard → cast for madness cost, else graveyard) ---
+  {
+    name: 'Fiery Temper',
+    types: ['Instant'],
+    manaCost: '{1}{R}{R}',
+    colors: ['R'],
+    madnessCost: '{R}',
+    // "Fiery Temper deals 3 damage to any target. Madness {R}."
+    spell: { targets: [{ kind: 'anyTarget', count: 1 }], effect: dealDamage(3) },
+  },
+
   // --- Coverage batch MECH13: Transform DFC (CR 712 — two faces, defName-swap) ---
   {
     name: 'Delver of Secrets',

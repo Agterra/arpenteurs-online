@@ -147,6 +147,8 @@ export function until(state: RulesGameState, pred: (s: RulesGameState) => boolea
       act(state, p, { type: 'r.chooseTargets', targets: [target] })
     } else if (state.pending?.kind === 'scry') {
       act(state, state.pending.player, { type: 'r.scry', toBottom: [] }) // keep everything on top
+    } else if (state.pending?.kind === 'madness') {
+      act(state, state.pending.player, { type: 'r.madness', cast: false, targets: [] }) // decline
     } else if (state.priorityPlayer) pass(state, state.priorityPlayer)
     else throw new Error(`engine stalled before ${label} (step ${state.step})`)
   }

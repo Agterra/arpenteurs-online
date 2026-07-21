@@ -50,6 +50,7 @@ export function buildRulesGame(
     pendingDiscard: null,
     pendingWard: null,
     pendingCascade: null,
+    pendingMadness: null,
     // CR 103.8a/b: only two-player games skip the first draw
     firstTurnSkipDraw: ordered.length === 2,
     blockOrders: {},

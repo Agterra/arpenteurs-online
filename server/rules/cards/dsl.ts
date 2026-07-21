@@ -251,6 +251,12 @@ export interface CardDefinition {
    */
   evokeCost?: string
   /**
+   * Madness (CR 702.35): "If you discard this card, exile it. You may cast it for its madness cost;
+   * if you don't, put it into your graveyard." Set to the madness mana cost; the engine opens a
+   * cast-or-graveyard window (`r.madness`) when this card is discarded.
+   */
+  madnessCost?: string
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.

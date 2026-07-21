@@ -212,7 +212,7 @@ export interface RulesGameState {
   /** players who have passed priority since the last stack change / step start */
   passed: PlayerId[]
   /** engine is waiting for a player decision (no priority until it's made) */
-  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade'; player: PlayerId } | null
+  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness'; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
   pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
@@ -275,6 +275,9 @@ export interface RulesGameState {
     hitId: ObjId
     exiledIds: ObjId[]
   } | null
+  /** Madness (CR 702.35): a discarded madness card is exiled and its owner may cast it for the
+   *  madness cost or let it go to the graveyard. `resume` = what discard flow to continue after. */
+  pendingMadness: { player: PlayerId; cardId: ObjId; resume: 'cleanup' | 'forced' } | null
   /** true only on the very first turn's first player (skips their draw) */
   firstTurnSkipDraw: boolean
   /**

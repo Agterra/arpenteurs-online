@@ -1869,10 +1869,68 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (ids.length !== need) throw new RulesError('BAD_DISCARD', `Discard exactly ${need}`)
       for (const id of ids)
         if (!hand.includes(id)) throw new RulesError('BAD_DISCARD', 'Not in your hand')
-      for (const id of ids) moveToGraveyard(state, id)
+      // Madness (CR 702.35): a discarded madness card is EXILED and its owner gets a cast-or-
+      // graveyard window instead of going straight to the graveyard. One window at a time — the
+      // first madness card among the discards opens it; the rest go to the graveyard now (a
+      // documented simplification for the rare multi-madness discard).
+      const madnessId = ids.find((id) => getDef(state.objects[id]!.defName).madnessCost)
+      for (const id of ids) {
+        if (id === madnessId) continue
+        moveToGraveyard(state, id)
+      }
       logLine(state, `${name(state, actor)} discards ${ids.length} card${ids.length > 1 ? 's' : ''}.`)
+      if (madnessId != null) {
+        moveTo(state, madnessId, 'exile') // exile face-up; the hand id was never serialised so no leak
+        state.pending = { kind: 'madness', player: actor }
+        state.pendingMadness = { player: actor, cardId: madnessId, resume: forced ? 'forced' : 'cleanup' }
+        logLine(state, `${getDef(state.objects[madnessId]!.defName).name} — madness: ${name(state, actor)} may cast it.`)
+        break // defer finishCleanup / advanceDiscardQueue until the madness window resolves
+      }
       if (forced) advanceDiscardQueue(state)
       else finishCleanup(state)
+      break
+    }
+
+    case 'r.madness': {
+      if (state.pending?.kind !== 'madness' || state.pending.player !== actor || !state.pendingMadness)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your madness decision')
+      const pm = state.pendingMadness
+      const obj = state.objects[pm.cardId]
+      const def = obj ? getDef(obj.defName) : undefined
+      if (msg.cast && obj && def?.madnessCost) {
+        // cast for the madness cost. Validate targets + affordability BEFORE clearing the pending
+        // (throw-before-mutate) so a failed cast can be retried as a decline.
+        const chosen = activeSpell(def, msg.mode)
+        const specs = flattenSpecs(chosen?.targets)
+        const srcColors = def.colors ?? []
+        if (msg.targets.length !== specs.length) throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
+        msg.targets.forEach((t, i) => {
+          if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
+        })
+        const cost = parseManaCost(def.madnessCost)
+        const pool = state.players[actor]!.manaPool
+        const payment = planPayment(cost, pool)
+        if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+        state.pending = null
+        state.pendingMadness = null
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+        pullFromCurrentZone(state, obj)
+        obj.zone = 'stack'
+        state.zones.stack.push({ id: obj.id, kind: 'spell', controllerId: actor, defName: obj.defName, sourceId: obj.id, abilityIndex: null, targets: [...msg.targets], mode: def.modes?.length ? (msg.mode ?? 0) : undefined })
+        logLine(state, `${name(state, actor)} casts ${def.name} (madness).`)
+        queueWardTriggers(state, obj.id, msg.targets, actor)
+        applyProwess(state, actor, def)
+        // resume the interrupted discard flow: forced → continue the queue; cleanup → the spell
+        // resolves via priority, then the step (still 'cleanup') finishes cleanup naturally
+        if (pm.resume === 'forced') advanceDiscardQueue(state)
+        else grantPriority(state, actor)
+      } else {
+        state.pending = null
+        state.pendingMadness = null
+        if (obj) moveToGraveyard(state, obj.id) // declined → to the graveyard
+        if (pm.resume === 'forced') advanceDiscardQueue(state)
+        else finishCleanup(state)
+      }
       break
     }
 

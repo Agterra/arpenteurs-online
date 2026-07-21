@@ -147,6 +147,18 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       applyRulesAction(state, p, { type: 'r.sacrifice', objIds: chosen })
       return true
     }
+    if (state.pending.kind === 'madness' && state.pendingMadness) {
+      // randomly cast the madness card (exiled face-up → public) at a random player, or decline →
+      // graveyard; both leak-safe. On any illegality (can't pay / bad target), fall back to decline.
+      const foes = state.turnOrder.filter((x) => x !== p && !state.players[x]!.hasLost)
+      try {
+        if (rnd() < 0.5 && foes.length) applyRulesAction(state, p, { type: 'r.madness', cast: true, targets: [pick(foes)] })
+        else applyRulesAction(state, p, { type: 'r.madness', cast: false, targets: [] })
+      } catch {
+        applyRulesAction(state, p, { type: 'r.madness', cast: false, targets: [] })
+      }
+      return true
+    }
     const hand = state.zones.perPlayer[p]!.hand
     applyRulesAction(state, p, { type: 'r.discard', objIds: hand.slice(0, hand.length - 7) })
     return true
@@ -399,6 +411,10 @@ const FUZZ_DECK = [
   // of the library (public) and the fuzzer declines, sending the revealed cards to the
   // bottom RE-MINTED; the history-aware assertion then guards that leak-critical path.
   ...Array(3).fill('Bloodbraid Elf'),
+  // batch MECH14: a madness card ({1}{R}{R} instant, Madness {R}) — when discarded (cleanup or an
+  // effect) it's exiled face-up and the fuzzer's madness branch casts it or declines; exercises the
+  // r.madness action + the exile→cast/graveyard paths, leak-checked after every action.
+  ...Array(3).fill('Fiery Temper'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
