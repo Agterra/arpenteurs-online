@@ -4,6 +4,7 @@
  * SBA). All are real Magic cards so decklists resolve from the catalog.
  */
 import type { CardDefinition } from './dsl'
+import { battlefieldCreatures } from '../state'
 import {
   adapt,
   addCounters,
@@ -2039,5 +2040,15 @@ export const STARTER_SET: CardDefinition[] = [
     // "{T}: Add one mana of any color that a land an opponent controls could produce." Simplified to
     //  any colour for the assisted table; colour chosen on tap.
     abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') }],
+  },
+  {
+    name: 'Blasphemous Act',
+    types: ['Sorcery'],
+    manaCost: '{8}{R}',
+    colors: ['R'],
+    // "This spell costs {1} less to cast for each creature on the battlefield. Blasphemous Act deals
+    //  13 damage to each creature."
+    costReduction: (state) => battlefieldCreatures(state).length,
+    spell: { effect: damageAllCreatures(13) },
   },
 ]

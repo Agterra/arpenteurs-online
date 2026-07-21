@@ -1651,6 +1651,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         cost.generic += bc.generic
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += bc.colored[c]
       }
+      // static generic cost reduction (CR 601.2f) — e.g. Blasphemous Act "{1} less per creature".
+      // Applied after cost increases, before convoke; floored at 0, coloured pips untouched.
+      if (!adv && !splitHalf && def.costReduction) cost.generic = Math.max(0, cost.generic - def.costReduction(state))
       // convoke (CR 702.51): tap creatures you control to pay for {1} or a matching-colour pip
       // (main face only). Validated + planned against a local `cost` here; creatures are tapped
       // only after the remaining mana payment is confirmed below (no partial mutation on failure).

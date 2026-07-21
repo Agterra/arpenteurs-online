@@ -329,6 +329,15 @@ export interface CardDefinition {
    */
   kickerCost?: string
   /**
+   * Generic cost reduction computed dynamically as the spell is cast (CR 601.2f) — e.g.
+   * Blasphemous Act ("costs {1} less for each creature on the battlefield") or a
+   * commander-conditional discount. Returns how much to subtract from the GENERIC portion
+   * of the cost (the engine floors it at 0; coloured pips are never reduced). Applied after
+   * cost increases (tax / X / kicker / buyback), before convoke. Mirrored in redact's
+   * castability check so the client highlights the reduced affordability.
+   */
+  costReduction?: (state: RulesGameState) => number
+  /**
    * Ward (CR 702.21): "Whenever this permanent becomes the target of a spell or ability an
    * opponent controls, counter it unless that player pays [cost]." Set to the mana part of
    * the ward cost (e.g. '{2}'); the engine queues the ward trigger and runs the pay-or-

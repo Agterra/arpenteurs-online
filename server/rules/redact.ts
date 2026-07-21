@@ -369,8 +369,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     const timingOk = def.types.includes('Instant') || isMain || (def.keywords?.includes('flash') ?? false)
     if (!timingOk) continue
     // {X} isn't counted by parseManaCost, so this checks the base cost (x=0) — the
-    // player then picks X up to what their pool covers
-    if (planPayment(parseManaCost(def.manaCost), potential).covered) castableIds.push(id)
+    // player then picks X up to what their pool covers. Apply any dynamic generic cost
+    // reduction (e.g. Blasphemous Act) so the reduced affordability is reflected here.
+    const castCost = parseManaCost(def.manaCost)
+    if (def.costReduction) castCost.generic = Math.max(0, castCost.generic - def.costReduction(state))
+    if (planPayment(castCost, potential).covered) castableIds.push(id)
     // not castable if no legal targets: for a modal spell at least ONE mode must have
     // all its targets legal; otherwise every target spec of the plain spell must be
     // satisfiable (filter-aware: "artifact or enchantment", "creature an opponent controls")
