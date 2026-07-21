@@ -53,6 +53,8 @@ import {
   targetPlayerDrawDrain,
   selfDiscard,
   exileTargetControllerFetchesLand,
+  destroyLoseLifeEqualToMV,
+  reanimate,
 } from './effects'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 
@@ -1934,5 +1936,29 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Counter target noncreature spell."
     spell: { targets: [{ kind: 'spell', count: 1, filter: { excludeTypes: ['Creature'] } }], effect: counterTarget() },
+  },
+  {
+    name: 'Feed the Swarm',
+    types: ['Sorcery'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "Destroy target creature or enchantment an opponent controls. You lose life equal to that
+    //  permanent's mana value."
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Creature', 'Enchantment'], controller: 'opponent' } }],
+      effect: destroyLoseLifeEqualToMV(),
+    },
+  },
+  {
+    name: 'Reanimate',
+    types: ['Sorcery'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Put target creature card from a graveyard onto the battlefield under your control. You lose life
+    //  equal to its mana value."
+    spell: {
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { types: ['Creature'] } }],
+      effect: reanimate(),
+    },
   },
 ]

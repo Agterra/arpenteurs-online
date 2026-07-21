@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**253 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**255 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -84,6 +84,7 @@
 - Errant Ephemeron
 - Faithful Watchdog
 - Faithless Looting
+- Feed the Swarm
 - Fencing Ace
 - Fervor
 - Field Marshal
@@ -194,6 +195,7 @@
 - Raven's Crime
 - Ravenous Chupacabra
 - Ravenous Rats
+- Reanimate
 - Regrowth
 - Revitalize
 - Savannah Lions

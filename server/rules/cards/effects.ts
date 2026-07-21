@@ -5,6 +5,7 @@
  */
 import type { EffectContext, Effect } from './dsl'
 import type { Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
+import { parseManaCost } from '#shared/utils/manaCost'
 import { apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
 import { getDef, defKey, registerImplementedToken } from './registry'
 import { mintCardId } from '../../game/rng'
@@ -236,6 +237,50 @@ export const mill = (n: number): Effect => (ctx) => {
  * re-minted (invariant #3) or an opponent who recorded the public graveyard id could
  * track it into the hidden hand.
  */
+/** Mana value of a card def (generic + all coloured/colourless pips) — CR 202.3. */
+const manaValueOf = (def: { manaCost?: string }): number => {
+  const c = parseManaCost(def.manaCost)
+  return c.generic + (['W', 'U', 'B', 'R', 'G', 'C'] as const).reduce((n, col) => n + c.colored[col], 0)
+}
+
+/** Destroy the target permanent, then its destroyer loses life equal to that permanent's mana value
+ *  (e.g. Feed the Swarm). Life is lost even if the permanent is indestructible — the destroy is tried. */
+export const destroyLoseLifeEqualToMV = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'battlefield') continue
+    const def = getDef(obj.defName)
+    const mv = manaValueOf(def)
+    if (isIndestructible(ctx, t)) logLine(ctx.state, `${def.name} is indestructible.`)
+    else {
+      logLine(ctx.state, `${def.name} is destroyed.`)
+      moveToGraveyard(ctx.state, t)
+    }
+    ctx.state.players[ctx.controllerId]!.life -= mv
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${mv} life.`)
+  }
+}
+
+/** Reanimate: put the target creature card from a graveyard onto the battlefield under YOUR control;
+ *  you lose life equal to its mana value (control-changing entry, so ETB triggers fire). */
+export const reanimate = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'graveyard') continue
+    const def = getDef(obj.defName)
+    const mv = manaValueOf(def)
+    obj.controllerId = ctx.controllerId // enters under the reanimator's control (holder for battlefield)
+    obj.summoningSick = true
+    moveTo(ctx.state, t, 'battlefield')
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} reanimates ${def.name}.`)
+    fireEntersTriggers(ctx.state, t)
+    ctx.state.players[ctx.controllerId]!.life -= mv
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${mv} life.`)
+  }
+}
+
 export const returnFromGraveyard = (): Effect => (ctx) => {
   for (const t of ctx.targets) {
     if (isPlayerId(ctx, t)) continue
