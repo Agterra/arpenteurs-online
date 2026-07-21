@@ -172,6 +172,25 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
   if (rnd() < 0.15 && maybeOverride(state, actor, rnd)) return true
   const legal = computeLegal(state, actor)
 
+  // occasionally FORETELL a hand card during your main phase → exiles it face-down, so the
+  // history-aware leak check verifies opponents never learn its identity (CR 702.143). Once we
+  // commit (a foretellable card is in hand + the roll hits), we tap for the {2} and try, then
+  // ALWAYS return — tapping made `legal` stale, so we must not fall through to the normal actions.
+  if (actor === state.activePlayer && (state.step === 'main1' || state.step === 'main2') && !state.zones.stack.length && rnd() < 0.25) {
+    const foretellable = state.zones.perPlayer[actor]!.hand.filter((id) => getDef(state.objects[id]!.defName).foretellCost)
+    if (foretellable.length) {
+      for (const src of legal.manaSourceIds) {
+        if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= 2) break
+        const colors = legal.manaSourceColors[src] ?? []
+        applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      }
+      try {
+        applyRulesAction(state, actor, { type: 'r.foretell', objId: pick(foretellable) })
+      } catch { /* not enough mana — the taps above still count as this step's action */ }
+      return true
+    }
+  }
+
   // occasionally use an activated ability (exercises r.activate incl. sacrifice costs)
   if (legal.activations.length && rnd() < 0.3) {
     const a = pick(legal.activations)
@@ -415,6 +434,9 @@ const FUZZ_DECK = [
   // effect) it's exiled face-up and the fuzzer's madness branch casts it or declines; exercises the
   // r.madness action + the exile→cast/graveyard paths, leak-checked after every action.
   ...Array(3).fill('Fiery Temper'),
+  // batch MECH15: a foretell card ({3}{U} 2/3 flying, Foretell {2}{U}) — the fuzzer foretells it
+  // (exile FACE DOWN), so assertNoLeaks verifies opponents never learn its identity in exile.
+  ...Array(3).fill('Augury Raven'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
@@ -492,6 +514,36 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       // history-aware: B must not see the re-minted hand id, and the old (seen) id must
       // not resurface in any zone hidden from B.
       assertNoLeaks(state, '(gy after return)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // Deterministic hidden-information coverage for FORETELL (CR 702.143): a foretold card sits in
+  // exile FACE DOWN — opponents must never learn its identity. Driven explicitly (the random loop
+  // can't be relied on to line up the {2} + a foretell card in hand) through the leak machinery.
+  it('never leaks a foretold (face-down) card to opponents (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(720))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const raven = putCard(state, A, 'Augury Raven', 'hand')
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'U', delta: 2 })
+      applyRulesAction(state, A, { type: 'r.foretell', objId: raven })
+      expect(state.objects[raven]!.faceDown).toBe(true)
+      // B sees a face-down exile card with NO identity; the redacted stream must not name it
+      const forB = redactRulesState(state, B)
+      expect(forB.cards[raven]?.defName).toBeNull()
+      expect(JSON.stringify(forB).includes('Augury Raven')).toBe(false)
+      // the full leak sweep passes after the foretell, and every subsequent step
+      assertNoLeaks(state, '(foretold)', seen)
+      for (let i = 0; i < 40 && state.status === 'active'; i++) {
+        if (!randomAction(state, mulberry32(720 + i))) break
+        assertNoLeaks(state, `(foretold, step ${i})`, seen)
+      }
     } finally {
       __setDeterministicRng(null)
     }

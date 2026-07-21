@@ -119,6 +119,11 @@ export interface GameObject {
   /** Adventure (CR 715): this card is in exile having been cast as its adventure half; its owner
    *  may cast the creature side from exile. Cleared when it leaves exile. */
   adventured?: boolean
+  /** Face-down (foretell CR 702.143 / morph CR 702.37): the card's identity is hidden from everyone
+   *  except its owner — the redactor sends `defName: null` to non-owners. */
+  faceDown?: boolean
+  /** Foretell: the turn number this card was foretold (it can't be cast until a LATER turn). */
+  foretoldTurn?: number
   /** Monstrosity (CR 701.31): this creature has become monstrous — its monstrosity ability can't
    *  make it monstrous again. (Adapt has no flag; it checks for existing +1/+1 counters instead.) */
   monstrous?: boolean
@@ -342,6 +347,8 @@ export interface RulesClientCard {
   phasedOut?: boolean
   /** in exile "on an adventure" — its owner may cast the creature side from exile (CR 715) */
   adventured?: boolean
+  /** face-down (foretell / morph) — the client renders a card back; `defName` is null for non-owners */
+  faceDown?: boolean
   hidden: boolean
 }
 

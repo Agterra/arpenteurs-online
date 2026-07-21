@@ -1578,7 +1578,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // Escape (CR 702.139): cast from your graveyard for the escape cost + exile N other GY cards
       const fromEscape =
         !castingAdventure && !!candidate && candidate.zone === 'graveyard' && candidate.ownerId === actor && !!getDef(candidate.defName).escape
-      const obj = fromCommand || fromExileAdv || fromFlashback || fromRetrace || fromEscape ? candidate! : requireInHand(state, actor, msg.objId)
+      // Foretell (CR 702.143): cast the face-down foretold card from exile on a LATER turn
+      const fromForetell =
+        !castingAdventure && !!candidate && candidate.zone === 'exile' && candidate.faceDown === true && candidate.ownerId === actor &&
+        !!getDef(candidate.defName).foretellCost && (candidate.foretoldTurn ?? state.turnNumber) < state.turnNumber
+      const obj = fromCommand || fromExileAdv || fromFlashback || fromRetrace || fromEscape || fromForetell ? candidate! : requireInHand(state, actor, msg.objId)
       const def = getDef(obj.defName)
       if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
       const adv = castingAdventure ? def.adventure! : null
@@ -1593,7 +1597,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const splitHalf = !adv && !castingBestow && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
       // the "face" being cast: the adventure half, a split half, or the card's main face
       const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
-      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : def.manaCost
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : fromForetell ? def.foretellCost! : def.manaCost
       if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
       const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && !castingBestow && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
@@ -1692,6 +1696,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       pullFromCurrentZone(state, obj)
       obj.zone = 'stack'
       obj.adventured = false // whether cast from hand or recast from exile, it's now on the stack
+      obj.faceDown = false // a foretold card is revealed as it's cast
       if (fromCommand) state.players[actor]!.commanderTax++
       state.zones.stack.push({
         id: obj.id,
@@ -1715,7 +1720,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       )
       logLine(
         state,
-        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromEscape ? ' (escape)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
+        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromEscape ? ' (escape)' : fromForetell ? ' (foretold)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)
@@ -2105,6 +2110,30 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       obj.counters.time = def.suspend.n
       logLine(state, `${name(state, actor)} suspends ${def.name} with ${def.suspend.n} time counter${def.suspend.n === 1 ? '' : 's'}.`)
       grantPriority(state, actor) // a special action; the actor keeps priority, pass chain restarts
+      break
+    }
+
+    case 'r.foretell': {
+      requirePriority(state, actor)
+      const obj = requireInHand(state, actor, msg.objId)
+      const def = getDef(obj.defName)
+      if (!def.foretellCost) throw new RulesError('NO_FORETELL', "That card doesn't have foretell")
+      // foretelling is a special action during your turn (sorcery-speed timing here)
+      if (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length)
+        throw new RulesError('TIMING', 'Foretell only during your main phase with an empty stack')
+      const cost = parseManaCost('{2}') // the fixed foretell cost (CR 702.143c)
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(cost, pool)
+      if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      // exile it FACE DOWN — opponents never learn what it is (the redactor sends no defName).
+      // No re-mint: the hand id was never serialised to opponents, and the face-down exile id
+      // they now see carries no identity (invariants #2/#3).
+      moveTo(state, obj.id, 'exile')
+      obj.faceDown = true
+      obj.foretoldTurn = state.turnNumber
+      logLine(state, `${name(state, actor)} foretells a card.`) // no card name — it's face down
+      grantPriority(state, actor)
       break
     }
 

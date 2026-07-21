@@ -257,6 +257,12 @@ export interface CardDefinition {
    */
   madnessCost?: string
   /**
+   * Foretell (CR 702.143): "During your turn, pay {2} and exile this card face down." On a LATER
+   * turn you may cast it from exile for its foretell cost. Set to the foretell mana cost; the {2}
+   * to foretell is fixed. Foretelling reveals nothing to opponents (the card is face-down).
+   */
+  foretellCost?: string
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.

@@ -34,6 +34,37 @@ function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean 
 
 export function redactRulesState(state: RulesGameState, viewer: PlayerId): RulesClientState {
   const toClientCard = (obj: RulesGameState['objects'][string]): RulesClientCard => {
+    // Face-down (foretell / morph): a NON-owner never learns the identity — send no defName, no
+    // characteristics beyond the public shell (a face-down creature reads as a 2/2 with no name).
+    // The owner gets the real card (below) but the client still renders it face-down.
+    if (obj.faceDown && obj.ownerId !== viewer) {
+      const onBattlefield = obj.zone === 'battlefield'
+      return {
+        id: obj.id,
+        defName: null,
+        ownerId: obj.ownerId,
+        controllerId: obj.controllerId,
+        zone: obj.zone,
+        tapped: obj.tapped,
+        summoningSick: obj.summoningSick,
+        damageMarked: obj.damageMarked,
+        counters: {},
+        power: onBattlefield ? 2 : null, // a face-down permanent is a 2/2 (CR 707.2 / morph)
+        toughness: onBattlefield ? 2 : null,
+        loyalty: null,
+        isCommander: false,
+        attachedTo: null,
+        unimplemented: false,
+        keywords: [],
+        attackingDefender: obj.attackingDefender,
+        attackingPwId: null,
+        blockingAttackerId: obj.blockingAttackerId,
+        phasedOut: false,
+        adventured: false,
+        faceDown: true,
+        hidden: true,
+      }
+    }
     // cache the def and compute effective P/T ONCE per object (redaction is the fuzzer's hot path)
     const def = getDef(obj.defName)
     // a bestowed permanent is an Aura, not a creature (CR 702.103) — no creature P/T while attached
@@ -63,6 +94,7 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     blockingAttackerId: obj.blockingAttackerId,
     phasedOut: obj.phasedOut ?? false,
     adventured: obj.adventured ?? false,
+    faceDown: obj.faceDown ?? false,
     hidden: false,
     }
   }

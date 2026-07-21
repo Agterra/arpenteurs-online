@@ -1796,6 +1796,20 @@ export const STARTER_SET: CardDefinition[] = [
     abilities: [{ kind: 'activated', cost: { sacrifice: { count: 1, filter: 'creature' } }, effect: scry(1) }],
   },
 
+  // --- Coverage batch MECH15: Foretell (CR 702.143 — exile face-down for {2}, cast later) ---
+  {
+    // French-vanilla (flying) + foretell; entire rules captured.
+    name: 'Augury Raven',
+    types: ['Creature'],
+    subtypes: ['Bird'],
+    manaCost: '{3}{U}',
+    colors: ['U'],
+    power: 2,
+    toughness: 3,
+    keywords: ['flying'],
+    foretellCost: '{2}{U}',
+  },
+
   // --- Coverage batch MECH14: Madness (CR 702.35 — discard → cast for madness cost, else graveyard) ---
   {
     name: 'Fiery Temper',
