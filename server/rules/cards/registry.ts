@@ -81,6 +81,18 @@ export function implementedCommanderNames(): string[] {
 }
 
 /**
+ * Every hand-coded (non-fallback) card in the implemented pool — the coverage ledger. Excludes
+ * token def keys (`tok:`/`itok:`), assisted-table fallbacks (`unimplemented`), and DFC back faces
+ * (counted as part of their front). Sorted by display name.
+ */
+export function implementedCardNames(): string[] {
+  return [...registry.entries()]
+    .filter(([key, def]) => !key.startsWith('tok:') && !key.startsWith('itok:') && !def.unimplemented && !def.isBackFace)
+    .map(([, def]) => def.name)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+/**
  * Register (idempotently) an ad-hoc token definition for a manual token, keyed
  * by its shape so identical tokens dedupe. Returns the def key to mint against.
  */

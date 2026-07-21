@@ -1857,4 +1857,41 @@ export const STARTER_SET: CardDefinition[] = [
       keywords: ['flying'],
     },
   },
+
+  // ===== Perpetual card-by-card coverage (M-R5+): popular Commander staples =====
+  // --- Coverage batch CARD1: clean staples that reuse existing primitives ---
+  {
+    name: 'Dark Ritual',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Add {B}{B}{B}."
+    spell: { effect: addMana('B', 'B', 'B') },
+  },
+  {
+    name: 'Cancel',
+    types: ['Instant'],
+    manaCost: '{1}{U}{U}',
+    colors: ['U'],
+    // "Counter target spell."
+    spell: { targets: [{ kind: 'spell', count: 1 }], effect: counterTarget() },
+  },
+  {
+    name: 'Swiftfoot Boots',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{2}',
+    // "Equipped creature has hexproof and haste. Equip {1}"
+    equipCost: '{1}',
+    grantsToHost: { keywords: ['hexproof', 'haste'] },
+  },
+  {
+    name: 'Lightning Greaves',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{2}',
+    // "Equipped creature has haste and shroud. Equip {0}"
+    equipCost: '{0}',
+    grantsToHost: { keywords: ['shroud', 'haste'] },
+  },
 ]
