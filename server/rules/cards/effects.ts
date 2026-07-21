@@ -400,6 +400,19 @@ export const weakenAllCreatures = (n: number): Effect => (ctx) => {
   logLine(ctx.state, `All creatures get -${n}/-${n} until end of turn.`)
 }
 
+/** Each target player draws `draw` cards and loses `life` life (e.g. Sign in Blood). */
+export const targetPlayerDrawDrain = (draw: number, life: number): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    for (let i = 0; i < draw; i++) drawOne(ctx.state, t)
+    ctx.state.players[t]!.life -= life
+    logLine(ctx.state, `${ctx.state.players[t]!.name} draws ${draw} and loses ${life} life.`)
+  }
+}
+
+/** The controller discards `n` cards of their choice (e.g. Faithless Looting's "discard two cards"). */
+export const selfDiscard = (n: number): Effect => (ctx) => openDiscard(ctx.state, [ctx.controllerId], n)
+
 /** Transform this permanent (CR 712): swap its defName to the other face. getDef then returns the
  *  new face everywhere, so P/T / types / keywords / abilities all change together. */
 export const transform = (): Effect => (ctx) => {

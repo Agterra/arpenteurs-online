@@ -50,6 +50,8 @@ import {
   sequence,
   setBasePT,
   lookTransformIfInstantSorcery,
+  targetPlayerDrawDrain,
+  selfDiscard,
 } from './effects'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 
@@ -1893,5 +1895,24 @@ export const STARTER_SET: CardDefinition[] = [
     // "Equipped creature has haste and shroud. Equip {0}"
     equipCost: '{0}',
     grantsToHost: { keywords: ['shroud', 'haste'] },
+  },
+
+  // --- Coverage batch CARD2: card advantage (2 small new primitives) ---
+  {
+    name: 'Sign in Blood',
+    types: ['Sorcery'],
+    manaCost: '{B}{B}',
+    colors: ['B'],
+    // "Target player draws two cards and loses 2 life."
+    spell: { targets: [{ kind: 'player', count: 1 }], effect: targetPlayerDrawDrain(2, 2) },
+  },
+  {
+    name: 'Faithless Looting',
+    types: ['Sorcery'],
+    manaCost: '{R}',
+    colors: ['R'],
+    flashbackCost: '{2}{R}',
+    // "Draw two cards, then discard two cards. Flashback {2}{R}."
+    spell: { effect: sequence(drawCards(2), selfDiscard(2)) },
   },
 ]
