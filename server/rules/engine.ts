@@ -1339,7 +1339,8 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
 
 /** Is there at least one legal target for `spec` right now? (drives CR 603.3c trigger removal + client castability) */
 export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
-  if (spec.kind === 'spell') return state.zones.stack.some((s) => s.kind === 'spell')
+  if (spec.kind === 'spell')
+    return state.zones.stack.some((s) => s.kind === 'spell' && !spec.filter?.excludeTypes?.some((x) => getDef(s.defName).types.includes(x)))
   if (spec.kind === 'player')
     return spec.filter?.controller === 'opponent' ? opponentsOf(state, byController).length > 0 : alivePlayers(state).length > 0
   if (spec.kind === 'anyTarget') return alivePlayers(state).length > 0
@@ -1359,7 +1360,13 @@ export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byCon
 }
 
 function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | PlayerId, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
-  if (spec.kind === 'spell') return state.zones.stack.some((s) => s.kind === 'spell' && s.id === (t as ObjId))
+  if (spec.kind === 'spell') {
+    const item = state.zones.stack.find((s) => s.kind === 'spell' && s.id === (t as ObjId))
+    if (!item) return false
+    // spell-target filter (e.g. Negate "noncreature spell"): reject excluded card types
+    if (spec.filter?.excludeTypes?.some((x) => getDef(item.defName).types.includes(x))) return false
+    return true
+  }
   // Object.hasOwn (not `in`) so prototype keys can't masquerade as players
   const isPlayer = Object.hasOwn(state.players, t) && !state.players[t as PlayerId]!.hasLost
   // isCreatureOnBattlefield already guards prototype keys (real object + zone check)

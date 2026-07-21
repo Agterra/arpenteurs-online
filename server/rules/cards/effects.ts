@@ -400,6 +400,30 @@ export const weakenAllCreatures = (n: number): Effect => (ctx) => {
   logLine(ctx.state, `All creatures get -${n}/-${n} until end of turn.`)
 }
 
+/**
+ * Path to Exile: exile the target creature, then its CONTROLLER may search their library for a
+ * basic land and put it onto the battlefield tapped (a search opened for that player — who may be
+ * an opponent — resolved via r.search; they can decline by taking nothing).
+ */
+export const exileTargetControllerFetchesLand = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
+    const controller = ctx.state.objects[t]!.controllerId
+    const nm = getDef(ctx.state.objects[t]!.defName).name
+    moveTo(ctx.state, t, 'exile')
+    logLine(ctx.state, `${nm} is exiled.`)
+    const matchIds = ctx.state.zones.perPlayer[controller]!.library.filter((id) => {
+      const d = getDef(ctx.state.objects[id]!.defName)
+      return d.types.includes('Land') && (d.supertypes?.includes('Basic') ?? false)
+    })
+    if (matchIds.length) {
+      ctx.state.pending = { kind: 'search', player: controller }
+      ctx.state.pendingSearch = { player: controller, matchIds, dest: 'battlefield', tapped: true, count: 1 }
+      logLine(ctx.state, `${ctx.state.players[controller]!.name} may search for a basic land.`)
+    }
+  }
+}
+
 /** Each target player draws `draw` cards and loses `life` life (e.g. Sign in Blood). */
 export const targetPlayerDrawDrain = (draw: number, life: number): Effect => (ctx) => {
   for (const t of ctx.targets) {

@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**251 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**253 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -159,6 +159,7 @@
 - Murder
 - Murderous Rider
 - Naturalize
+- Negate
 - Nessian Asp
 - Night's Whisper
 - Nissa, Voice of Zendikar
@@ -169,6 +170,7 @@
 - Pacifism
 - Paladin en-Vec
 - Pale Bears
+- Path to Exile
 - Phyrexian Arena
 - Pincher Beetles
 - Plague Stinger

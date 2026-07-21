@@ -52,6 +52,7 @@ import {
   lookTransformIfInstantSorcery,
   targetPlayerDrawDrain,
   selfDiscard,
+  exileTargetControllerFetchesLand,
 } from './effects'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 
@@ -1914,5 +1915,24 @@ export const STARTER_SET: CardDefinition[] = [
     flashbackCost: '{2}{R}',
     // "Draw two cards, then discard two cards. Flashback {2}{R}."
     spell: { effect: sequence(drawCards(2), selfDiscard(2)) },
+  },
+
+  // --- Coverage batch CARD3: premium removal / counter (exile-fetch + spell-target filter) ---
+  {
+    name: 'Path to Exile',
+    types: ['Instant'],
+    manaCost: '{W}',
+    colors: ['W'],
+    // "Exile target creature. Its controller may search their library for a basic land card, put
+    //  that card onto the battlefield tapped, then shuffle."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: exileTargetControllerFetchesLand() },
+  },
+  {
+    name: 'Negate',
+    types: ['Instant'],
+    manaCost: '{1}{U}',
+    colors: ['U'],
+    // "Counter target noncreature spell."
+    spell: { targets: [{ kind: 'spell', count: 1, filter: { excludeTypes: ['Creature'] } }], effect: counterTarget() },
   },
 ]
