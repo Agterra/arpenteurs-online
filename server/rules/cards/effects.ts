@@ -315,7 +315,9 @@ export const drawCards = (n: number): Effect => (ctx) => {
  * (sanctioned peek, invariant #2). Finds nothing → no pause.
  */
 export const searchLibrary = (opts: {
-  filter: 'basicLand' | 'any'
+  // 'basicLand' = any Basic land; 'any' = any card; { landSubtypes } = a land with one of these
+  // subtypes (e.g. Farseek → Plains/Island/Swamp/Mountain, Nature's Lore → Forest — basic OR not).
+  filter: 'basicLand' | 'any' | { landSubtypes: string[] }
   dest: 'battlefield' | 'hand'
   tapped?: boolean
   count?: number
@@ -329,7 +331,9 @@ export const searchLibrary = (opts: {
   const matchIds = lib.filter((id) => {
     if (opts.filter === 'any') return true
     const def = getDef(ctx.state.objects[id]!.defName)
-    return def.types.includes('Land') && (def.supertypes?.includes('Basic') ?? false)
+    if (!def.types.includes('Land')) return false
+    if (typeof opts.filter === 'object') return (def.subtypes ?? []).some((st) => opts.filter.landSubtypes.includes(st))
+    return def.supertypes?.includes('Basic') ?? false // 'basicLand'
   })
   const who = ctx.state.players[ctx.controllerId]!.name
   if (!matchIds.length) {

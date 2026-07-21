@@ -1993,4 +1993,51 @@ export const STARTER_SET: CardDefinition[] = [
       }),
     },
   },
+  {
+    name: 'Farseek',
+    types: ['Sorcery'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "Search your library for a Plains, Island, Swamp, or Mountain card, put it onto the battlefield
+    //  tapped, then shuffle." (basic OR non-basic with those land types)
+    spell: {
+      effect: searchLibrary({ filter: { landSubtypes: ['Plains', 'Island', 'Swamp', 'Mountain'] }, dest: 'battlefield', tapped: true, count: 1 }),
+    },
+  },
+  {
+    name: "Nature's Lore",
+    types: ['Sorcery'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "Search your library for a Forest card, put that card onto the battlefield, then shuffle." (untapped)
+    spell: {
+      effect: searchLibrary({ filter: { landSubtypes: ['Forest'] }, dest: 'battlefield', count: 1 }),
+    },
+  },
+  {
+    name: 'Three Visits',
+    types: ['Sorcery'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "Search your library for a Forest card, put it onto the battlefield, then shuffle." (functionally Nature's Lore)
+    spell: {
+      effect: searchLibrary({ filter: { landSubtypes: ['Forest'] }, dest: 'battlefield', count: 1 }),
+    },
+  },
+  {
+    name: 'Arcane Signet',
+    types: ['Artifact'],
+    manaCost: '{2}',
+    // "{T}: Add one mana of any color in your commander's color identity." Simplified for the assisted
+    //  table to any colour (a rock's identity restriction isn't tracked); colour chosen on tap.
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') }],
+  },
+  {
+    name: 'Fellwar Stone',
+    types: ['Artifact'],
+    manaCost: '{2}',
+    // "{T}: Add one mana of any color that a land an opponent controls could produce." Simplified to
+    //  any colour for the assisted table; colour chosen on tap.
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') }],
+  },
 ]

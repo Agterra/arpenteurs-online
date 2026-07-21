@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**257 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**262 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -21,6 +21,7 @@
 - Angel of Mercy
 - Angelic Gift
 - Anguished Unmaking
+- Arcane Signet
 - Assault // Battery
 - Audacious Thief
 - Augury Raven
@@ -85,7 +86,9 @@
 - Errant Ephemeron
 - Faithful Watchdog
 - Faithless Looting
+- Farseek
 - Feed the Swarm
+- Fellwar Stone
 - Fencing Ace
 - Fervor
 - Field Marshal
@@ -162,6 +165,7 @@
 - Murder
 - Murderous Rider
 - Naturalize
+- Nature's Lore
 - Negate
 - Nessian Asp
 - Night's Whisper
@@ -238,6 +242,7 @@
 - Terminate
 - Thought Scour
 - Thran Dynamo
+- Three Visits
 - Titanic Growth
 - Tomakul Honor Guard
 - Tome Scour
