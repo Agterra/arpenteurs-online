@@ -319,6 +319,11 @@ export const searchLibrary = (opts: {
   dest: 'battlefield' | 'hand'
   tapped?: boolean
   count?: number
+  /** Split destination — e.g. Cultivate: first pick → battlefield tapped, rest → hand. */
+  split?: {
+    first: { dest: 'battlefield' | 'hand'; tapped: boolean }
+    rest: { dest: 'battlefield' | 'hand'; tapped: boolean }
+  }
 }): Effect => (ctx) => {
   const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
   const matchIds = lib.filter((id) => {
@@ -338,6 +343,7 @@ export const searchLibrary = (opts: {
     dest: opts.dest,
     tapped: opts.tapped ?? false,
     count: opts.count ?? 1,
+    ...(opts.split ? { split: opts.split } : {}),
   }
   logLine(ctx.state, `${who} searches their library.`)
 }

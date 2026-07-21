@@ -1985,14 +1985,17 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const chosen = [...new Set(msg.cardIds)]
       if (chosen.length > ps.count) throw new RulesError('BAD_SEARCH', `Choose at most ${ps.count}`)
       for (const id of chosen) if (!ps.matchIds.includes(id)) throw new RulesError('BAD_SEARCH', 'Not among the matches')
-      for (const id of chosen) {
+      for (let i = 0; i < chosen.length; i++) {
+        const id = chosen[i]!
         const obj = state.objects[id]
         if (!obj) continue
-        if (ps.dest === 'battlefield') {
+        // split (Cultivate/Kodama's Reach): first pick → `first`, the rest → `rest`
+        const route = ps.split ? (i === 0 ? ps.split.first : ps.split.rest) : { dest: ps.dest, tapped: ps.tapped }
+        if (route.dest === 'battlefield') {
           obj.controllerId = actor
           obj.summoningSick = defIsCreature(getDef(obj.defName))
           moveTo(state, id, 'battlefield')
-          if (ps.tapped) obj.tapped = true
+          if (route.tapped) obj.tapped = true
           fireEntersTriggers(state, id)
         } else if (obj.isCommander) {
           moveTo(state, id, 'command') // a commander never enters a hidden hand

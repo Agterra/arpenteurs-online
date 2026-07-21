@@ -466,6 +466,11 @@ const FUZZ_DECK = [
   // FACE DOWN (2/2) and sometimes turns it up; the deterministic morph test checks the name never
   // leaks on the stack or battlefield.
   ...Array(3).fill('Battering Craghorn'),
+  // batch CARD5: Cultivate ({2}{G}) — a SPLIT library search (up to two basic lands, one onto the
+  // battlefield tapped, the OTHER into the hand, then shuffle). Exercises the new split routing in
+  // r.search: the searched land sent library→hand must be re-minted (invariant #3) and the library
+  // reshuffled+re-minted, so the history-aware assertion guards that peek→hidden-hand path.
+  ...Array(3).fill('Cultivate'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

@@ -237,6 +237,15 @@ export interface RulesGameState {
     dest: 'battlefield' | 'hand'
     tapped: boolean
     count: number
+    /**
+     * Split destination (e.g. Cultivate / Kodama's Reach: "put one onto the battlefield
+     * tapped and the other into your hand"): the FIRST chosen card is routed via `first`,
+     * every subsequent chosen card via `rest`. When absent, all picks use `dest`/`tapped`.
+     */
+    split?: {
+      first: { dest: 'battlefield' | 'hand'; tapped: boolean }
+      rest: { dest: 'battlefield' | 'hand'; tapped: boolean }
+    }
   } | null
   /**
    * An active forced sacrifice (edicts / each-player sacrifices). The current

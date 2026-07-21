@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**255 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**257 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -62,6 +62,7 @@
 - Craw Wurm
 - Cruel Celebrant
 - Crystal Ball
+- Cultivate
 - Damnation
 - Dark Ritual
 - Darksteel Myr
@@ -129,6 +130,7 @@
 - Jedit Ojanen
 - Jerrard of the Closed Fist
 - Knight of Glory
+- Kodama's Reach
 - Krenko's Command
 - Krenko's Enforcer
 - Languish

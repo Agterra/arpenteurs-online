@@ -1961,4 +1961,36 @@ export const STARTER_SET: CardDefinition[] = [
       effect: reanimate(),
     },
   },
+  {
+    name: 'Cultivate',
+    types: ['Sorcery'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    // "Search your library for up to two basic land cards, reveal those cards, and put one onto the
+    //  battlefield tapped and the other into your hand, then shuffle."
+    spell: {
+      effect: searchLibrary({
+        filter: 'basicLand',
+        dest: 'battlefield',
+        count: 2,
+        split: { first: { dest: 'battlefield', tapped: true }, rest: { dest: 'hand', tapped: false } },
+      }),
+    },
+  },
+  {
+    name: "Kodama's Reach",
+    types: ['Sorcery'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    // "Search your library for up to two basic land cards, reveal those cards, and put one onto the
+    //  battlefield tapped and the other into your hand, then shuffle." (functionally Cultivate)
+    spell: {
+      effect: searchLibrary({
+        filter: 'basicLand',
+        dest: 'battlefield',
+        count: 2,
+        split: { first: { dest: 'battlefield', tapped: true }, rest: { dest: 'hand', tapped: false } },
+      }),
+    },
+  },
 ]
