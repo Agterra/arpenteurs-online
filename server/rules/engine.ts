@@ -891,7 +891,9 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
   }
 
   if (defIsPermanent(def)) {
-    logLine(state, `${def.name} enters the battlefield.`)
+    // a morph spell enters as a face-down 2/2 creature (CR 707.2) — no name is logged/leaked
+    obj.faceDown = item.faceDown ?? false
+    logLine(state, obj.faceDown ? `A face-down creature enters the battlefield.` : `${def.name} enters the battlefield.`)
     obj.controllerId = item.controllerId
     obj.summoningSick = defIsCreature(def)
     // suspend (CR 702.62e): a creature cast from suspend enters with haste
@@ -899,7 +901,7 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     moveTo(state, obj.id, 'battlefield') // moveTo initialises loyalty for a planeswalker (CR 306.5b)
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
     if (def.entersTapped) obj.tapped = true // e.g. Worn Powerstone (cast, enters tapped)
-    fireEntersTriggers(state, obj.id)
+    fireEntersTriggers(state, obj.id) // a face-down creature has no own ETB (guarded in fireEntersTriggers)
     // Saga (CR 714.2b/3): a lore counter is added as it enters → chapter I triggers
     if (defIsSaga(def)) {
       obj.counters.lore = 1
@@ -953,7 +955,7 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
       const isSelf = p.id === subjectId
       const w = ab.watch
       const fires = !w
-        ? isSelf // plain ETB
+        ? isSelf && !subject.faceDown // plain ETB — a face-down creature has no own ETB (CR 707.2)
         : subjectIsCreature &&
           !(w.excludeSelf && isSelf) &&
           !(w.controllerOnly && subject.controllerId !== p.controllerId)
@@ -1592,12 +1594,15 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // evoke (CR 702.74): cast for the evoke cost, then sacrifice it as it enters
       const castingEvoke = !adv && !castingBestow && !fromFlashback && !fromRetrace && !!msg.evoke
       if (castingEvoke && !def.evokeCost) throw new RulesError('NO_EVOKE', 'That card has no evoke')
+      // morph (CR 702.37): cast face down as a 2/2 for a fixed {3}
+      const castingFaceDown = !adv && !castingBestow && !castingEvoke && !fromFlashback && !fromRetrace && !fromEscape && !fromForetell && !!msg.faceDown
+      if (castingFaceDown && !def.morphCost) throw new RulesError('NO_MORPH', 'That card has no morph')
       // split card (CR 709): the chosen half is selected by mode (0 = left, 1 = right)
       if (!adv && !castingBestow && def.split && msg.mode !== 0 && msg.mode !== 1) throw new RulesError('BAD_MODE', 'Choose a split half')
       const splitHalf = !adv && !castingBestow && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
       // the "face" being cast: the adventure half, a split half, or the card's main face
       const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
-      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : fromForetell ? def.foretellCost! : def.manaCost
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : castingFaceDown ? '{3}' : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : fromForetell ? def.foretellCost! : def.manaCost
       if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
       const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && !castingBestow && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
@@ -1696,7 +1701,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       pullFromCurrentZone(state, obj)
       obj.zone = 'stack'
       obj.adventured = false // whether cast from hand or recast from exile, it's now on the stack
-      obj.faceDown = false // a foretold card is revealed as it's cast
+      obj.faceDown = castingFaceDown // a foretold card is revealed as cast; a morph is cast face down
       if (fromCommand) state.players[actor]!.commanderTax++
       state.zones.stack.push({
         id: obj.id,
@@ -1708,6 +1713,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         targets: msg.targets,
         x: xCount > 0 ? x : undefined,
         mode: !adv && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
+        faceDown: castingFaceDown || undefined,
         kicked: kicked || undefined,
         adventure: castingAdventure || undefined,
         flashback: fromFlashback || undefined,
@@ -1720,7 +1726,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       )
       logLine(
         state,
-        `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromEscape ? ' (escape)' : fromForetell ? ' (foretold)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
+        castingFaceDown
+          ? `${name(state, actor)} casts a face-down creature.` // no name — it's face down (morph)
+          : `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromEscape ? ' (escape)' : fromForetell ? ' (foretold)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)
@@ -2134,6 +2142,25 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       obj.foretoldTurn = state.turnNumber
       logLine(state, `${name(state, actor)} foretells a card.`) // no card name — it's face down
       grantPriority(state, actor)
+      break
+    }
+
+    case 'r.morph': {
+      requirePriority(state, actor) // turning face up is a special action, any time you have priority
+      const obj = state.objects[msg.objId]
+      if (!obj || obj.zone !== 'battlefield' || obj.controllerId !== actor || !obj.faceDown)
+        throw new RulesError('NOT_FACE_DOWN', 'That is not your face-down permanent')
+      const def = getDef(obj.defName)
+      if (!def.morphCost) throw new RulesError('NO_MORPH', 'That card has no morph cost')
+      const cost = parseManaCost(def.morphCost)
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(cost, pool)
+      if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      obj.faceDown = false // revealed — its real characteristics apply now (no stack, not "casting")
+      logLine(state, `${name(state, actor)} turns ${def.name} face up.`)
+      state.passed = [] // a special action restarts the pass chain (CR 116.4)
+      checkSBA(state) // its real toughness now applies
       break
     }
 

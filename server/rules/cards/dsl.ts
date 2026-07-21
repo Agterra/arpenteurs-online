@@ -263,6 +263,12 @@ export interface CardDefinition {
    */
   foretellCost?: string
   /**
+   * Morph (CR 702.37): "You may cast this card face down as a 2/2 creature for {3}. Turn it face up
+   * any time for its morph cost." Set to the morph (turn-face-up) mana cost; casting face-down is a
+   * fixed {3}. While face down it's a 2/2 with no name/types/abilities (see characteristics).
+   */
+  morphCost?: string
+  /**
    * Convoke (CR 702.51): "Your creatures can help cast this spell." As you cast it you may tap any
    * number of untapped creatures you control; each pays for {1} or one mana of that creature's
    * colours. The tapped creatures are chosen client-side and passed as `r.cast.convoke`.

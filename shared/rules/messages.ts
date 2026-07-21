@@ -38,6 +38,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
     buyback: z.boolean().optional(), // pay the buyback cost → return to hand on resolve (CR 702.27)
     bestow: z.boolean().optional(), // cast for the bestow cost as an Aura (CR 702.103)
     evoke: z.boolean().optional(), // cast for the evoke cost → sacrifice on enter (CR 702.74)
+    faceDown: z.boolean().optional(), // cast face down as a 2/2 for {3} (morph, CR 702.37)
   }),
   z.object({
     type: z.literal('r.attackers'),
@@ -57,6 +58,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.suspend'), objId: Id }), // suspend a card from hand (CR 702.62)
   z.object({ type: z.literal('r.madness'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }), // CR 702.35
   z.object({ type: z.literal('r.foretell'), objId: Id }), // foretell a card from hand (CR 702.143)
+  z.object({ type: z.literal('r.morph'), objId: Id }), // turn a face-down permanent face up (CR 702.37)
   z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
   z.object({ type: z.literal('r.cascade'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }),
   z.object({

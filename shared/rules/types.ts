@@ -179,8 +179,12 @@ export interface StackItem {
   buyback?: boolean
   /** Bestow (CR 702.103): cast for the bestow cost → enters as an Aura attached to its target. */
   bestow?: boolean
+  /** Morph (CR 702.37): cast face down → enters as a 2/2 face-down creature. */
+  faceDown?: boolean
   /** Evoke (CR 702.74): cast for the evoke cost → sacrificed as it enters (ETB triggers still fire). */
   evoke?: boolean
+  /** Morph (CR 702.37): this spell is being cast face down → it enters as a 2/2 face-down creature. */
+  faceDown?: boolean
 }
 
 export interface PlayerRState {

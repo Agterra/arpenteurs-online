@@ -1796,6 +1796,20 @@ export const STARTER_SET: CardDefinition[] = [
     abilities: [{ kind: 'activated', cost: { sacrifice: { count: 1, filter: 'creature' } }, effect: scry(1) }],
   },
 
+  // --- Coverage batch MECH16: Morph (CR 702.37 — cast face down as a 2/2, turn up for morph cost) ---
+  {
+    // First strike + morph; entire rules captured. Face down it's a 2/2 vanilla; face up a 3/1 FS.
+    name: 'Battering Craghorn',
+    types: ['Creature'],
+    subtypes: ['Beast'],
+    manaCost: '{3}{R}{R}',
+    colors: ['R'],
+    power: 3,
+    toughness: 1,
+    keywords: ['first strike'],
+    morphCost: '{2}{R}{R}',
+  },
+
   // --- Coverage batch MECH15: Foretell (CR 702.143 — exile face-down for {2}, cast later) ---
   {
     // French-vanilla (flying) + foretell; entire rules captured.

@@ -138,7 +138,15 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     turnNumber: state.turnNumber,
     priorityPlayer: state.priorityPlayer,
     cards,
-    zones: { perPlayer, stack: state.zones.stack },
+    // the stack is public EXCEPT a face-down (morph) spell — blank its defName for non-owners so
+    // casting a face-down creature never leaks its identity via the stack
+    zones: {
+      perPlayer,
+      stack: state.zones.stack.map((s) => {
+        const src = state.objects[s.sourceId]
+        return src?.faceDown && src.ownerId !== viewer ? { ...s, defName: '' } : s
+      }),
+    },
     legal: computeLegal(state, viewer),
     status: state.status,
     winner: state.winner,

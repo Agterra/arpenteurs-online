@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest'
 import type { ObjId, PlayerId, RulesGameState } from '../../shared/rules/types.ts'
 import { applyRulesAction } from '../../server/rules/engine.ts'
 import { redactRulesState, computeLegal } from '../../server/rules/redact.ts'
-import { getDef } from '../../server/rules/cards/registry.ts'
+import { getDef, defKey } from '../../server/rules/cards/registry.ts'
 import { currentKeywords } from '../../server/rules/characteristics.ts'
 import { makeGameN, putCard, rig, toStep, until } from './rules-helpers.ts'
 import { mulberry32 } from './engine-helpers.ts'
@@ -187,6 +187,31 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       try {
         applyRulesAction(state, actor, { type: 'r.foretell', objId: pick(foretellable) })
       } catch { /* not enough mana — the taps above still count as this step's action */ }
+      return true
+    }
+  }
+
+  // occasionally cast a morph card FACE DOWN (2/2) for the fixed {3}, or turn a face-down
+  // permanent face up. Same commit-then-always-return discipline (tapping makes `legal` stale).
+  if (actor === state.activePlayer && (state.step === 'main1' || state.step === 'main2') && !state.zones.stack.length && rnd() < 0.25) {
+    const faceUp = Object.values(state.objects).find((o) => o.zone === 'battlefield' && o.controllerId === actor && o.faceDown)
+    const morphInHand = state.zones.perPlayer[actor]!.hand.filter((id) => getDef(state.objects[id]!.defName).morphCost)
+    if (faceUp && rnd() < 0.4) {
+      for (const src of legal.manaSourceIds) {
+        if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= 4) break
+        const colors = legal.manaSourceColors[src] ?? []
+        applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      }
+      try { applyRulesAction(state, actor, { type: 'r.morph', objId: faceUp.id }) } catch { /* can't pay */ }
+      return true
+    }
+    if (morphInHand.length) {
+      for (const src of legal.manaSourceIds) {
+        if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= 3) break
+        const colors = legal.manaSourceColors[src] ?? []
+        applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      }
+      try { applyRulesAction(state, actor, { type: 'r.cast', objId: pick(morphInHand), faceDown: true, targets: [] }) } catch { /* can't pay */ }
       return true
     }
   }
@@ -437,6 +462,10 @@ const FUZZ_DECK = [
   // batch MECH15: a foretell card ({3}{U} 2/3 flying, Foretell {2}{U}) — the fuzzer foretells it
   // (exile FACE DOWN), so assertNoLeaks verifies opponents never learn its identity in exile.
   ...Array(3).fill('Augury Raven'),
+  // batch MECH16: a morph card ({3}{R}{R} 3/1 first strike, Morph {2}{R}{R}) — the fuzzer casts it
+  // FACE DOWN (2/2) and sometimes turns it up; the deterministic morph test checks the name never
+  // leaks on the stack or battlefield.
+  ...Array(3).fill('Battering Craghorn'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
@@ -544,6 +573,38 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
         if (!randomAction(state, mulberry32(720 + i))) break
         assertNoLeaks(state, `(foretold, step ${i})`, seen)
       }
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // Deterministic hidden-information coverage for MORPH (CR 702.37): a face-down creature's identity
+  // must never leak to opponents — on the STACK (while being cast) or on the battlefield. Name-based
+  // (assertNoLeaks is id-based; a face-down creature's id is public, but its NAME must not be).
+  it('never leaks a face-down (morph) creature name to opponents, on the stack or battlefield', () => {
+    __setDeterministicRng(mulberry32(909))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const cra = putCard(state, A, 'Battering Craghorn', 'hand')
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 3 })
+      applyRulesAction(state, A, { type: 'r.cast', objId: cra, faceDown: true, targets: [] })
+      // ON THE STACK, face down: the opponent must not see the card name
+      expect(JSON.stringify(redactRulesState(state, B)).includes('Battering Craghorn')).toBe(false)
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'morph resolves')
+      // ON THE BATTLEFIELD, face down: still hidden; the redacted card carries no defName
+      const forB = redactRulesState(state, B)
+      expect(JSON.stringify(forB).includes('Battering Craghorn')).toBe(false)
+      expect(forB.cards[cra]?.defName).toBeNull()
+      expect(forB.cards[cra]?.power).toBe(2)
+      assertNoLeaks(state, '(face-down)', seen)
+      // turn it face up → now revealed to the opponent
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 4 })
+      applyRulesAction(state, A, { type: 'r.morph', objId: cra })
+      expect(redactRulesState(state, B).cards[cra]?.defName).toBe(defKey('Battering Craghorn'))
     } finally {
       __setDeterministicRng(null)
     }

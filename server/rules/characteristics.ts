@@ -75,7 +75,8 @@ function staticPT(state: RulesGameState, obj: GameObject): { p: number; t: numbe
 export function currentKeywords(state: RulesGameState, obj: GameObject): Keyword[] {
   // "loses all abilities" (layer 6) strips its OWN (intrinsic) keywords; grants
   // from other permanents still apply.
-  const base = state.loseAbilities.includes(obj.id) ? [] : (getDef(obj.defName).keywords ?? [])
+  // a face-down (morph) creature has no printed keywords (CR 707.2); "loses all abilities" strips them too
+  const base = obj.faceDown || state.loseAbilities.includes(obj.id) ? [] : (getDef(obj.defName).keywords ?? [])
   if (obj.zone !== 'battlefield') return [...base]
   // keyword grants ("creatures you control have vigilance", auras/equipment) reach
   // only CREATURES — a land/artifact/planeswalker never receives a granted keyword
@@ -144,7 +145,11 @@ export function currentPT(state: RulesGameState, obj: GameObject): { power: numb
   const c = counterPT(obj)
   const s = staticPT(state, obj)
   const p = pumpPT(state, obj)
-  return { power: baseP(state, obj) + c + s.p + p.p, toughness: baseT(state, obj) + c + s.t + p.t }
+  // a face-down (morph) permanent is a 2/2 with no printed characteristics (CR 707.2), still
+  // affected by counters/anthems/pumps
+  const bp = obj.faceDown ? 2 : baseP(state, obj)
+  const bt = obj.faceDown ? 2 : baseT(state, obj)
+  return { power: bp + c + s.p + p.p, toughness: bt + c + s.t + p.t }
 }
 
 export function currentPower(state: RulesGameState, obj: GameObject): number {
