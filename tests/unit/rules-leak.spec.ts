@@ -521,6 +521,10 @@ const FUZZ_DECK = [
   // whose land enters tapped then conditionally untaps).
   ...Array(2).fill('Skullclamp'),
   ...Array(2).fill('Fabled Passage'),
+  // batch CARD14: Pitiless Plunderer — creature deaths are frequent in a fuzz game, so Treasure
+  // tokens appear and the fuzzer's mana-tapping loops then exercise the new
+  // "{T}, Sacrifice this token" MANA-ability cost (a mana source that removes itself).
+  ...Array(2).fill('Pitiless Plunderer'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

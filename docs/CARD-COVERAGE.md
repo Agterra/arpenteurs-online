@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**296 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**298 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -17,6 +17,7 @@
 - Ajani, the Greathearted
 - Ambition's Cost
 - Ambush Viper
+- An Offer You Can't Refuse
 - Ancient Craving
 - Angel of Mercy
 - Angelic Gift
@@ -199,6 +200,7 @@
 - Path to Exile
 - Phyrexian Arena
 - Pincher Beetles
+- Pitiless Plunderer
 - Plague Stinger
 - Plains
 - Polluted Delta

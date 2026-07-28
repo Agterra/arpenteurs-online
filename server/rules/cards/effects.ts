@@ -3,8 +3,8 @@
  * the ONLY way card code mutates the game (they defer to state.ts helpers so
  * zone/SBA invariants hold). Grows every milestone.
  */
-import type { EffectContext, Effect } from './dsl'
-import type { Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
+import type { Ability, EffectContext, Effect } from './dsl'
+import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { parseManaCost } from '#shared/utils/manaCost'
 import { apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
 import { getDef, defKey, registerImplementedToken } from './registry'
@@ -594,6 +594,55 @@ export interface TokenSpec {
   toughness?: number
   subtypes?: string[]
   keywords?: Keyword[]
+  /** non-creature tokens (a Treasure is an Artifact) */
+  types?: CardType[]
+  /** the token's own activated abilities (a Treasure's mana ability) */
+  abilities?: Ability[]
+}
+
+/**
+ * The Treasure token (CR 111.10-style predefined token): "Artifact — Treasure. {T}, Sacrifice this
+ * token: Add one mana of any color." The sacrifice is part of a MANA ability's cost, so it never
+ * uses the stack (see r.tapMana) — the colour is chosen on tap, as for any any-colour source.
+ */
+export const TREASURE: TokenSpec = {
+  name: 'Treasure',
+  types: ['Artifact'],
+  subtypes: ['Treasure'],
+  abilities: [
+    {
+      kind: 'activated',
+      cost: { tap: true, sacrificeSelf: true },
+      isMana: true,
+      produces: ['W', 'U', 'B', 'R', 'G'],
+      chooseColor: true,
+      // unused for a colour-choice source (the engine adds the chosen colour); wrapped in a lambda
+      // so `addMana`, declared later in this module, is resolved at call time and not at init
+      effect: (ctx) => addMana('W')(ctx),
+    },
+  ],
+}
+
+/** Create `count` Treasure tokens for `who` — the controller, or each targeted player. */
+export const createTreasures = (count: number, who: 'you' | 'targets' = 'you'): Effect => (ctx) => {
+  if (who === 'you') return void spawnTokens(ctx.state, ctx.controllerId, TREASURE, count)
+  for (const t of ctx.targets) if (isPlayerId(ctx, t)) spawnTokens(ctx.state, t, TREASURE, count)
+}
+
+/**
+ * Counter each target spell, then its CONTROLLER creates `count` Treasure tokens (An Offer You
+ * Can't Refuse — the compensation goes to the countered player, not to you).
+ */
+export const counterTargetGrantingTreasures = (count: number): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
+    if (!item) continue // already resolved / countered
+    const victim = item.controllerId
+    logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name}.`)
+    if (item.flashback) moveTo(ctx.state, item.id, 'exile')
+    else moveToGraveyard(ctx.state, item.id)
+    spawnTokens(ctx.state, victim, TREASURE, count)
+  }
 }
 
 /** Mint `count` real (mortal) tokens onto `ownerId`'s battlefield. */

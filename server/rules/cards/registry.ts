@@ -130,6 +130,8 @@ export function registerImplementedToken(spec: {
   subtypes?: string[]
   keywords?: import('#shared/rules/types').Keyword[]
   types?: CardDefinition['types']
+  /** activated abilities the token has (a Treasure's "{T}, Sacrifice this token: Add one mana…") */
+  abilities?: CardDefinition['abilities']
 }): string {
   const key = `itok:${norm(spec.name)}:${spec.power ?? ''}/${spec.toughness ?? ''}:${(spec.keywords ?? []).join('.')}`
   if (!registry.has(key)) {
@@ -140,6 +142,7 @@ export function registerImplementedToken(spec: {
       power: spec.power,
       toughness: spec.toughness,
       keywords: spec.keywords,
+      abilities: spec.abilities,
     })
   }
   return key

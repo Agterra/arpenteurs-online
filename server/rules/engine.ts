@@ -1530,6 +1530,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       obj.tapped = true
       if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
+      // "Sacrifice this token" as part of a MANA ability's cost (a Treasure). Mana abilities never
+      // use the stack, so the mana is already in the pool and the source goes now; the 704.5d SBA
+      // then removes the token from the graveyard.
+      if (ability.cost.sacrificeSelf) {
+        logLine(state, `${name(state, actor)} sacrifices ${objName(state, obj.id)} for mana.`)
+        moveToGraveyard(state, obj.id)
+        checkSBA(state)
+      }
       // activating an ability is an action: the pass chain restarts (CR 116.4)
       state.passed = []
       break

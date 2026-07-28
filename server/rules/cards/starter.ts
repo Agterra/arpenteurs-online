@@ -13,7 +13,9 @@ import {
   addMana,
   monstrosity,
   counterTarget,
+  counterTargetGrantingTreasures,
   createToken,
+  createTreasures,
   damageAllCreatures,
   dealDamage,
   dealDamageKicked,
@@ -2230,5 +2232,29 @@ export const STARTER_SET: CardDefinition[] = [
         effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1, untapIfLandsAtLeast: 4 }),
       },
     ],
+  },
+
+  // --- Coverage batch CARD14: Treasure tokens ---
+  {
+    name: "An Offer You Can't Refuse",
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Counter target noncreature spell. Its controller creates two Treasure tokens."
+    spell: {
+      targets: [{ kind: 'spell', count: 1, filter: { excludeTypes: ['Creature'] } }],
+      effect: counterTargetGrantingTreasures(2),
+    },
+  },
+  {
+    name: 'Pitiless Plunderer',
+    types: ['Creature'],
+    subtypes: ['Human', 'Pirate'],
+    manaCost: '{3}{B}',
+    colors: ['B'],
+    power: 1,
+    toughness: 4,
+    // "Whenever another creature you control dies, create a Treasure token."
+    dies: { watch: { scope: 'anyCreature', controllerOnly: true, excludeSelf: true }, effect: createTreasures(1) },
   },
 ]
