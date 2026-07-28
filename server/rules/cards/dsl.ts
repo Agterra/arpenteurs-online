@@ -316,6 +316,14 @@ export interface CardDefinition {
   /** replacement effect: this permanent enters the battlefield tapped (e.g. Guildgates) */
   entersTapped?: boolean
   /**
+   * As-enters replacement CHOICE (CR 614.12) — the shocklands' "As this land enters, you may pay N
+   * life. If you don't, it enters tapped." Set to the life amount. The engine opens an
+   * `entersChoice` pending for its controller on ANY battlefield entry (played, fetched, moved),
+   * and no player can act until it's answered. Not combinable with an `enters` trigger yet (one
+   * pending slot) — guarded in rules-client-contract.spec.ts.
+   */
+  entersTappedUnlessPayLife?: number
+  /**
    * Aura / Equipment: the continuous bonus granted to the ATTACHED host while this
    * permanent is attached to it (CR 613 layers 7c P/T + 6 keywords), plus optional
    * can't-attack / can't-block restrictions (Pacifism). An Aura (subtype 'Aura')

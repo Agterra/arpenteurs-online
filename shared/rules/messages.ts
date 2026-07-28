@@ -60,6 +60,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.foretell'), objId: Id }), // foretell a card from hand (CR 702.143)
   z.object({ type: z.literal('r.morph'), objId: Id }), // turn a face-down permanent face up (CR 702.37)
   z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
+  // as-enters choice (CR 614.12, shocklands): pay the life, or the permanent enters tapped
+  z.object({ type: z.literal('r.entersChoice'), pay: z.boolean() }),
   z.object({ type: z.literal('r.cascade'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }),
   z.object({
     type: z.literal('r.loyalty'),

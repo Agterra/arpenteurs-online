@@ -189,6 +189,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
+    needsEntersChoice: false,
+    entersChoiceLife: 0,
+    entersChoiceName: '',
+    entersChoiceAffordable: false,
     needsCascade: false,
     cascadeHitId: null,
     cascadeTargetKind: null,
@@ -279,6 +283,18 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         needsWard: true,
         wardCost: state.pendingWard.cost,
         wardAffordable: planPayment(parseManaCost(state.pendingWard.cost), state.players[viewer]!.manaPool).covered,
+      }
+    }
+    if (state.pending.kind === 'entersChoice' && state.pendingEntersChoice) {
+      // its controller pays the life (keeping it untapped) or declines and it enters tapped
+      const pec = state.pendingEntersChoice
+      const obj = state.objects[pec.objId]
+      return {
+        ...none,
+        needsEntersChoice: true,
+        entersChoiceLife: pec.life,
+        entersChoiceName: obj ? getDef(obj.defName).name : '',
+        entersChoiceAffordable: state.players[viewer]!.life >= pec.life,
       }
     }
     if (state.pending.kind === 'cascade' && state.pendingCascade) {

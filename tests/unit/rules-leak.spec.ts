@@ -136,6 +136,12 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       applyRulesAction(state, p, { type: 'r.scry', toBottom })
       return true
     }
+    if (state.pending.kind === 'entersChoice') {
+      // pay the life (randomly, when affordable) or let the shockland enter tapped — must be
+      // handled or the fuzzer stalls the moment one enters, by any path
+      applyRulesAction(state, p, { type: 'r.entersChoice', pay: legal.entersChoiceAffordable && rnd() < 0.5 })
+      return true
+    }
     if (state.pending.kind === 'trigger' && legal.needsTriggerTargets) {
       // choose a random legal target for a TARGETED triggered ability (Bojuka Bog's ETB targets a
       // player). Must be handled or the fuzzer stalls the moment such a trigger fires — mirrors the
@@ -507,6 +513,9 @@ const FUZZ_DECK = [
   // Mountain card" (the deck is Swamp/Mountain-heavy, so it reliably finds one). Exercises the new
   // life cost together with the sac-self + library-search-from-the-graveyard path.
   ...Array(3).fill('Bloodstained Mire'),
+  // batch CARD12: a shockland (Swamp Mountain, so Bloodstained Mire can also fetch it) — exercises
+  // the new as-enters CHOICE pending on both the play-a-land and the fetched-mid-search paths.
+  ...Array(3).fill('Blood Crypt'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

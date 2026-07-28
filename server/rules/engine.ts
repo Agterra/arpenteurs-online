@@ -213,6 +213,24 @@ function grantPriority(state: RulesGameState, player: PlayerId) {
   state.passed = []
 }
 
+/**
+ * Open the next queued as-enters choice (CR 614.12 — the shocklands' "pay N life or it enters
+ * tapped"), if any and if no other decision is open. Returns true when one was opened, so callers
+ * know not to grant priority. Entries whose permanent already left the battlefield are dropped.
+ */
+function drainEntersChoices(state: RulesGameState): boolean {
+  const queue = (state.entersChoiceQueue ??= [])
+  while (queue.length && !state.pending) {
+    const next = queue.shift()!
+    const obj = state.objects[next.objId]
+    if (!obj || obj.zone !== 'battlefield') continue // it left before the choice was made
+    state.pending = { kind: 'entersChoice', player: next.player }
+    state.pendingEntersChoice = next
+    return true
+  }
+  return false
+}
+
 // ---------- forced sacrifice (edicts / aristocrats) ----------
 
 /**
@@ -343,12 +361,19 @@ function repairControlFlow(state: RulesGameState) {
     const { kind, player } = state.pending
     const wardTriggeringId = state.pendingWard?.triggeringId
     const cascadeExiled = state.pendingCascade?.exiledIds
+    const entersChoiceObjId = state.pendingEntersChoice?.objId
     state.pending = null
     state.pendingTrigger = null // a departed player's trigger is removed
     state.pendingScry = null
     state.pendingWard = null
     state.pendingCascade = null
-    if (kind === 'ward') {
+    state.pendingEntersChoice = null
+    if (kind === 'entersChoice') {
+      // the chooser left → treat it as a decline (the permanent is tapped), then carry on
+      const obj = entersChoiceObjId ? state.objects[entersChoiceObjId] : undefined
+      if (obj && obj.zone === 'battlefield') obj.tapped = true
+      if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+    } else if (kind === 'ward') {
       // the payer left → they can't pay the ward → the triggering spell/ability is countered
       const item = wardTriggeringId ? state.zones.stack.find((s) => s.id === wardTriggeringId) : undefined
       if (item) counterStackItem(state, item)
@@ -750,6 +775,7 @@ function resolveTop(state: RulesGameState) {
   state.passed = []
   if (item.kind === 'spell') resolveSpell(state, item)
   else if (item.kind === 'ability') resolveAbility(state, item)
+  drainEntersChoices(state) // a permanent that just entered may owe an as-enters choice
   // a targeted trigger sets `pending` for its controller's choice — don't grant
   // priority until they've chosen (r.chooseTargets does it)
   if (!state.pending) grantPriority(state, state.activePlayer)
@@ -1470,6 +1496,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       state.passed = []
       logLine(state, `${name(state, actor)} plays ${objName(state, obj.id)}${obj.tapped ? ' (tapped)' : ''}.`)
       fireEntersTriggers(state, obj.id) // ETB lands (e.g. scry Temples) trigger on being played
+      drainEntersChoices(state) // a shockland asks its controller to pay life or enter tapped
       break
     }
 
@@ -2038,7 +2065,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // a fetched permanent's targeted ETB may have set its own pending — don't clobber it
       if (state.pending?.kind === 'search') {
         state.pending = null
-        grantPriority(state, actor)
+        // a fetched shockland owes its controller an as-enters choice before anyone gets priority
+        if (!drainEntersChoices(state)) grantPriority(state, actor)
       }
       logLine(state, `${name(state, actor)} found ${chosen.length} card${chosen.length === 1 ? '' : 's'} and shuffles.`)
       checkSBA(state)
@@ -2221,6 +2249,30 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // resume: active player gets priority; the pass/resolve loop continues the stack
       if (state.status === 'active') grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.entersChoice': {
+      if (state.pending?.kind !== 'entersChoice' || state.pending.player !== actor || !state.pendingEntersChoice)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your as-enters choice')
+      const pec = state.pendingEntersChoice
+      state.pending = null
+      state.pendingEntersChoice = null
+      const obj = state.objects[pec.objId]
+      // CR 119.4: you may pay the life only at life ≥ N; otherwise (and on a decline) it's tapped
+      const paid = msg.pay && state.players[actor]!.life >= pec.life
+      if (obj && obj.zone === 'battlefield') {
+        if (paid) {
+          state.players[actor]!.life -= pec.life
+          logLine(state, `${name(state, actor)} pays ${pec.life} life — ${objName(state, obj.id)} enters untapped.`)
+        } else {
+          obj.tapped = true
+          logLine(state, `${objName(state, obj.id)} enters tapped.`)
+        }
+      }
+      // the next queued as-enters choice first (two shocklands can enter together), else resume:
+      // the active player gets priority (CR 117.3c) and checkSBA runs (paying to 0 life loses)
+      if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
       break
     }
 
@@ -2446,6 +2498,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
     }
   }
 
+  // a permanent that entered by ANY path (including a manual r.mMove) may owe an as-enters choice;
+  // the per-site drains open it before priority is granted, this is the catch-all so a queued
+  // choice can never be left stranded. Safe: it only sets `pending` when nothing else is open.
+  drainEntersChoices(state)
   // if this action removed the player who owed a decision or held priority,
   // hand control off so the remaining players can continue (multiplayer).
   repairControlFlow(state)

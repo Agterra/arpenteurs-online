@@ -804,6 +804,9 @@ function confirmKeep() {
 function sendWard(pay: boolean) {
   send({ type: 'r.ward', pay })
 }
+function sendEntersChoice(pay: boolean) {
+  send({ type: 'r.entersChoice', pay })
+}
 
 const menu = ref<{ x: number; y: number; id: ObjId } | null>(null)
 const menuCard = computed(() => (menu.value ? cardOf(menu.value.id) : null))
@@ -1009,7 +1012,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsSacrifice || l.needsWard || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsSacrifice || l.needsWard || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1776,6 +1779,24 @@ onBeforeUnmount(() => {
             <UButton size="sm" variant="ghost" color="neutral" @click="sendWard(false)">Decline (counter)</UButton>
             <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
               Pay ward
+            </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- as-enters choice (CR 614.12, shocklands): pay the life or it enters tapped -->
+      <div v-if="legal?.needsEntersChoice" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-w-sm flex-col rounded-lg border border-amber-400 bg-default p-4 shadow-xl">
+          <p class="mb-1 text-sm font-semibold">
+            {{ legal.entersChoiceName }} — pay {{ legal.entersChoiceLife }} life to have it enter untapped?
+          </p>
+          <p class="mb-3 text-xs text-dimmed">
+            {{ legal.entersChoiceAffordable ? "If you don't, it enters tapped." : 'Your life total is too low to pay — it will enter tapped.' }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton size="sm" variant="ghost" color="neutral" @click="sendEntersChoice(false)">Enter tapped</UButton>
+            <UButton size="sm" icon="i-lucide-droplet" :disabled="!legal.entersChoiceAffordable" @click="sendEntersChoice(true)">
+              Pay {{ legal.entersChoiceLife }} life
             </UButton>
           </div>
         </div>

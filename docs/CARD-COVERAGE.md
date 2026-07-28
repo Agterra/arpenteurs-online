@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**284 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**294 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -42,6 +42,7 @@
 - Black Knight
 - Blasphemous Act
 - Blaze
+- Blood Crypt
 - Bloodbraid Elf
 - Bloodstained Mire
 - Bloodthrone Vampire
@@ -53,6 +54,7 @@
 - Borderland Marauder
 - Boros Guildgate
 - Boros Signet
+- Breeding Pool
 - Burst Lightning
 - Cancel
 - Capsize
@@ -121,6 +123,7 @@
 - Go for the Throat
 - Goblin Chieftain
 - Goblin Wardriver
+- Godless Shrine
 - Gods Willing
 - Golgari Guildgate
 - Golgari Signet
@@ -129,6 +132,7 @@
 - Grizzly Bears
 - Gruul Guildgate
 - Gruul Signet
+- Hallowed Fountain
 - Harmonize
 - Hero's Downfall
 - Heroic Intervention
@@ -186,6 +190,7 @@
 - Nyxborn Rollicker
 - Orzhov Guildgate
 - Orzhov Signet
+- Overgrown Tomb
 - Ovinize
 - Pacifism
 - Paladin en-Vec
@@ -220,6 +225,7 @@
 - Reliquary Tower
 - Revitalize
 - Rogue's Passage
+- Sacred Foundry
 - Savannah Lions
 - Scalding Tarn
 - Search for Tomorrow
@@ -240,12 +246,15 @@
 - Soul Warden
 - Soul's Attendant
 - Sphinx's Revelation
+- Steam Vents
+- Stomping Ground
 - Strangleroot Geist
 - Swamp
 - Swiftfoot Boots
 - Sword of Vengeance
 - Swords to Plowshares
 - Teferi's Honor Guard
+- Temple Garden
 - Temple of Abandon
 - Temple of Deceit
 - Temple of Enlightenment
@@ -283,6 +292,7 @@
 - Wall of Omens
 - Wall of Wood
 - Waterfall Aerialist
+- Watery Grave
 - White Knight
 - Wind Drake
 - Windswept Heath

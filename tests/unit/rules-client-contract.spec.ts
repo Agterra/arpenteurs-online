@@ -77,6 +77,23 @@ describe('no implemented card has two non-mana activated abilities (the client o
   })
 })
 
+/**
+ * An as-enters choice (shocklands) and an ETB trigger both want `state.pending` as the permanent
+ * enters, and there is only one slot: the trigger's pending would be clobbered by the choice (or
+ * vice-versa), softlocking the game. A card needing both must wait until the trigger pending is
+ * queued like the enters-choices are.
+ */
+describe('no implemented card has BOTH an as-enters choice and an ETB trigger (one pending slot)', () => {
+  const offenders: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented) continue
+    if (def.entersTappedUnlessPayLife && def.enters) offenders.push(def.name)
+  }
+  it('the as-enters choice never competes with an ETB trigger', () => {
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('no implemented loyalty ability is targeted (the client sends r.loyalty with no targets)', () => {
   const offenders: string[] = []
   for (const def of allDefs()) {

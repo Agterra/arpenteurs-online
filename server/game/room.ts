@@ -115,6 +115,8 @@ async function rehydrate(gameId: string): Promise<Room> {
     rulesState.protectionGrants ??= []
     rulesState.keywordGrants ??= []
     rulesState.unblockable ??= []
+    rulesState.entersChoiceQueue ??= []
+    rulesState.pendingEntersChoice ??= null
     rulesState.seq = game.snapshotSeq
   } else {
     state = game.snapshot as unknown as ServerGameState

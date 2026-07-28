@@ -221,7 +221,7 @@ export interface RulesGameState {
   /** players who have passed priority since the last stack change / step start */
   passed: PlayerId[]
   /** engine is waiting for a player decision (no priority until it's made) */
-  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness'; player: PlayerId } | null
+  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness' | 'entersChoice'; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
   pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
@@ -296,6 +296,15 @@ export interface RulesGameState {
   /** Madness (CR 702.35): a discarded madness card is exiled and its owner may cast it for the
    *  madness cost or let it go to the graveyard. `resume` = what discard flow to continue after. */
   pendingMadness: { player: PlayerId; cardId: ObjId; resume: 'cleanup' | 'forced' } | null
+  /**
+   * An as-enters replacement CHOICE (CR 614.12) — the shocklands' "As this land enters, you may pay
+   * N life. If you don't, it enters tapped." The permanent is already on the battlefield (untapped)
+   * and no player can act until the choice is answered (`pending` blocks priority), so declining and
+   * tapping it is equivalent to it having entered tapped. Battlefield ids are public.
+   */
+  pendingEntersChoice: { player: PlayerId; objId: ObjId; life: number } | null
+  /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
+  entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number }[]
   /** true only on the very first turn's first player (skips their draw) */
   firstTurnSkipDraw: boolean
   /**
@@ -455,6 +464,12 @@ export interface LegalActions {
   /** the ward cost you'd pay, and whether your current mana pool covers it */
   wardCost: string
   wardAffordable: boolean
+  /** an as-enters choice is waiting on YOU: pay the life or the permanent enters tapped (shocklands) */
+  needsEntersChoice: boolean
+  /** the life you'd pay, the permanent's name, and whether your life total allows it (CR 119.4) */
+  entersChoiceLife: number
+  entersChoiceName: string
+  entersChoiceAffordable: boolean
   /** a cascade hit is waiting on YOU: cast the revealed card free or decline (CR 702.85) */
   needsCascade: boolean
   /** the exiled nonland "hit" you may cast for free */

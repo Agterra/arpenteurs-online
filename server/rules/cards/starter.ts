@@ -108,6 +108,19 @@ const fetchLand = (name: string, a: string, b: string): CardDefinition => ({
   ],
 })
 
+/**
+ * A shockland (Ravnica cycle): a dual-typed land whose printed types give it "{T}: Add {a} or {b}",
+ * plus "As this land enters, you may pay 2 life. If you don't, it enters tapped." The real basic
+ * land subtypes matter — a fetch land can find one.
+ */
+const shockland = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  subtypes,
+  entersTappedUnlessPayLife: 2,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
 /** A scry-land: enters tapped, "When ~ enters, scry 1.", "{T}: Add {a} or {b}." */
 const scryland = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
   name,
@@ -2181,4 +2194,16 @@ export const STARTER_SET: CardDefinition[] = [
   fetchLand('Scalding Tarn', 'Island', 'Mountain'),
   fetchLand('Marsh Flats', 'Plains', 'Swamp'),
   fetchLand('Arid Mesa', 'Mountain', 'Plains'),
+
+  // --- Coverage batch CARD12: the shocklands (Ravnica cycle) — as-enters pay-2-life choice ---
+  shockland('Watery Grave', 'U', 'B', ['Island', 'Swamp']),
+  shockland('Godless Shrine', 'W', 'B', ['Plains', 'Swamp']),
+  shockland('Breeding Pool', 'G', 'U', ['Forest', 'Island']),
+  shockland('Hallowed Fountain', 'W', 'U', ['Plains', 'Island']),
+  shockland('Steam Vents', 'U', 'R', ['Island', 'Mountain']),
+  shockland('Stomping Ground', 'R', 'G', ['Mountain', 'Forest']),
+  shockland('Blood Crypt', 'B', 'R', ['Swamp', 'Mountain']),
+  shockland('Overgrown Tomb', 'B', 'G', ['Swamp', 'Forest']),
+  shockland('Sacred Foundry', 'R', 'W', ['Mountain', 'Plains']),
+  shockland('Temple Garden', 'G', 'W', ['Forest', 'Plains']),
 ]

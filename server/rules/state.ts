@@ -69,6 +69,12 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
     // enters-with-counters (counters were just reset above) — before any SBA check so a
     // 0/0-with-counters creature survives; applies on ANY entry path (cast, tutor, move)
     if (def.entersWithCounters) obj.counters['+1/+1'] = def.entersWithCounters
+    // as-enters choice (CR 614.12, shocklands): QUEUE the pay-life-or-tapped decision for its
+    // controller on ANY entry path (played, fetched, moved). It is opened by
+    // `drainEntersChoices` once the current decision (e.g. the search being answered) is done, so
+    // several permanents entering at once each get their own choice and no pending is clobbered.
+    const payLife = def.entersTappedUnlessPayLife
+    if (payLife) (state.entersChoiceQueue ??= []).push({ player: obj.controllerId, objId: obj.id, life: payLife })
   }
   const holder = zone === 'battlefield' ? obj.controllerId : obj.ownerId
   const arr = zoneArr(state, holder, zone)
