@@ -1568,6 +1568,12 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)}.`)
         moveToGraveyard(state, id)
       }
+      // "Sacrifice this permanent" as a cost (Evolving Wilds, Mind Stone) — same ordering: the
+      // ability is already on the stack, so it still resolves after its source is gone
+      if (ability.cost.sacrificeSelf) {
+        logLine(state, `${name(state, actor)} sacrifices ${objName(state, obj.id)}.`)
+        moveToGraveyard(state, obj.id)
+      }
       // ward (CR 702.21): a targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, abilityStackId, msg.targets, actor)
       grantPriority(state, actor) // CR 116.4: caster/activator keeps priority; pass chain restarts

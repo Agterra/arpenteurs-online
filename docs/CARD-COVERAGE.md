@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**267 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**272 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -44,6 +44,7 @@
 - Bloodbraid Elf
 - Bloodthrone Vampire
 - Boggart Brute
+- Bojuka Bog
 - Bond Beetle
 - Bonesplitter
 - Boomerang
@@ -60,6 +61,7 @@
 - Cloudkin Seer
 - Colossal Dreadmaw
 - Command Tower
+- Commander's Sphere
 - Concentrate
 - Counterspell
 - Craw Wurm
@@ -86,6 +88,7 @@
 - Elvish Mystic
 - Elvish Visionary
 - Errant Ephemeron
+- Evolving Wilds
 - Exotic Orchard
 - Faithful Watchdog
 - Faithless Looting
@@ -161,6 +164,7 @@
 - Mind Rot
 - Mind Sculpt
 - Mind Spring
+- Mind Stone
 - Monastery Swiftspear
 - Mortify
 - Mountain
@@ -244,6 +248,7 @@
 - Temple of Silence
 - Temple of Triumph
 - Terminate
+- Terramorphic Expanse
 - Thought Scour
 - Thought Vessel
 - Thran Dynamo

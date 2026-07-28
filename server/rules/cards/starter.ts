@@ -27,6 +27,7 @@ import {
   drawCards,
   drawCardsX,
   earthquakeX,
+  exileGraveyard,
   exileTarget,
   fight,
   gainAndDrawEqualToLands,
@@ -2081,5 +2082,52 @@ export const STARTER_SET: CardDefinition[] = [
     // "You have no maximum hand size. {T}: Add {C}."
     noMaxHandSize: true,
     abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') }],
+  },
+
+  // --- Coverage batch CARD9: sacrifice-this-permanent costs (fetch lands, sac-for-draw rocks) ---
+  ...(['Evolving Wilds', 'Terramorphic Expanse'] as const).map(
+    (name): CardDefinition => ({
+      name,
+      types: ['Land'],
+      // "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the
+      //  battlefield tapped, then shuffle." (functionally identical cards)
+      abilities: [
+        {
+          kind: 'activated',
+          cost: { tap: true, sacrificeSelf: true },
+          effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1 }),
+        },
+      ],
+    }),
+  ),
+  {
+    name: 'Mind Stone',
+    types: ['Artifact'],
+    manaCost: '{2}',
+    // "{T}: Add {C}." / "{1}, {T}, Sacrifice this artifact: Draw a card."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      { kind: 'activated', cost: { mana: '{1}', tap: true, sacrificeSelf: true }, effect: drawCards(1) },
+    ],
+  },
+  {
+    name: "Commander's Sphere",
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "{T}: Add one mana of any color in your commander's color identity." (simplified to any
+    //  colour as for Arcane Signet) / "Sacrifice this artifact: Draw a card." (no {T} — usable
+    //  even while tapped)
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') },
+      { kind: 'activated', cost: { sacrificeSelf: true }, effect: drawCards(1) },
+    ],
+  },
+  {
+    name: 'Bojuka Bog',
+    types: ['Land'],
+    // "This land enters tapped. When this land enters, exile target player's graveyard."
+    entersTapped: true,
+    enters: { targets: [{ kind: 'player', count: 1 }], effect: exileGraveyard() },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['B'], effect: addMana('B') }],
   },
 ]

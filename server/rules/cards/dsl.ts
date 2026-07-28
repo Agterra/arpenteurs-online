@@ -49,6 +49,12 @@ export interface Cost {
   /** "Sacrifice a creature" as part of the cost (aristocrat sac outlets). Paid at
    *  activation time — the activating player chooses which creature(s). */
   sacrifice?: { count: number; filter: 'creature' }
+  /**
+   * "Sacrifice this permanent" as part of the cost (Evolving Wilds, Mind Stone). Nothing to
+   * choose — the source itself is sacrificed once the ability is on the stack, so the ability
+   * still resolves from the graveyard (CR 602.2a: paying costs doesn't remove it from the stack).
+   */
+  sacrificeSelf?: boolean
 }
 
 /**

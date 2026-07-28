@@ -90,11 +90,16 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
     if (state.pending.kind === 'attackers') {
       // attack a random legal defender: an opponent player OR an opponent's planeswalker
-      const foes = [...legal.attackablePlayerIds, ...legal.attackablePlaneswalkerIds]
+      const pws = legal.attackablePlaneswalkerIds
+      const foes = [...legal.attackablePlayerIds, ...pws]
+      // planeswalkers are weighted: with 2–4 players and rarely more than one PW on the
+      // battlefield, a uniform pick makes the attack-a-PW path depend on seed luck (it silently
+      // went to 0 when the fuzz deck changed). Weighting keeps that coverage counter meaningful.
+      const defender = () => (pws.length && rnd() < 0.5 ? pick(pws) : pick(foes))
       const attacks = foes.length
         ? legal.declarableAttackerIds
             .filter(() => rnd() < 0.6)
-            .map((attackerId) => ({ attackerId, defenderId: pick(foes) }))
+            .map((attackerId) => ({ attackerId, defenderId: defender() }))
         : []
       if (attacks.some((a) => legal.attackablePlaneswalkerIds.includes(a.defenderId))) pwAttacked++ // coverage guard
       applyRulesAction(state, p, { type: 'r.attackers', attacks })
@@ -129,6 +134,22 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       // randomly bottom some of the peeked cards (exercises scry + library re-mint)
       const toBottom = state.pendingScry.cardIds.filter(() => rnd() < 0.5)
       applyRulesAction(state, p, { type: 'r.scry', toBottom })
+      return true
+    }
+    if (state.pending.kind === 'trigger' && legal.needsTriggerTargets) {
+      // choose a random legal target for a TARGETED triggered ability (Bojuka Bog's ETB targets a
+      // player). Must be handled or the fuzzer stalls the moment such a trigger fires — mirrors the
+      // client's own trigger-target selection (isTriggerTargetCard / canTargetPlayerForTrigger).
+      const kind = legal.triggerTargetKind
+      const players = state.turnOrder.filter((x) => !state.players[x]!.hasLost)
+      const onField = Object.values(state.objects).filter((o) => o.zone === 'battlefield')
+      const creatures = onField.filter((o) => getDef(o.defName).types.includes('Creature')).map((o) => o.id)
+      const cands: (ObjId | PlayerId)[] =
+        kind === 'player' ? players
+        : kind === 'creature' ? creatures
+        : kind === 'permanent' ? onField.map((o) => o.id)
+        : [...creatures, ...players]
+      applyRulesAction(state, p, { type: 'r.chooseTargets', targets: cands.length ? [pick(cands)] : [] })
       return true
     }
     if (state.pending.kind === 'search' && state.pendingSearch) {
@@ -471,6 +492,12 @@ const FUZZ_DECK = [
   // r.search: the searched land sent library→hand must be re-minted (invariant #3) and the library
   // reshuffled+re-minted, so the history-aware assertion guards that peek→hidden-hand path.
   ...Array(3).fill('Cultivate'),
+  // batch CARD9: a sac-self fetch land (Evolving Wilds) — the fuzzer's r.activate branch pays
+  // "{T}, Sacrifice this land" and the ability then searches the library from the GRAVEYARD, so the
+  // library peek + shuffle re-mint is leak-checked on an ABILITY (not just a spell) path; and
+  // Bojuka Bog, whose ETB exiles a targeted player's graveyard (public → public, no re-mint).
+  ...Array(3).fill('Evolving Wilds'),
+  ...Array(2).fill('Bojuka Bog'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
@@ -494,6 +521,16 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
         // identically from `seed` — a failure here is reproducible/bisectable.
         __setDeterministicRng(rnd)
         const { state } = makeGameN(nPlayers, FUZZ_DECK)
+        // Give EVERY player a planeswalker up front so "an opponent's planeswalker is attackable"
+        // holds from turn 1. Casting Nissa off the shuffled deck and keeping her alive until
+        // someone's declare-attackers is pure seed luck (it silently dropped to zero when this
+        // deck changed), which would leave the pwAttacked coverage guard below asserting nothing.
+        for (const p of state.turnOrder) {
+          const pw = putCard(state, p, 'Nissa, Voice of Zendikar', 'battlefield')
+          // putCard bypasses moveTo (where loyalty is normally initialised), so set it here or the
+          // 0-loyalty SBA kills her instantly
+          state.objects[pw]!.loyalty = getDef(defKey('Nissa, Voice of Zendikar')).loyalty ?? 0
+        }
         const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
         assertNoLeaks(state, `(${nPlayers}p seed ${seed}, initial)`, seen)
         let steps = 0

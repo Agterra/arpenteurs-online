@@ -232,6 +232,21 @@ export const mill = (n: number): Effect => (ctx) => {
 }
 
 /**
+ * Exile each target player's whole graveyard (Bojuka Bog). Graveyard → exile is
+ * public → public (face-up exile), so no id re-mint is needed (invariant #3 covers
+ * hidden-zone entry only) and nothing new is revealed.
+ */
+export const exileGraveyard = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    const gy = ctx.state.zones.perPlayer[t]!.graveyard
+    const n = gy.length
+    for (let i = 0; i < n; i++) moveTo(ctx.state, gy[0]!, 'exile') // always the current first card
+    logLine(ctx.state, `${ctx.state.players[t]!.name}'s graveyard is exiled (${n} card${n === 1 ? '' : 's'}).`)
+  }
+}
+
+/**
  * Return each target graveyard card to its OWNER's hand (recursion — Raise Dead,
  * Regrowth). LEAK-CRITICAL: graveyard → hand is public → hidden, so the id MUST be
  * re-minted (invariant #3) or an opponent who recorded the public graveyard id could
