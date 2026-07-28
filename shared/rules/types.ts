@@ -144,7 +144,7 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast'
+  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -330,6 +330,8 @@ export interface RulesGameState {
     cost: string
     defName: string
     sourceId: ObjId
+    /** which tax trigger opened it — picks `castSpell` vs `drawnCard` back off the definition */
+    trigger: 'cast' | 'draw'
   } | null
   /** true only on the very first turn's first player (skips their draw) */
   firstTurnSkipDraw: boolean

@@ -562,6 +562,11 @@ const FUZZ_DECK = [
   // ability costs 1 life, so the fuzzer's tapping loops drive both damage paths (and can kill).
   ...Array(2).fill('Ancient Tomb'),
   ...Array(2).fill('Sulfurous Springs'),
+  // batch CARD18: Toxic Deluge (X paid in LIFE — the fuzzer casts it like any spell, so the
+  // additional-cost path runs) and Smothering Tithe, whose DRAW trigger taxes every opponent draw
+  // (including each draw step), exercising the draw-trigger → optionalPay chain constantly.
+  ...Array(2).fill('Toxic Deluge'),
+  ...Array(2).fill('Smothering Tithe'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

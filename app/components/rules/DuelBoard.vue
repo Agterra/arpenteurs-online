@@ -14,6 +14,7 @@ import { shouldAutoPassPriority } from '#shared/rules/autopass'
 import {
   GRAVEYARD_SPELLS,
   MODAL_SPELLS,
+  LIFE_X_SPELLS,
   MULTI_TARGET_SPELLS,
   TARGETED_SPELLS,
   type FightSlot,
@@ -118,6 +119,7 @@ const casting = ref<{
   // alternative cast being paid for (extra r.cast flag / different zone / different action)
   alt?: AltKind
   escapeCount?: number // escape: how many other graveyard cards to exile as the cost
+  lifeX?: boolean // X is paid in LIFE as an additional cost (Toxic Deluge) — stepper, no mana added
   buybackCost?: string // enables the buyback toggle
   buyback?: boolean // whether the player chose to pay buyback
 } | null>(null)
@@ -213,7 +215,10 @@ function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode
     abilityIndex: null,
     costStr,
     x: 0,
-    xCount: alt ? 0 : (costStr.match(/\{X\}/g) ?? []).length, // X isn't chosen on alt-casts here
+    // {X} in the mana cost, or an X paid in LIFE as an additional cost (Toxic Deluge) — either way
+    // the stepper is shown and `x` is sent; a life-X adds nothing to the mana cost (see castCost)
+    xCount: alt ? 0 : (costStr.match(/\{X\}/g) ?? []).length,
+    lifeX: !alt && (card.defName ?? '') in LIFE_X_SPELLS,
     mode,
     // kicker/buyback toggles are only for a normal cast (not alt-casts)
     kickerCost: alt ? undefined : legal.value?.kickable.find((k) => k.objId === card.id)?.cost,
@@ -241,7 +246,7 @@ function confirmCast() {
       type: 'r.cast',
       objId: c.cardId,
       targets: c.targets as string[],
-      x: c.xCount > 0 ? c.x : undefined,
+      x: c.xCount > 0 || c.lifeX ? c.x : undefined,
       mode: c.mode ?? undefined,
       kicked: c.kicked || undefined,
       buyback: c.buyback || undefined,
@@ -1218,8 +1223,8 @@ onBeforeUnmount(() => {
                 </template>
                 <span v-if="POOL_COLORS.every((c) => (me?.manaPool[c] ?? 0) === 0)" class="text-dimmed">empty</span>
               </span>
-              <span v-if="casting.xCount > 0" class="flex items-center gap-1">
-                X =
+              <span v-if="casting.xCount > 0 || casting.lifeX" class="flex items-center gap-1">
+                {{ casting.lifeX ? 'X life =' : 'X =' }}
                 <UButton size="xs" variant="soft" icon="i-lucide-minus" :disabled="casting.x <= 0" @click="setX(-1)" />
                 <b class="tabular-nums">{{ casting.x }}</b>
                 <UButton size="xs" variant="soft" icon="i-lucide-plus" @click="setX(1)" />

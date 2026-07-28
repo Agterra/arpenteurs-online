@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**316 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**318 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -258,6 +258,7 @@
 - Simic Guildgate
 - Simic Signet
 - Skullclamp
+- Smothering Tithe
 - Sol Ring
 - Solemn Simulacrum
 - Soltari Foot Soldier
@@ -294,6 +295,7 @@
 - Tomakul Honor Guard
 - Tome Scour
 - Torsten Von Ursus
+- Toxic Deluge
 - Tranquil Thicket
 - Tukatongue Thallid
 - Underground River

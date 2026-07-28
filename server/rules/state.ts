@@ -180,6 +180,30 @@ export function drawOne(state: RulesGameState, player: PlayerId) {
   pullFromCurrentZone(state, obj)
   obj.zone = 'hand'
   zoneArr(state, player, 'hand').push(obj.id)
+  // "Whenever an opponent draws a card, …" (Smothering Tithe) — one trigger per card drawn, and
+  // never for the pre-game draws (status is 'mulligans' then). Pushed straight onto the stack like
+  // the dies triggers above; `castPayer` is the player who drew, i.e. who may pay the tax.
+  if (state.status !== 'active') return
+  for (const pid of state.turnOrder) {
+    for (const id of state.zones.perPlayer[pid]!.battlefield) {
+      const p = state.objects[id]
+      const ab = p && getDef(p.defName).drawnCard
+      if (!p || !ab || p.phasedOut) continue
+      if (ab.watch?.opponentsOnly && p.controllerId === player) continue
+      state.zones.stack.push({
+        id: mintCardId(),
+        kind: 'ability',
+        trigger: 'draw',
+        controllerId: p.controllerId,
+        defName: p.defName,
+        sourceId: p.id,
+        abilityIndex: null,
+        targets: [],
+        castPayer: player,
+      })
+      logLine(state, `${getDef(p.defName).name}'s draw ability triggers.`)
+    }
+  }
 }
 
 export function isCreatureOnBattlefield(state: RulesGameState, id: ObjId | PlayerId): boolean {

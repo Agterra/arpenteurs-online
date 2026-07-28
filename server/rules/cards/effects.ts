@@ -496,6 +496,9 @@ export const weakenControlledCreatures = (base: number, kicked: number): Effect 
  * `unimplemented` (assisted-table) creatures like the other mass-creature effects;
  * 0-toughness dies by SBA after resolution. Pumps expire at cleanup.
  */
+/** All creatures get -X/-X until end of turn, X being the life the caster paid (Toxic Deluge). */
+export const weakenAllCreaturesX = (): Effect => (ctx) => weakenAllCreatures(ctx.x ?? 0)(ctx)
+
 export const weakenAllCreatures = (n: number): Effect => (ctx) => {
   for (const c of battlefieldCreatures(ctx.state)) {
     if (getDef(c.defName).unimplemented) continue

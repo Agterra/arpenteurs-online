@@ -127,7 +127,7 @@ export interface TriggeredAbility {
   watch?: { scope: 'anyCreature' | 'attachedCreature'; controllerOnly?: boolean; excludeSelf?: boolean }
 }
 /** The trigger events the engine emits. */
-export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep'
+export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -230,6 +230,22 @@ export interface CardDefinition {
     unlessPayFromPower?: boolean
     effect: Effect
   }
+  /**
+   * "Whenever an opponent draws a card, …" (Smothering Tithe) — same shape as `castSpell`: the
+   * trigger goes on the stack and, with `unlessPay`, opens the pay-or-it-happens decision for the
+   * player who drew. Fires once per card drawn, and never during the pre-game draws.
+   */
+  drawnCard?: {
+    watch?: { opponentsOnly?: boolean }
+    unlessPay?: string
+    effect: Effect
+  }
+  /**
+   * "As an additional cost to cast this spell, pay X life." (Toxic Deluge) — the caster chooses X
+   * (passed as `r.cast.x`, so the effect reads `ctx.x`), must have that much life (CR 119.4), and
+   * pays it as the spell is cast. Independent of {X} in the mana cost, which this does NOT add to.
+   */
+  additionalLifeCostX?: boolean
   /**
    * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
    * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the

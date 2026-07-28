@@ -50,6 +50,7 @@ import {
   playersSacrifice,
   pump,
   weakenAllCreatures,
+  weakenAllCreaturesX,
   weakenControlledCreatures,
   pumpSelf,
   returnFromGraveyard,
@@ -2397,4 +2398,24 @@ export const STARTER_SET: CardDefinition[] = [
   painLand('Sulfurous Springs', 'B', 'R'),
   painLand('Karplusan Forest', 'R', 'G'),
   painLand('Brushland', 'G', 'W'),
+
+  // --- Coverage batch CARD18: pay-X-life as an additional cost + a draw tax ---
+  {
+    name: 'Toxic Deluge',
+    types: ['Sorcery'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    // "As an additional cost to cast this spell, pay X life. All creatures get -X/-X until end of turn."
+    additionalLifeCostX: true,
+    spell: { effect: weakenAllCreaturesX() },
+  },
+  {
+    name: 'Smothering Tithe',
+    types: ['Enchantment'],
+    manaCost: '{3}{W}',
+    colors: ['W'],
+    // "Whenever an opponent draws a card, that player may pay {2}. If they don't, you create a
+    //  Treasure token."
+    drawnCard: { watch: { opponentsOnly: true }, unlessPay: '{2}', effect: createTreasures(1) },
+  },
 ]

@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { allDefs } from '../../server/rules/cards/registry.ts'
 import {
   GRAVEYARD_SPELLS,
+  LIFE_X_SPELLS,
   MODAL_SPELLS,
   MULTI_TARGET_SPELLS,
   TARGETED_SPELLS,
@@ -103,6 +104,23 @@ describe('every implemented targeted spell has a client target picker', () => {
     if (!known) missing.push(def.name)
   }
   it('no targeted spell is missing from clientTargets.ts', () => {
+    expect(missing).toEqual([])
+  })
+})
+
+/**
+ * A spell whose X is paid in LIFE has no {X} in its mana cost, so the client shows its X stepper
+ * only for the names listed in LIFE_X_SPELLS. Missing there = the cast is sent with no x and the
+ * server rejects it (NEEDS_X) — uncastable in the UI while engine tests, which pass x directly,
+ * stay green. Same failure class as the targeted-spell guard above.
+ */
+describe('every implemented pay-X-life spell is listed for the client X stepper', () => {
+  const missing: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented || def.isBackFace) continue
+    if (def.additionalLifeCostX && !(def.name.toLowerCase() in LIFE_X_SPELLS)) missing.push(def.name)
+  }
+  it('no pay-X-life spell is missing from LIFE_X_SPELLS', () => {
     expect(missing).toEqual([])
   })
 })

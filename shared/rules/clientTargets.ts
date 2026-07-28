@@ -73,6 +73,15 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'marsh casualties': 'player', // -1/-1 (or -2/-2 if kicked) to a player's creatures
 }
 
+/**
+ * Spells whose X is paid in LIFE as an additional cost, not in mana (Toxic Deluge). The client must
+ * still show its X stepper for these even though the mana cost has no {X}, and send `r.cast.x`;
+ * rules-client-contract.spec.ts asserts every implemented `additionalLifeCostX` card is listed.
+ */
+export const LIFE_X_SPELLS: Record<string, string> = {
+  'toxic deluge': 'X life', // all creatures get -X/-X
+}
+
 /** Modal ("choose one") spells: per-mode label + the target class that mode needs. */
 export const MODAL_SPELLS: Record<string, { label: string; spec: TargetClass | null }[]> = {
   abrade: [

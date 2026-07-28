@@ -372,8 +372,11 @@ function repairControlFlow(state: RulesGameState) {
     state.pendingOptionalPay = null
     if (kind === 'optionalPay') {
       // the payer left → they can't pay, so the ability happens for its controller
-      if (optionalPay && !state.players[optionalPay.beneficiary]!.hasLost)
-        getDef(optionalPay.defName).castSpell?.effect({ state, controllerId: optionalPay.beneficiary, sourceId: optionalPay.sourceId, targets: [] })
+      if (optionalPay && !state.players[optionalPay.beneficiary]!.hasLost) {
+        const d = getDef(optionalPay.defName)
+        const ab = optionalPay.trigger === 'draw' ? d.drawnCard : d.castSpell
+        ab?.effect({ state, controllerId: optionalPay.beneficiary, sourceId: optionalPay.sourceId, targets: [] })
+      }
       grantPriority(state, state.activePlayer)
     } else if (kind === 'entersChoice') {
       // the chooser left → treat it as a decline (the permanent is tapped), then carry on
@@ -795,6 +798,7 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'attacks' ? def.attacks
     : kind === 'upkeep' ? def.upkeep
     : kind === 'cast' ? def.castSpell
+    : kind === 'draw' ? def.drawnCard
     : def.enters
 }
 
@@ -804,6 +808,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   attacks: 'attacks',
   upkeep: 'upkeep',
   cast: 'cast',
+  draw: 'draw',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -853,16 +858,17 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
   }
   // cast-trigger with an "…unless that player pays {N}" clause (Rhystic Study, Esper Sentinel):
   // open the decision for the player who cast the spell; the effect happens only if they decline.
-  if (item.trigger === 'cast') {
-    const cd = getDef(item.defName).castSpell
+  if (item.trigger === 'cast' || item.trigger === 'draw') {
+    const d = getDef(item.defName)
+    const cd = item.trigger === 'draw' ? d.drawnCard : d.castSpell
     const payer = item.castPayer
     if (cd && (cd.unlessPay || cd.unlessPayFromPower) && payer && !state.players[payer]!.hasLost) {
       const src = state.objects[item.sourceId]
-      const cost = cd.unlessPayFromPower
+      const cost = 'unlessPayFromPower' in cd && cd.unlessPayFromPower
         ? `{${src && src.zone === 'battlefield' ? Math.max(0, currentPower(state, src)) : 0}}`
         : cd.unlessPay!
       state.pending = { kind: 'optionalPay', player: payer }
-      state.pendingOptionalPay = { player: payer, beneficiary: item.controllerId, cost, defName: item.defName, sourceId: item.sourceId }
+      state.pendingOptionalPay = { player: payer, beneficiary: item.controllerId, cost, defName: item.defName, sourceId: item.sourceId, trigger: item.trigger }
       logLine(state, `${getDef(item.defName).name}: ${name(state, payer)} may pay ${cost}.`)
       return
     }
@@ -1805,6 +1811,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         cost.generic += bc.generic
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += bc.colored[c]
       }
+      // "As an additional cost to cast this spell, pay X life." (Toxic Deluge) — X is chosen by the
+      // caster and is NOT added to the mana cost; validated here (CR 119.4), paid below with the
+      // rest of the costs so a failed cast never drains life.
+      const lifeX = !adv && !splitHalf && def.additionalLifeCostX ? (msg.x ?? 0) : 0
+      if (def.additionalLifeCostX && !adv && !splitHalf) {
+        if (msg.x == null) throw new RulesError('NEEDS_X', 'Choose how much life to pay')
+        if (lifeX > state.players[actor]!.life) throw new RulesError('CANT_PAY', `Not enough life (need ${lifeX})`)
+      }
       // static generic cost reduction (CR 601.2f) — e.g. Blasphemous Act "{1} less per creature".
       // Applied after cost increases, before convoke; floored at 0, coloured pips untouched.
       if (!adv && !splitHalf && def.costReduction) cost.generic = Math.max(0, cost.generic - def.costReduction(state))
@@ -1855,6 +1869,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const pool = state.players[actor]!.manaPool
       for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
       for (const c of convokeCreatures) c.tapped = true // convoke is paid by tapping (CR 702.51c)
+      if (lifeX) {
+        state.players[actor]!.life -= lifeX
+        logLine(state, `${name(state, actor)} pays ${lifeX} life (additional cost).`)
+      }
       if (retraceLand) {
         moveToGraveyard(state, retraceLand.id) // discard the land (hand→graveyard) as the retrace cost
         logLine(state, `${name(state, actor)} discards ${getDef(retraceLand.defName).name} (retrace).`)
@@ -1875,7 +1893,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         sourceId: obj.id,
         abilityIndex: null,
         targets: msg.targets,
-        x: xCount > 0 ? x : undefined,
+        // {X} in the mana cost OR an X paid in life (Toxic Deluge) — the effect reads ctx.x
+        x: xCount > 0 ? x : lifeX ? lifeX : undefined,
         mode: !adv && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
         faceDown: castingFaceDown || undefined,
         kicked: kicked || undefined,
@@ -2390,7 +2409,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} pays ${pop.cost} — ${getDef(pop.defName).name}'s ability does nothing.`)
       } else {
         logLine(state, `${name(state, actor)} declines to pay ${pop.cost}.`)
-        const cd = getDef(pop.defName).castSpell
+        const d = getDef(pop.defName)
+        const cd = pop.trigger === 'draw' ? d.drawnCard : d.castSpell
         cd?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
       }
       // resume: the active player gets priority and the stack keeps resolving (CR 117.3c)
