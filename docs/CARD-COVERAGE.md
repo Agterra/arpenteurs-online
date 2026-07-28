@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**263 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**267 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -59,6 +59,7 @@
 - Cloudblazer
 - Cloudkin Seer
 - Colossal Dreadmaw
+- Command Tower
 - Concentrate
 - Counterspell
 - Craw Wurm
@@ -85,6 +86,7 @@
 - Elvish Mystic
 - Elvish Visionary
 - Errant Ephemeron
+- Exotic Orchard
 - Faithful Watchdog
 - Faithless Looting
 - Farseek
@@ -204,6 +206,7 @@
 - Ravenous Rats
 - Reanimate
 - Regrowth
+- Reliquary Tower
 - Revitalize
 - Savannah Lions
 - Search for Tomorrow
@@ -242,6 +245,7 @@
 - Temple of Triumph
 - Terminate
 - Thought Scour
+- Thought Vessel
 - Thran Dynamo
 - Three Visits
 - Titanic Growth

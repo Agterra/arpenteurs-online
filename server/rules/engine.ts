@@ -50,6 +50,12 @@ const setCounter = (obj: GameObject, name: string, value: number) => {
   if (value > 0) obj.counters[name] = value
   else delete obj.counters[name]
 }
+/**
+ * CR 402.2 exception — does this player control a permanent granting "you have no maximum hand
+ * size" (Reliquary Tower, Thought Vessel)? Checked live at cleanup, so it follows the permanent.
+ */
+const hasNoMaxHandSize = (state: RulesGameState, player: PlayerId) =>
+  zoneArr(state, player, 'battlefield').some((id) => getDef(state.objects[id]!.defName).noMaxHandSize)
 
 // ---------- state-based actions ----------
 
@@ -521,7 +527,7 @@ function beginStep(state: RulesGameState) {
     }
     case 'cleanup': {
       const hand = zoneArr(state, ap, 'hand')
-      if (hand.length > 7) {
+      if (hand.length > 7 && !hasNoMaxHandSize(state, ap)) {
         state.pending = { kind: 'discard', player: ap }
         return
       }

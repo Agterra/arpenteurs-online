@@ -354,6 +354,13 @@ export interface CardDefinition {
   /** "This creature can't be blocked." (unconditional evasion, e.g. Invisible Stalker.) */
   cantBeBlocked?: boolean
   /**
+   * "You have no maximum hand size." (CR 402.2 exception) — a static ability of a permanent on the
+   * battlefield: while its controller controls it, the cleanup-step discard is skipped for them
+   * (Reliquary Tower, Thought Vessel). Checked live in the cleanup step, so losing the permanent
+   * mid-turn re-imposes the limit.
+   */
+  noMaxHandSize?: boolean
+  /**
    * Protection from [colour] (CR 702.16, the "DEBT" rule): this permanent can't be Damaged,
    * Enchanted/Equipped, Blocked, or Targeted by anything of the listed colours. Printed only —
    * GRANTED protection (Mother of Runes) is deferred.

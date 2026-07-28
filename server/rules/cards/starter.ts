@@ -2051,4 +2051,35 @@ export const STARTER_SET: CardDefinition[] = [
     costReduction: (state) => battlefieldCreatures(state).length,
     spell: { effect: damageAllCreatures(13) },
   },
+
+  // --- Coverage batch CARD8: the most-played utility lands + no-maximum-hand-size ---
+  {
+    name: 'Command Tower',
+    types: ['Land'],
+    // "{T}: Add one mana of any color in your commander's color identity." Simplified for the
+    //  assisted table to any colour (identity restriction isn't tracked), as for Arcane Signet.
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') }],
+  },
+  {
+    name: 'Exotic Orchard',
+    types: ['Land'],
+    // "{T}: Add one mana of any color that a land an opponent controls could produce." Simplified to
+    //  any colour (as Fellwar Stone) — the opponents'-lands restriction isn't tracked.
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') }],
+  },
+  {
+    name: 'Reliquary Tower',
+    types: ['Land'],
+    // "You have no maximum hand size. {T}: Add {C}."
+    noMaxHandSize: true,
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') }],
+  },
+  {
+    name: 'Thought Vessel',
+    types: ['Artifact'],
+    manaCost: '{2}',
+    // "You have no maximum hand size. {T}: Add {C}."
+    noMaxHandSize: true,
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') }],
+  },
 ]
