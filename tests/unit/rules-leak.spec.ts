@@ -503,6 +503,10 @@ const FUZZ_DECK = [
   // keywords on non-creatures) and a targeted activated ability on a land (Rogue's Passage).
   ...Array(3).fill('Heroic Intervention'),
   ...Array(2).fill("Rogue's Passage"),
+  // batch CARD11: a fetch land — "{T}, Pay 1 life, Sacrifice this land: search for a Swamp or
+  // Mountain card" (the deck is Swamp/Mountain-heavy, so it reliably finds one). Exercises the new
+  // life cost together with the sac-self + library-search-from-the-graveyard path.
+  ...Array(3).fill('Bloodstained Mire'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

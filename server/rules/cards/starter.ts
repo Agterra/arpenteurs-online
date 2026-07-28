@@ -90,6 +90,24 @@ const cyclingLand = (name: string, color: ManaColor): CardDefinition => ({
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [color], effect: addMana(color) }],
 })
 
+/**
+ * A pay-1-life fetch land (Onslaught + Zendikar cycles): "{T}, Pay 1 life, Sacrifice this land:
+ * Search your library for an [a] or [b] card, put it onto the battlefield, then shuffle." The
+ * fetched land enters UNTAPPED (the tapped, {1}-cost Mirage cycle is a different set of cards), and
+ * the subtype filter matches basic AND nonbasic lands with that type — exactly the printed rules.
+ */
+const fetchLand = (name: string, a: string, b: string): CardDefinition => ({
+  name,
+  types: ['Land'],
+  abilities: [
+    {
+      kind: 'activated',
+      cost: { tap: true, life: 1, sacrificeSelf: true },
+      effect: searchLibrary({ filter: { landSubtypes: [a, b] }, dest: 'battlefield', count: 1 }),
+    },
+  ],
+})
+
 /** A scry-land: enters tapped, "When ~ enters, scry 1.", "{T}: Add {a} or {b}." */
 const scryland = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
   name,
@@ -2151,4 +2169,16 @@ export const STARTER_SET: CardDefinition[] = [
       { kind: 'activated', cost: { mana: '{4}', tap: true }, targets: [{ kind: 'creature', count: 1 }], effect: makeUnblockable() },
     ],
   },
+
+  // --- Coverage batch CARD11: the pay-1-life fetch lands (Onslaught + Zendikar cycles) ---
+  fetchLand('Polluted Delta', 'Island', 'Swamp'),
+  fetchLand('Flooded Strand', 'Plains', 'Island'),
+  fetchLand('Misty Rainforest', 'Forest', 'Island'),
+  fetchLand('Bloodstained Mire', 'Swamp', 'Mountain'),
+  fetchLand('Windswept Heath', 'Forest', 'Plains'),
+  fetchLand('Wooded Foothills', 'Mountain', 'Forest'),
+  fetchLand('Verdant Catacombs', 'Swamp', 'Forest'),
+  fetchLand('Scalding Tarn', 'Island', 'Mountain'),
+  fetchLand('Marsh Flats', 'Plains', 'Swamp'),
+  fetchLand('Arid Mesa', 'Mountain', 'Plains'),
 ]

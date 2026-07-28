@@ -50,6 +50,11 @@ export interface Cost {
    *  activation time — the activating player chooses which creature(s). */
   sacrifice?: { count: number; filter: 'creature' }
   /**
+   * "Pay N life" as part of the cost (the fetch lands). CR 119.4: payable only while your life
+   * total is at least N — paying it to 0 is legal and the 0-life SBA then ends your game.
+   */
+  life?: number
+  /**
    * "Sacrifice this permanent" as part of the cost (Evolving Wilds, Mind Stone). Nothing to
    * choose — the source itself is sacrificed once the ability is on the stack, so the ability
    * still resolves from the graveyard (CR 602.2a: paying costs doesn't remove it from the stack).

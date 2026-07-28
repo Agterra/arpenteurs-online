@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**274 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**284 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -22,6 +22,7 @@
 - Angelic Gift
 - Anguished Unmaking
 - Arcane Signet
+- Arid Mesa
 - Assault // Battery
 - Audacious Thief
 - Augury Raven
@@ -42,6 +43,7 @@
 - Blasphemous Act
 - Blaze
 - Bloodbraid Elf
+- Bloodstained Mire
 - Bloodthrone Vampire
 - Boggart Brute
 - Bojuka Bog
@@ -104,6 +106,7 @@
 - Flame Slash
 - Flametongue Kavu
 - Fleshbag Marauder
+- Flooded Strand
 - Forest
 - Forgotten Cave
 - Fyndhorn Elves
@@ -159,6 +162,7 @@
 - Marhault Elsdragon
 - Marsh Boa
 - Marsh Casualties
+- Marsh Flats
 - Merfolk of the Pearl Trident
 - Mesa Pegasus
 - Midnight Haunting
@@ -166,6 +170,7 @@
 - Mind Sculpt
 - Mind Spring
 - Mind Stone
+- Misty Rainforest
 - Monastery Swiftspear
 - Mortify
 - Mountain
@@ -190,6 +195,7 @@
 - Pincher Beetles
 - Plague Stinger
 - Plains
+- Polluted Delta
 - Pongify
 - Pounce
 - Prey Upon
@@ -215,6 +221,7 @@
 - Revitalize
 - Rogue's Passage
 - Savannah Lions
+- Scalding Tarn
 - Search for Tomorrow
 - Secluded Steppe
 - Selesnya Guildgate
@@ -266,6 +273,7 @@
 - Utter End
 - Vampire Cutthroat
 - Vampire Nighthawk
+- Verdant Catacombs
 - Vicious Conquistador
 - Vindicate
 - Viscera Seer
@@ -277,7 +285,9 @@
 - Waterfall Aerialist
 - White Knight
 - Wind Drake
+- Windswept Heath
 - Woe Strider
+- Wooded Foothills
 - Worn Powerstone
 - Wrath of God
 - Young Wolf

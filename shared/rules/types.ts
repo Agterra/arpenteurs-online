@@ -441,7 +441,7 @@ export interface LegalActions {
   triggerTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
   triggerSourceName: string | null
   /** non-mana activated abilities you can use right now (cost = mana part, '' if none; sacCost = creatures to sacrifice as a cost) */
-  activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null; cost: string; sacCost: number }[]
+  activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null; cost: string; sacCost: number; lifeCost: number }[]
   /** your Equipment that can be equipped right now (sorcery speed, cost affordable, you control a creature) */
   equippableIds: ObjId[]
   /** loyalty abilities you may activate now (your planeswalkers, once/turn, cost affordable) */

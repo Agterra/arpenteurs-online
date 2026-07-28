@@ -1538,6 +1538,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
             throw new RulesError('BAD_SACRIFICE', 'Not a creature you control')
         }
       }
+      // "Pay N life" (CR 119.4) — validated before any mutation, paid below with the other costs
+      const lifeCost = ability.cost.life ?? 0
+      if (lifeCost > state.players[actor]!.life)
+        throw new RulesError('CANT_PAY', `Not enough life (need ${lifeCost})`)
       // pay the mana part of the cost (only {T} + generic/colored mana supported)
       if (ability.cost.mana) {
         const cost = parseManaCost(ability.cost.mana)
@@ -1555,6 +1559,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
       })
       if (ability.cost.tap) obj.tapped = true
+      if (lifeCost) {
+        state.players[actor]!.life -= lifeCost
+        logLine(state, `${name(state, actor)} pays ${lifeCost} life.`)
+      }
       const abilityStackId = mintCardId()
       state.zones.stack.push({
         id: abilityStackId,

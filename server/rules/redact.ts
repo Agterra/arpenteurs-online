@@ -339,7 +339,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       // a sacrifice cost is only payable if the player controls enough creatures
       const sacCost = ab.cost.sacrifice?.count ?? 0
       if (sacCost > battlefieldCreatures(state, viewer).length) return
-      activations.push({ objId: obj.id, abilityIndex: i, targetKind: ab.targets?.[0]?.kind ?? null, cost: ab.cost.mana ?? '', sacCost })
+      // "pay N life" is payable only at life ≥ N (CR 119.4) — mirrors the engine's check
+      const lifeCost = ab.cost.life ?? 0
+      if (lifeCost > state.players[viewer]!.life) return
+      activations.push({ objId: obj.id, abilityIndex: i, targetKind: ab.targets?.[0]?.kind ?? null, cost: ab.cost.mana ?? '', sacCost, lifeCost })
     })
   }
 

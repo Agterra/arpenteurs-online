@@ -681,6 +681,7 @@ type Activation = {
   targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | null
   cost: string
   sacCost: number
+  lifeCost: number
 }
 const activating = ref<Activation | null>(null)
 const activationFor = (id: ObjId): Activation | null => legal.value?.activations.find((a) => a.objId === id) ?? null
@@ -1857,7 +1858,8 @@ onBeforeUnmount(() => {
           <div class="truncate px-2 py-1 font-semibold text-dimmed">{{ nameOf(menu.id) }}</div>
           <template v-if="activationFor(menu.id)">
             <button type="button" class="menu-item font-semibold text-primary" @click="startActivate(menu.id)">
-              ⚡ Activate ability{{ activationFor(menu.id)?.targetKind ? ' (choose a target)' : '' }}
+              ⚡ Activate ability{{ activationFor(menu.id)!.lifeCost ? ` (pay ${activationFor(menu.id)!.lifeCost} life)` : ''
+              }}{{ activationFor(menu.id)?.targetKind ? ' (choose a target)' : '' }}
             </button>
             <div class="my-1 border-t border-default" />
           </template>

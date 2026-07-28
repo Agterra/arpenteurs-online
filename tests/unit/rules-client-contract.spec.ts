@@ -57,6 +57,26 @@ describe('every implemented activated ability uses a client-selectable target ki
   }
 })
 
+/**
+ * The client's activation menu resolves a card's ability with
+ * `legal.activations.find((a) => a.objId === id)` — the FIRST non-mana activated ability of that
+ * permanent. A card with two of them would silently offer only one (the other unreachable), so a
+ * second one needs an ability picker in DuelBoard.vue first. Mana abilities don't count: they are
+ * used via r.tapMana, so Mind Stone / Commander's Sphere / Rogue's Passage (mana + one other) are
+ * fine. Extend the client and this guard together.
+ */
+describe('no implemented card has two non-mana activated abilities (the client offers one)', () => {
+  const offenders: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented) continue
+    const nonMana = (def.abilities ?? []).filter((ab) => ab.kind === 'activated' && !ab.isMana)
+    if (nonMana.length > 1) offenders.push(`${def.name} (${nonMana.length})`)
+  }
+  it('every implemented card has at most one client-activatable ability', () => {
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('no implemented loyalty ability is targeted (the client sends r.loyalty with no targets)', () => {
   const offenders: string[] = []
   for (const def of allDefs()) {
