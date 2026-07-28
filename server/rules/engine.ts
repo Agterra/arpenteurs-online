@@ -1571,8 +1571,16 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (!obj || obj.zone !== 'battlefield' || obj.phasedOut || obj.controllerId !== actor)
         throw new RulesError('NOT_YOURS', "You don't control that permanent")
       if (state.loseAbilities.includes(obj.id)) throw new RulesError('NO_MANA_ABILITY', 'That permanent has lost all abilities')
-      const ability = getDef(obj.defName).abilities?.find((a) => a.kind === 'activated' && a.isMana)
+      // a permanent can have SEVERAL mana abilities (the pain lands: "{T}: Add {C}" and "{T}: Add
+      // {a} or {b}, deals 1 damage to you") — pick the one that can produce the requested colour,
+      // else the first (so every existing single-ability call site is unchanged)
+      const manaAbilities = (getDef(obj.defName).abilities ?? []).filter((a) => a.kind === 'activated' && a.isMana)
+      const ability = (msg.color && manaAbilities.find((a) => (a.produces ?? []).includes(msg.color!))) || manaAbilities[0]
       if (!ability) throw new RulesError('NO_MANA_ABILITY', 'No mana ability')
+      // asking for a colour none of its mana abilities can make is illegal (rather than silently
+      // falling back to another ability's output)
+      if (msg.color && !manaAbilities.some((a) => (a.produces ?? []).includes(msg.color!)))
+        throw new RulesError('CHOOSE_COLOR', `${objName(state, obj.id)} can't make {${msg.color}}`)
       // only {T} mana abilities (with an OPTIONAL mana cost, e.g. Signets' {1});
       // a cost-free untapped ability would be activatable unboundedly (infinite mana)
       if (!ability.cost.tap) throw new RulesError('UNSUPPORTED', 'Only {T} mana abilities are supported')
@@ -1584,6 +1592,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // colour CHOICE (guildgate/dork/rock): validate the choice up front
       if (ability.chooseColor && (!msg.color || !produces.includes(msg.color)))
         throw new RulesError('CHOOSE_COLOR', `Choose which colour (${produces.join('/')})`)
+      // "Pay N life" as part of a mana ability's cost (Mana Confluence) — CR 119.4, checked
+      // before any mutation
+      const manaLifeCost = ability.cost.life ?? 0
+      if (manaLifeCost > state.players[actor]!.life)
+        throw new RulesError('CANT_PAY', `Not enough life (need ${manaLifeCost})`)
       // pay the ability's own mana cost first (e.g. a Signet's {1}) — atomic: throws before tapping
       if (ability.cost.mana) {
         const cost = parseManaCost(ability.cost.mana)
@@ -1593,8 +1606,17 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
       }
       obj.tapped = true
+      if (manaLifeCost) {
+        state.players[actor]!.life -= manaLifeCost
+        logLine(state, `${name(state, actor)} pays ${manaLifeCost} life for ${objName(state, obj.id)}.`)
+      }
       if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
+      // a mana ability that hurts (Ancient Tomb, City of Brass, the pain lands)
+      if (ability.damageOnTapForMana) {
+        state.players[actor]!.life -= ability.damageOnTapForMana
+        logLine(state, `${objName(state, obj.id)} deals ${ability.damageOnTapForMana} damage to ${name(state, actor)}.`)
+      }
       // "Sacrifice this token" as part of a MANA ability's cost (a Treasure). Mana abilities never
       // use the stack, so the mana is already in the pool and the source goes now; the 704.5d SBA
       // then removes the token from the graveyard.

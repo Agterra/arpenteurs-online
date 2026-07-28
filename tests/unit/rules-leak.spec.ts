@@ -558,6 +558,10 @@ const FUZZ_DECK = [
   // batch CARD16: Rhystic Study — every opponent cast opens the pay-or-let-them-draw decision, so
   // the fuzzer exercises the new pending on both branches (declining draws a card = library→hand).
   ...Array(2).fill('Rhystic Study'),
+  // batch CARD17: mana that hurts — Ancient Tomb (2 damage per tap) and a pain land whose colour
+  // ability costs 1 life, so the fuzzer's tapping loops drive both damage paths (and can kill).
+  ...Array(2).fill('Ancient Tomb'),
+  ...Array(2).fill('Sulfurous Springs'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

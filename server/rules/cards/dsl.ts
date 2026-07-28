@@ -87,6 +87,14 @@ export interface ActivatedAbility {
    * adds its one colour).
    */
   chooseColor?: boolean
+  /**
+   * Mana abilities that hurt (Ancient Tomb, City of Brass, the pain lands): this much damage is
+   * dealt to the activating player as the ability is used. Declared here rather than inside
+   * `effect` because a colour-CHOICE source never runs its effect (the engine adds the chosen
+   * colour itself). City of Brass's printed "whenever this becomes tapped" is simplified to
+   * tapping-for-mana — the only way it is tapped in practice.
+   */
+  damageOnTapForMana?: number
   targets?: TargetSpec[]
   effect: Effect
 }

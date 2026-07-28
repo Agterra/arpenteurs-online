@@ -158,7 +158,9 @@ describe('Guildgates (enters tapped, dual-colour mana)', () => {
     const gate = putCard(state, A, 'Izzet Guildgate') // U or R
     state.objects[gate]!.tapped = false
     toStep(state, 'main1')
-    expect(() => act(state, A, { type: 'r.tapMana', objId: gate, color: 'G' })).toThrow(/Choose which colour/)
+    // CARD17 made this check ability-aware (a permanent may have several mana abilities), so the
+    // rejection now names the colour it can't make; either wording means "not a legal choice"
+    expect(() => act(state, A, { type: 'r.tapMana', objId: gate, color: 'G' })).toThrow(/can't make \{G\}|Choose which colour/)
     expect(state.objects[gate]!.tapped).toBe(false) // cost not paid on a bad choice
   })
 })

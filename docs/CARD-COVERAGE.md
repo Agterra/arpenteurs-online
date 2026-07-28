@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**303 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**316 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -12,6 +12,7 @@
 - Abrade
 - Accorder Paladin
 - Acidic Slime
+- Adarkar Wastes
 - Aerie Bowmasters
 - Air Elemental
 - Ajani, the Greathearted
@@ -19,6 +20,7 @@
 - Ambush Viper
 - An Offer You Can't Refuse
 - Ancient Craving
+- Ancient Tomb
 - Angel of Mercy
 - Angelic Gift
 - Anguished Unmaking
@@ -34,6 +36,7 @@
 - Barren Moor
 - Bastion of Remembrance
 - Battering Craghorn
+- Battlefield Forge
 - Beast Within
 - Benalish Cavalry
 - Benalish Hero
@@ -56,12 +59,15 @@
 - Boros Guildgate
 - Boros Signet
 - Breeding Pool
+- Brushland
 - Burst Lightning
 - Cancel
 - Capsize
 - Cathars' Crusade
+- Caves of Koilos
 - Centaur Courser
 - Char
+- City of Brass
 - Cloudblazer
 - Cloudkin Seer
 - Colossal Dreadmaw
@@ -151,6 +157,7 @@
 - Jayemdae Tome
 - Jedit Ojanen
 - Jerrard of the Closed Fist
+- Karplusan Forest
 - Knight of Glory
 - Kodama's Reach
 - Krenko's Command
@@ -163,10 +170,12 @@
 - Lightning Strike
 - Lingering Tormentor
 - Llanowar Elves
+- Llanowar Wastes
 - Lonely Sandbar
 - Loxodon Warhammer
 - Mahamoti Djinn
 - Man-o'-War
+- Mana Confluence
 - Manalith
 - Marhault Elsdragon
 - Marsh Boa
@@ -242,6 +251,7 @@
 - Serra Angel
 - Shardless Agent
 - Shivan Dragon
+- Shivan Reef
 - Shock
 - Siege Wurm
 - Sign in Blood
@@ -257,6 +267,7 @@
 - Steam Vents
 - Stomping Ground
 - Strangleroot Geist
+- Sulfurous Springs
 - Swamp
 - Swiftfoot Boots
 - Sword of Vengeance
@@ -285,6 +296,7 @@
 - Torsten Von Ursus
 - Tranquil Thicket
 - Tukatongue Thallid
+- Underground River
 - Unholy Strength
 - Unsummon
 - Utter End
@@ -309,6 +321,7 @@
 - Wooded Foothills
 - Worn Powerstone
 - Wrath of God
+- Yavimaya Coast
 - Young Wolf
 - Youthful Knight
 - Zulaport Cutthroat

@@ -125,6 +125,28 @@ const shockland = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, 
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
 })
 
+/**
+ * A pain land (Ice Age / Apocalypse cycles): "{T}: Add {C}." and "{T}: Add {a} or {b}. This land
+ * deals 1 damage to you." Two separate mana abilities — r.tapMana picks the one that can make the
+ * requested colour, so asking for {C} is free and asking for a colour costs 1 life.
+ */
+const painLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  abilities: [
+    { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+    {
+      kind: 'activated',
+      cost: { tap: true },
+      isMana: true,
+      produces: [a, b],
+      chooseColor: true,
+      damageOnTapForMana: 1,
+      effect: addMana(a),
+    },
+  ],
+})
+
 /** A scry-land: enters tapped, "When ~ enters, scry 1.", "{T}: Add {a} or {b}." */
 const scryland = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
   name,
@@ -2322,4 +2344,57 @@ export const STARTER_SET: CardDefinition[] = [
       effect: drawCards(1),
     },
   },
+
+  // --- Coverage batch CARD17: mana that hurts (life/damage on tap) ---
+  {
+    name: 'Ancient Tomb',
+    types: ['Land'],
+    // "{T}: Add {C}{C}. This land deals 2 damage to you."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], damageOnTapForMana: 2, effect: addMana('C', 'C') },
+    ],
+  },
+  {
+    name: 'City of Brass',
+    types: ['Land'],
+    // "Whenever this land becomes tapped, it deals 1 damage to you. {T}: Add one mana of any color."
+    //  (the damage is modelled on tapping FOR MANA — see damageOnTapForMana)
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        damageOnTapForMana: 1,
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Mana Confluence',
+    types: ['Land'],
+    // "{T}, Pay 1 life: Add one mana of any color."
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true, life: 1 },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        effect: addMana('W'),
+      },
+    ],
+  },
+  // the ten pain lands
+  painLand('Shivan Reef', 'U', 'R'),
+  painLand('Battlefield Forge', 'R', 'W'),
+  painLand('Caves of Koilos', 'W', 'B'),
+  painLand('Yavimaya Coast', 'G', 'U'),
+  painLand('Llanowar Wastes', 'B', 'G'),
+  painLand('Underground River', 'U', 'B'),
+  painLand('Adarkar Wastes', 'W', 'U'),
+  painLand('Sulfurous Springs', 'B', 'R'),
+  painLand('Karplusan Forest', 'R', 'G'),
+  painLand('Brushland', 'G', 'W'),
 ]

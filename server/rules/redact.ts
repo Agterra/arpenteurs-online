@@ -344,15 +344,33 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   const manaSourceColors: LegalActions['manaSourceColors'] = {}
   for (const obj of Object.values(state.objects)) {
     if (obj.zone !== 'battlefield' || obj.controllerId !== viewer || obj.tapped) continue
-    const ability = getDef(obj.defName).abilities?.find((a) => a.kind === 'activated' && a.isMana && a.cost.tap)
-    if (!ability) continue
+    // a permanent may have SEVERAL mana abilities (a pain land: "{T}: Add {C}" plus a coloured one
+    // that hurts) — the picker offers every colour any of them can make, and r.tapMana selects the
+    // ability from the requested colour
+    const manaAbilities = (getDef(obj.defName).abilities ?? []).filter(
+      (a) =>
+        a.kind === 'activated' &&
+        a.isMana &&
+        a.cost.tap &&
+        // "Pay N life" mana abilities (Mana Confluence) are only usable at life ≥ N (CR 119.4)
+        (a.cost.life ?? 0) <= state.players[viewer]!.life,
+    )
+    if (!manaAbilities.length) continue
     manaSourceIds.push(obj.id)
     // only chooseColor sources prompt a colour picker; fixed-output rocks (Signets) don't
-    manaSourceColors[obj.id] = ability.chooseColor ? (ability.produces ?? []) : []
+    // several abilities → the player picks among ALL their colours (a pain land's {C} plus its two
+    // painful colours); a single ability prompts only when it is itself a colour choice
+    manaSourceColors[obj.id] =
+      manaAbilities.length > 1
+        ? [...new Set(manaAbilities.flatMap((a) => a.produces ?? []))]
+        : manaAbilities[0]!.chooseColor
+          ? (manaAbilities[0]!.produces ?? [])
+          : []
     // only cost-free {T} sources add to the pre-tap potential; cost-bearing rocks
     // (Signets need input mana) are re-validated by the server on tap
-    if (!ability.cost.mana) {
-      const c = ability.produces?.[0]
+    const free = manaAbilities.find((a) => !a.cost.mana)
+    if (free) {
+      const c = free.produces?.[0]
       if (c) potential[c]++
     }
   }
