@@ -113,8 +113,10 @@ export interface TriggeredAbility {
    * What event this watches. Absent = the source's OWN event (plain ETB/dies).
    * `scope: 'anyCreature'` fires for any creature's event (e.g. Soul Warden),
    * narrowed by `controllerOnly` (creatures you control) / `excludeSelf`.
+   * `scope: 'attachedCreature'` fires only for the creature this Aura/Equipment is
+   * attached to (Skullclamp's "whenever equipped creature dies").
    */
-  watch?: { scope: 'anyCreature'; controllerOnly?: boolean; excludeSelf?: boolean }
+  watch?: { scope: 'anyCreature' | 'attachedCreature'; controllerOnly?: boolean; excludeSelf?: boolean }
 }
 /** The trigger events the engine emits. */
 export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep'

@@ -336,6 +336,8 @@ export const searchLibrary = (opts: {
   dest: 'battlefield' | 'hand'
   tapped?: boolean
   count?: number
+  /** Fabled Passage: untap the fetched land if its controller then controls ≥ N lands */
+  untapIfLandsAtLeast?: number
   /** Split destination — e.g. Cultivate: first pick → battlefield tapped, rest → hand. */
   split?: {
     first: { dest: 'battlefield' | 'hand'; tapped: boolean }
@@ -362,6 +364,7 @@ export const searchLibrary = (opts: {
     dest: opts.dest,
     tapped: opts.tapped ?? false,
     count: opts.count ?? 1,
+    ...(opts.untapIfLandsAtLeast != null ? { untapIfLandsAtLeast: opts.untapIfLandsAtLeast } : {}),
     ...(opts.split ? { split: opts.split } : {}),
   }
   logLine(ctx.state, `${who} searches their library.`)

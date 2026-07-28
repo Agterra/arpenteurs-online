@@ -2206,4 +2206,29 @@ export const STARTER_SET: CardDefinition[] = [
   shockland('Overgrown Tomb', 'B', 'G', ['Swamp', 'Forest']),
   shockland('Sacred Foundry', 'R', 'W', ['Mountain', 'Plains']),
   shockland('Temple Garden', 'G', 'W', ['Forest', 'Plains']),
+
+  // --- Coverage batch CARD13: equipped-creature-dies trigger + conditional fetch untap ---
+  {
+    name: 'Skullclamp',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{1}',
+    // "Equipped creature gets +1/-1. Whenever equipped creature dies, draw two cards. Equip {1}"
+    equipCost: '{1}',
+    grantsToHost: { power: 1, toughness: -1 },
+    dies: { watch: { scope: 'attachedCreature' }, effect: drawCards(2) },
+  },
+  {
+    name: 'Fabled Passage',
+    types: ['Land'],
+    // "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the
+    //  battlefield tapped, then shuffle. Then if you control four or more lands, untap that land."
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true, sacrificeSelf: true },
+        effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1, untapIfLandsAtLeast: 4 }),
+      },
+    ],
+  },
 ]

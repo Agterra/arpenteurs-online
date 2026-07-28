@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**294 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**296 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -94,6 +94,7 @@
 - Errant Ephemeron
 - Evolving Wilds
 - Exotic Orchard
+- Fabled Passage
 - Faithful Watchdog
 - Faithless Looting
 - Farseek
@@ -240,6 +241,7 @@
 - Sign in Blood
 - Simic Guildgate
 - Simic Signet
+- Skullclamp
 - Sol Ring
 - Solemn Simulacrum
 - Soltari Foot Soldier

@@ -120,7 +120,11 @@ export function moveToGraveyard(state: RulesGameState, objId: ObjId) {
         const w = ab.watch
         const fires = !w
           ? isSelf
-          : dyingIsCreature && !(w.excludeSelf && isSelf) && !(w.controllerOnly && obj.controllerId !== p.controllerId)
+          : w.scope === 'attachedCreature'
+            ? // "whenever EQUIPPED creature dies" (Skullclamp): only for its own host, read
+              // before moveTo clears `attachedTo`
+              dyingIsCreature && p.attachedTo === objId
+            : dyingIsCreature && !(w.excludeSelf && isSelf) && !(w.controllerOnly && obj.controllerId !== p.controllerId)
         if (fires) toFire.push({ sourceId: p.id, defName: p.defName, controllerId: p.controllerId })
       }
     }

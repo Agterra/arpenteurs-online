@@ -516,6 +516,11 @@ const FUZZ_DECK = [
   // batch CARD12: a shockland (Swamp Mountain, so Bloodstained Mire can also fetch it) — exercises
   // the new as-enters CHOICE pending on both the play-a-land and the fetched-mid-search paths.
   ...Array(3).fill('Blood Crypt'),
+  // batch CARD13: Skullclamp (equip → +1/-1 kills 1-toughness creatures, and the equipped-creature
+  // -dies trigger draws TWO cards — a library→hand path off a death) and Fabled Passage (a fetch
+  // whose land enters tapped then conditionally untaps).
+  ...Array(2).fill('Skullclamp'),
+  ...Array(2).fill('Fabled Passage'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

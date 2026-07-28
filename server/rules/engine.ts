@@ -2050,6 +2050,15 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           obj.summoningSick = defIsCreature(getDef(obj.defName))
           moveTo(state, id, 'battlefield')
           if (route.tapped) obj.tapped = true
+          // Fabled Passage: "…then if you control four or more lands, untap that land" — counted
+          // after it entered, so the fetched land counts itself
+          if (ps.untapIfLandsAtLeast != null && obj.tapped) {
+            const lands = zoneArr(state, actor, 'battlefield').filter((lid) => defIsLand(getDef(state.objects[lid]!.defName))).length
+            if (lands >= ps.untapIfLandsAtLeast) {
+              obj.tapped = false
+              logLine(state, `${objName(state, id)} is untapped (${lands} lands).`)
+            }
+          }
           fireEntersTriggers(state, id)
         } else if (obj.isCommander) {
           moveTo(state, id, 'command') // a commander never enters a hidden hand

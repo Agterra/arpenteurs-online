@@ -242,6 +242,12 @@ export interface RulesGameState {
      * tapped and the other into your hand"): the FIRST chosen card is routed via `first`,
      * every subsequent chosen card via `rest`. When absent, all picks use `dest`/`tapped`.
      */
+    /**
+     * Fabled Passage: "…put it onto the battlefield tapped … then if you control four or more
+     * lands, untap that land." The count is taken AFTER the fetched land entered (it counts
+     * itself). A plain number so the pending stays serialisable in a snapshot.
+     */
+    untapIfLandsAtLeast?: number
     split?: {
       first: { dest: 'battlefield' | 'hand'; tapped: boolean }
       rest: { dest: 'battlefield' | 'hand'; tapped: boolean }
