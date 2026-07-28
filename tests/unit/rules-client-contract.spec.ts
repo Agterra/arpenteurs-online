@@ -14,6 +14,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import { allDefs } from '../../server/rules/cards/registry.ts'
+import {
+  GRAVEYARD_SPELLS,
+  MODAL_SPELLS,
+  MULTI_TARGET_SPELLS,
+  TARGETED_SPELLS,
+} from '../../shared/rules/clientTargets.ts'
 
 // Kinds the client can select for a TRIGGERED ability (isTriggerTargetCard +
 // canTargetPlayerForTrigger) and for an ACTIVATED ability (isActivateTargetCard +
@@ -74,6 +80,46 @@ describe('no implemented card has two non-mana activated abilities (the client o
   }
   it('every implemented card has at most one client-activatable ability', () => {
     expect(offenders).toEqual([])
+  })
+})
+
+/**
+ * Every implemented spell that needs a TARGET as it is cast must be resolvable by one of the
+ * client's target pickers (shared/rules/clientTargets.ts). Without this, `startCast` falls through
+ * to the payment panel with zero targets and the server rejects the cast with BAD_TARGETS — the
+ * card ships uncastable in the real UI while every engine test (which passes targets directly to
+ * r.cast) stays green. This guard was added after finding twelve such cards at once.
+ */
+describe('every implemented targeted spell has a client target picker', () => {
+  const missing: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented || def.isBackFace) continue
+    const spellTargets = def.spell?.targets?.length ?? 0
+    const modalTargets = def.modes?.some((m) => (m.targets?.length ?? 0) > 0) ?? false
+    if (!spellTargets && !modalTargets) continue
+    const key = def.name.toLowerCase()
+    const known =
+      key in TARGETED_SPELLS || key in MODAL_SPELLS || key in MULTI_TARGET_SPELLS || key in GRAVEYARD_SPELLS
+    if (!known) missing.push(def.name)
+  }
+  it('no targeted spell is missing from clientTargets.ts', () => {
+    expect(missing).toEqual([])
+  })
+})
+
+/**
+ * A graveyard-card target needs the dedicated graveyard picker (a battlefield/player click can't
+ * express it), so such a spell must be in GRAVEYARD_SPELLS specifically.
+ */
+describe('graveyardCard-targeting spells use the graveyard picker', () => {
+  const wrong: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented || def.isBackFace) continue
+    if (!def.spell?.targets?.some((t) => t.kind === 'graveyardCard')) continue
+    if (!(def.name.toLowerCase() in GRAVEYARD_SPELLS)) wrong.push(def.name)
+  }
+  it('all graveyard-recursion spells are in GRAVEYARD_SPELLS', () => {
+    expect(wrong).toEqual([])
   })
 })
 

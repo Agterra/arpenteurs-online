@@ -366,6 +366,12 @@ export interface CardDefinition {
    */
   ward?: string
   /**
+   * Overload (CR 702.96): "You may cast this spell for its overload cost. If you do, change
+   * 'target' in its text to 'each'." An ALTERNATIVE cost (it replaces the printed mana cost) and a
+   * different, untargeted body — declared here as its own effect. Cast via `r.cast.overload`.
+   */
+  overload?: { cost: string; effect: Effect }
+  /**
    * Cascade (CR 702.85): "When you cast this spell, exile from the top of your library until
    * you exile a nonland card with lesser mana value; you may cast it for free; put the rest on
    * the bottom in a random order." The engine runs the whole thing (single cascade only;

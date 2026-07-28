@@ -907,7 +907,8 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     checkSBA(state)
     return
   }
-  const chosen = activeSpell(def, item.mode) // the picked mode for a modal spell, else the plain spell
+  // overload (CR 702.96): the untargeted "each" body replaces the printed, targeted one
+  const chosen = item.overloaded && def.overload ? { targets: undefined, effect: def.overload.effect } : activeSpell(def, item.mode)
   const specs = flattenSpecs(chosen?.targets)
   let auraTarget: ObjId | null = null
   if (specs.length) {
@@ -1660,6 +1661,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // evoke (CR 702.74): cast for the evoke cost, then sacrifice it as it enters
       const castingEvoke = !adv && !castingBestow && !fromFlashback && !fromRetrace && !!msg.evoke
       if (castingEvoke && !def.evokeCost) throw new RulesError('NO_EVOKE', 'That card has no evoke')
+      // overload (CR 702.96): cast for the overload cost — an ALTERNATIVE cost with an untargeted
+      // body ("change 'target' to 'each'")
+      const castingOverload = !adv && !castingBestow && !castingEvoke && !fromFlashback && !fromRetrace && !!msg.overload
+      if (castingOverload && !def.overload) throw new RulesError('NO_OVERLOAD', 'That spell has no overload')
       // morph (CR 702.37): cast face down as a 2/2 for a fixed {3}
       const castingFaceDown = !adv && !castingBestow && !castingEvoke && !fromFlashback && !fromRetrace && !fromEscape && !fromForetell && !!msg.faceDown
       if (castingFaceDown && !def.morphCost) throw new RulesError('NO_MORPH', 'That card has no morph')
@@ -1668,7 +1673,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const splitHalf = !adv && !castingBestow && def.split ? (msg.mode === 1 ? def.split.right : def.split.left) : null
       // the "face" being cast: the adventure half, a split half, or the card's main face
       const faceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
-      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : castingFaceDown ? '{3}' : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : fromForetell ? def.foretellCost! : def.manaCost
+      const faceManaCost = adv ? adv.manaCost : splitHalf ? splitHalf.manaCost : castingOverload ? def.overload!.cost : castingBestow ? def.bestowCost! : castingEvoke ? def.evokeCost! : castingFaceDown ? '{3}' : fromFlashback ? def.flashbackCost! : fromEscape ? def.escape!.cost : fromForetell ? def.foretellCost! : def.manaCost
       if (defIsLand(def) && !adv && !splitHalf) throw new RulesError('IS_A_LAND', 'Lands are played, not cast')
       const instantSpeed = faceTypes.includes('Instant') || (!adv && !splitHalf && !castingBestow && hasKw(state, obj.id, 'flash'))
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
@@ -1679,7 +1684,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('BAD_MODE', 'Choose a valid mode')
       // bestow forces a single "target creature" (the host); otherwise use the chosen face's targets
       const chosen = adv ? { targets: adv.targets, effect: adv.effect } : activeSpell(def, msg.mode)
-      const specs = castingBestow ? flattenSpecs([{ kind: 'creature', count: 1 }]) : flattenSpecs(chosen?.targets)
+      const specs = castingOverload
+        ? [] // overloaded: "target" became "each", so nothing is targeted
+        : castingBestow
+          ? flattenSpecs([{ kind: 'creature', count: 1 }])
+          : flattenSpecs(chosen?.targets)
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
       if (msg.targets.length !== specs.length)
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
@@ -1789,6 +1798,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         buyback: buyback || undefined,
         bestow: castingBestow || undefined,
         evoke: castingEvoke || undefined,
+        overloaded: castingOverload || undefined,
       })
       const targetNames = msg.targets.map((t) =>
         Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),

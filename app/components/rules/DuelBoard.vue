@@ -10,6 +10,15 @@
  */
 import type { ManaColor, ObjId, PlayerId, RulesClientCard } from '#shared/rules/types'
 import { shouldAutoPassPriority } from '#shared/rules/autopass'
+// which picker resolves each targeted spell — shared so a unit test can assert full coverage
+import {
+  GRAVEYARD_SPELLS,
+  MODAL_SPELLS,
+  MULTI_TARGET_SPELLS,
+  TARGETED_SPELLS,
+  type FightSlot,
+  type TargetClass,
+} from '#shared/rules/clientTargets'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { useGameStore } from '~/stores/game'
 import { useRulesGameStore, type RulesCardDisplay } from '~/stores/rulesGame'
@@ -77,81 +86,8 @@ const POOL_COLORS: ManaColor[] = ['W', 'U', 'B', 'R', 'G', 'C']
 
 // ---------- interaction state ----------
 
-type TargetClass = 'any' | 'creature' | 'permanent' | 'spell' | 'player'
 /** which alternative cast is being paid for (extra r.cast flag / other zone / other action) */
-type AltKind = 'flashback' | 'retrace' | 'escape' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend'
-/** starter cards that need a target as they're cast (defName → target class). */
-const TARGETED_STARTERS: Record<string, TargetClass> = {
-  shock: 'any',
-  'lightning bolt': 'any',
-  char: 'any',
-  'lightning helix': 'any',
-  'lightning strike': 'any',
-  'volcanic hammer': 'any',
-  murder: 'creature',
-  terminate: 'creature',
-  'go for the throat': 'creature',
-  pongify: 'creature',
-  'rapid hybridization': 'creature',
-  disfigure: 'creature',
-  'grasp of darkness': 'creature',
-  'swords to plowshares': 'creature',
-  'gird for battle': 'creature',
-  unsummon: 'creature',
-  'flame slash': 'creature',
-  'giant growth': 'creature',
-  'titanic growth': 'creature',
-  counterspell: 'spell',
-  vindicate: 'permanent',
-  'beast within': 'permanent',
-  'generous gift': 'permanent',
-  naturalize: 'permanent',
-  disenchant: 'permanent',
-  mortify: 'permanent',
-  putrefy: 'permanent',
-  'utter end': 'permanent',
-  'anguished unmaking': 'permanent',
-  "hero's downfall": 'permanent', // creature or planeswalker (server enforces the filter)
-  boomerang: 'permanent',
-  'diabolic edict': 'player',
-  // Auras enchant a creature (they attach to their target on resolution)
-  'unholy strength': 'creature',
-  'holy strength': 'creature',
-  'angelic gift': 'creature',
-  pacifism: 'creature',
-  blaze: 'any', // {X} damage to any target
-  'burst lightning': 'any', // 2 (or 4 if kicked) damage to any target
-  'mind rot': 'player',
-  'tome scour': 'player',
-  'mind sculpt': 'player',
-  'thought scour': 'player',
-  'marsh casualties': 'player', // -1/-1 (or -2/-2 if kicked) to a player's creatures
-}
-/** modal "choose one" starters: per-mode label + the target class that mode needs. */
-const MODAL_STARTERS: Record<string, { label: string; spec: TargetClass | null }[]> = {
-  abrade: [
-    { label: 'Deal 3 damage to target creature', spec: 'creature' },
-    { label: 'Destroy target artifact', spec: 'permanent' },
-  ],
-  'gods willing': [
-    { label: 'Protection from white', spec: 'creature' },
-    { label: 'Protection from blue', spec: 'creature' },
-    { label: 'Protection from black', spec: 'creature' },
-    { label: 'Protection from red', spec: 'creature' },
-    { label: 'Protection from green', spec: 'creature' },
-  ],
-}
-/** multi-target starters (ordered slots) — fight spells: your creature, then theirs. */
-type FightSlot = 'your-creature' | 'opp-creature'
-const MULTI_TARGET_STARTERS: Record<string, FightSlot[]> = {
-  pounce: ['your-creature', 'opp-creature'],
-  'prey upon': ['your-creature', 'opp-creature'],
-}
-/** graveyard-recursion starters → whether the target is creature-only. */
-const GRAVEYARD_STARTERS: Record<string, 'creature' | 'any'> = {
-  'raise dead': 'creature',
-  regrowth: 'any',
-}
+type AltKind = 'flashback' | 'retrace' | 'escape' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend' | 'overload'
 
 const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number; alt?: AltKind; altCost?: string } | null>(null)
 const attackAssign = ref<{ attackerId: ObjId; defenderId: PlayerId }[]>([])
@@ -314,6 +250,7 @@ function confirmCast() {
       adventure: c.alt === 'adventure' || undefined,
       bestow: c.alt === 'bestow' || undefined,
       evoke: c.alt === 'evoke' || undefined,
+      overload: c.alt === 'overload' || undefined,
       retraceLand: c.alt === 'retrace' ? firstLandInHand() : undefined,
       escapeExile: c.alt === 'escape' ? firstNOtherInGraveyard(c.cardId, c.escapeCount ?? 0) : undefined,
     })
@@ -339,7 +276,7 @@ function beginCyclePayment(objId: ObjId, cost: string) {
 const cycleCost = (id: ObjId): string | null => legal.value?.cyclable.find((c) => c.objId === id)?.cost ?? null
 
 // alternative-cast target class per card (the redacted client doesn't carry DSL target specs,
-// so — like TARGETED_STARTERS — the alt-cast targets are curated by card name)
+// so — like TARGETED_SPELLS — the alt-cast targets are curated by card name)
 const ALT_TARGET_CLASS: Record<string, TargetClass> = {
   firebolt: 'any', // flashback → 2 damage to any target
   "raven's crime": 'player', // retrace → target player discards
@@ -374,6 +311,7 @@ const escapeInfoOf = (id: ObjId) => legal.value?.escapable.find((f) => f.objId =
 const evokeCostOf = (id: ObjId): string | null => legal.value?.evokable.find((f) => f.objId === id)?.cost ?? null
 const bestowCostOf = (id: ObjId): string | null => legal.value?.bestowable.find((f) => f.objId === id)?.cost ?? null
 const suspendCostOf = (id: ObjId): string | null => legal.value?.suspendable.find((f) => f.objId === id)?.cost ?? null
+const overloadCostOf = (id: ObjId): string | null => legal.value?.overloadable.find((f) => f.objId === id)?.cost ?? null
 const adventureOf = (id: ObjId) => legal.value?.adventurable.find((f) => f.objId === id) ?? null
 const canCastFromExile = (id: ObjId): boolean => legal.value?.castExileIds.includes(id) ?? false
 /** graveyard cards with a flashback or retrace cast available right now (shown in a small strip). */
@@ -401,13 +339,13 @@ const cancelMultiTarget = () => {
 
 function startCast(card: RulesClientCard) {
   const name = card.defName ?? ''
-  const modes = MODAL_STARTERS[name]
+  const modes = MODAL_SPELLS[name]
   if (modes) return void (modalPick.value = { card, modes }) // pick a mode first
-  const slots = MULTI_TARGET_STARTERS[name]
+  const slots = MULTI_TARGET_SPELLS[name]
   if (slots) return void (multiTargeting.value = { objId: card.id, slots, collected: [] }) // fight: 2 targets
-  const gy = GRAVEYARD_STARTERS[name]
+  const gy = GRAVEYARD_SPELLS[name]
   if (gy) return void (graveyardTargeting.value = { objId: card.id, creatureOnly: gy === 'creature' }) // pick a card from your graveyard
-  const spec = TARGETED_STARTERS[name]
+  const spec = TARGETED_SPELLS[name]
   if (spec) targeting.value = { objId: card.id, spec }
   else beginPayment(card, [])
 }
@@ -1500,6 +1438,12 @@ onBeforeUnmount(() => {
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   @click.stop="beginAltCast(cardOf(id)!, 'bestow', bestowCostOf(id)!)"
                 >Bestow {{ bestowCostOf(id) }}</UButton>
+                <UButton
+                  v-if="overloadCostOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-waves"
+                  @click.stop="beginAltCast(cardOf(id)!, 'overload', overloadCostOf(id)!)"
+                >Overload {{ overloadCostOf(id) }}</UButton>
                 <UButton
                   v-if="suspendCostOf(id)"
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"

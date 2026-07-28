@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**298 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**301 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -73,6 +73,8 @@
 - Cruel Celebrant
 - Crystal Ball
 - Cultivate
+- Cyclonic Rift
+- Damn
 - Damnation
 - Dark Ritual
 - Darksteel Myr
@@ -286,6 +288,7 @@
 - Utter End
 - Vampire Cutthroat
 - Vampire Nighthawk
+- Vandalblast
 - Verdant Catacombs
 - Vicious Conquistador
 - Vindicate

@@ -74,6 +74,37 @@ export const destroyAllCreatures = (): Effect => (ctx) => {
 }
 
 /**
+ * Overloaded mass bounce (Cyclonic Rift): return EVERY nonland permanent the controller does not
+ * control to its owner's hand. Battlefield → hand is public → hidden, so each returned id is
+ * re-minted (invariant #3) — `returnToHand` does that, and this reuses it one object at a time so
+ * commanders are rerouted to the command zone too.
+ */
+export const returnAllNonlandYouDontControlToHand = (): Effect => (ctx) => {
+  const doomed = Object.values(ctx.state.objects).filter(
+    (o) => o.zone === 'battlefield' && o.controllerId !== ctx.controllerId && !getDef(o.defName).types.includes('Land'),
+  )
+  logLine(ctx.state, `Every nonland permanent ${ctx.state.players[ctx.controllerId]!.name} doesn't control is returned to hand.`)
+  for (const o of doomed) returnToHand()({ ...ctx, targets: [o.id] })
+}
+
+/** Overloaded artifact sweeper (Vandalblast): destroy every artifact the controller doesn't control. */
+export const destroyAllArtifactsYouDontControl = (): Effect => (ctx) => {
+  const all = Object.values(ctx.state.objects).filter(
+    (o) => o.zone === 'battlefield' && o.controllerId !== ctx.controllerId && getDef(o.defName).types.includes('Artifact'),
+  )
+  const doomed = all.filter((o) => !getDef(o.defName).unimplemented && !isIndestructible(ctx, o.id))
+  for (const o of doomed) {
+    logLine(ctx.state, `${getDef(o.defName).name} is destroyed.`)
+    moveToGraveyard(ctx.state, o.id)
+  }
+  const skipped = all.length - doomed.length
+  logLine(
+    ctx.state,
+    `All artifacts ${ctx.state.players[ctx.controllerId]!.name} doesn't control are destroyed${skipped ? ` — ${skipped} indestructible/unimplemented survive` : ''}.`,
+  )
+}
+
+/**
  * Two target creatures fight (CR 701.12): each deals damage equal to its power to
  * the other, simultaneously. Expects [creatureA, creatureB] in ctx.targets; if
  * either has already left the battlefield, no fight happens (needs both).

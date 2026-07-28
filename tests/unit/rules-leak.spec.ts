@@ -218,6 +218,24 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
   }
 
+  // occasionally OVERLOAD a spell (CR 702.96) — overloaded Cyclonic Rift bounces every nonland
+  // permanent its caster doesn't control, a many-objects public→hidden move whose re-mints the
+  // history-aware assertion then checks. Same commit-then-always-return discipline as above
+  // (tapping for mana makes `legal` stale).
+  if (legal.overloadable.length && rnd() < 0.3) {
+    const o = pick(legal.overloadable)
+    const need = (o.cost.match(/\{/g) ?? []).length
+    for (const src of legal.manaSourceIds) {
+      if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= need) break
+      const colors = legal.manaSourceColors[src] ?? []
+      applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+    }
+    try {
+      applyRulesAction(state, actor, { type: 'r.cast', objId: o.objId, targets: [], overload: true })
+    } catch { /* not enough real mana — the taps above still count as this step's action */ }
+    return true
+  }
+
   // occasionally cast a morph card FACE DOWN (2/2) for the fixed {3}, or turn a face-down
   // permanent face up. Same commit-then-always-return discipline (tapping makes `legal` stale).
   if (actor === state.activePlayer && (state.step === 'main1' || state.step === 'main2') && !state.zones.stack.length && rnd() < 0.25) {
@@ -525,6 +543,10 @@ const FUZZ_DECK = [
   // tokens appear and the fuzzer's mana-tapping loops then exercise the new
   // "{T}, Sacrifice this token" MANA-ability cost (a mana source that removes itself).
   ...Array(2).fill('Pitiless Plunderer'),
+  // batch CARD15: an overload spell. Overloaded Cyclonic Rift returns EVERY nonland permanent its
+  // caster doesn't control to hand — battlefield(public) → hand(hidden) for many objects at once,
+  // so the history-aware assertion checks every one of those ids was re-minted (invariant #3).
+  ...Array(3).fill('Cyclonic Rift'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

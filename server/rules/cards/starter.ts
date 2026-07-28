@@ -22,6 +22,7 @@ import {
   dealDamageX,
   dealToEachOpponent,
   dealToEachPlayer,
+  destroyAllArtifactsYouDontControl,
   destroyAllCreatures,
   destroyPermanent,
   destroyPermanentGrantToken,
@@ -37,6 +38,7 @@ import {
   grantKeywordsToControlled,
   grantProtection,
   makeUnblockable,
+  returnAllNonlandYouDontControlToHand,
   returnToHand,
   eachOpponentLoses,
   gainLife,
@@ -2256,5 +2258,41 @@ export const STARTER_SET: CardDefinition[] = [
     toughness: 4,
     // "Whenever another creature you control dies, create a Treasure token."
     dies: { watch: { scope: 'anyCreature', controllerOnly: true, excludeSelf: true }, effect: createTreasures(1) },
+  },
+
+  // --- Coverage batch CARD15: overload (CR 702.96) ---
+  {
+    name: 'Cyclonic Rift',
+    types: ['Instant'],
+    manaCost: '{1}{U}',
+    colors: ['U'],
+    // "Return target nonland permanent you don't control to its owner's hand. Overload {6}{U}"
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { excludeTypes: ['Land'], controller: 'opponent' } }],
+      effect: returnToHand(),
+    },
+    overload: { cost: '{6}{U}', effect: returnAllNonlandYouDontControlToHand() },
+  },
+  {
+    name: 'Vandalblast',
+    types: ['Sorcery'],
+    manaCost: '{R}',
+    colors: ['R'],
+    // "Destroy target artifact you don't control. Overload {4}{R}"
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact'], controller: 'opponent' } }],
+      effect: destroyPermanent(),
+    },
+    overload: { cost: '{4}{R}', effect: destroyAllArtifactsYouDontControl() },
+  },
+  {
+    name: 'Damn',
+    types: ['Sorcery'],
+    manaCost: '{B}{B}',
+    colors: ['B'],
+    // "Destroy target creature. A creature destroyed this way can't be regenerated. Overload
+    //  {2}{W}{W}" (regeneration doesn't exist in this engine, so the rider is a no-op)
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: destroyTarget() },
+    overload: { cost: '{2}{W}{W}', effect: destroyAllCreatures() },
   },
 ]

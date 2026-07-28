@@ -38,6 +38,7 @@ export const RulesMsg = z.discriminatedUnion('type', [
     buyback: z.boolean().optional(), // pay the buyback cost → return to hand on resolve (CR 702.27)
     bestow: z.boolean().optional(), // cast for the bestow cost as an Aura (CR 702.103)
     evoke: z.boolean().optional(), // cast for the evoke cost → sacrifice on enter (CR 702.74)
+    overload: z.boolean().optional(), // cast for the overload cost → untargeted "each" body (CR 702.96)
     faceDown: z.boolean().optional(), // cast face down as a 2/2 for {3} (morph, CR 702.37)
   }),
   z.object({

@@ -183,6 +183,8 @@ export interface StackItem {
   faceDown?: boolean
   /** Evoke (CR 702.74): cast for the evoke cost → sacrificed as it enters (ETB triggers still fire). */
   evoke?: boolean
+  /** Overload (CR 702.96): cast for the overload cost → resolves its untargeted "each" body. */
+  overloaded?: boolean
   /** Morph (CR 702.37): this spell is being cast face down → it enters as a 2/2 face-down creature. */
   faceDown?: boolean
 }
@@ -465,6 +467,8 @@ export interface LegalActions {
   cyclable: { objId: ObjId; cost: string }[]
   /** castable cards that have a kicker — the client offers a "kick" toggle (cost = kicker's mana) — CR 702.33 */
   kickable: { objId: ObjId; cost: string }[]
+  /** hand cards castable for their OVERLOAD cost right now (untargeted "each" body) — CR 702.96 */
+  overloadable: { objId: ObjId; cost: string }[]
   /** a ward trigger is resolving and YOU must decide to pay or let your spell/ability be countered (CR 702.21) */
   needsWard: boolean
   /** the ward cost you'd pay, and whether your current mana pool covers it */

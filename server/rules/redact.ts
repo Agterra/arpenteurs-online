@@ -186,6 +186,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     loyaltyActivations: [],
     cyclable: [],
     kickable: [],
+    overloadable: [],
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
@@ -430,6 +431,17 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     if (kc) kickable.push({ objId: id, cost: kc })
   }
 
+  // Overload (CR 702.96): an ALTERNATIVE cost, so affordability is judged against the overload
+  // cost itself (not the printed one) from the pre-tap potential pool; the server re-checks on
+  // r.cast. Sorcery-speed cards are gated on the main phase like any other cast.
+  const overloadable: LegalActions['overloadable'] = []
+  for (const id of zoneArr(state, viewer, 'hand')) {
+    const def = getDef(state.objects[id]!.defName)
+    if (!def.overload) continue
+    if (!def.types.includes('Instant') && !isMain) continue
+    if (planPayment(parseManaCost(def.overload.cost), potential).covered) overloadable.push({ objId: id, cost: def.overload.cost })
+  }
+
   // Cards you can cycle right now: cycling is instant speed (any time you have priority),
   // so this is not gated on isMain; affordability from the pre-tap potential pool (the
   // server re-checks against the actual pool). Only implemented cards carry cyclingCost,
@@ -527,6 +539,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     loyaltyActivations,
     cyclable,
     kickable,
+    overloadable,
     flashbackable,
     retraceable,
     escapable,
