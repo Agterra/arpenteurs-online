@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**272 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**274 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -128,6 +128,7 @@
 - Gruul Signet
 - Harmonize
 - Hero's Downfall
+- Heroic Intervention
 - Hill Giant
 - Holy Strength
 - Impact Tremors
@@ -212,6 +213,7 @@
 - Regrowth
 - Reliquary Tower
 - Revitalize
+- Rogue's Passage
 - Savannah Lions
 - Search for Tomorrow
 - Secluded Steppe

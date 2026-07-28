@@ -107,6 +107,14 @@ async function rehydrate(gameId: string): Promise<Room> {
   let rulesState: RulesGameState | null = null
   if (snap && snap.engine === 'rules') {
     rulesState = snap.state as RulesGameState
+    // a snapshot taken before a later until-end-of-turn list was introduced has no such key;
+    // default them so a mid-game deploy rehydrates instead of throwing on `.push`/`.includes`
+    rulesState.pumps ??= []
+    rulesState.setPT ??= []
+    rulesState.loseAbilities ??= []
+    rulesState.protectionGrants ??= []
+    rulesState.keywordGrants ??= []
+    rulesState.unblockable ??= []
     rulesState.seq = game.snapshotSeq
   } else {
     state = game.snapshot as unknown as ServerGameState

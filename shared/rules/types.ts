@@ -316,6 +316,14 @@ export interface RulesGameState {
   loseAbilities: ObjId[]
   /** until-end-of-turn granted protection from a colour (CR 613 layer 6); cleared each cleanup */
   protectionGrants: { objId: ObjId; color: ManaColor }[]
+  /**
+   * until-end-of-turn granted keywords (CR 613 layer 6) — Heroic Intervention's hexproof +
+   * indestructible. Unlike static grants from a permanent (auras/anthems, creatures only), these
+   * reach ANY permanent type: a land can gain hexproof. Cleared each cleanup.
+   */
+  keywordGrants: { objId: ObjId; keyword: Keyword }[]
+  /** until-end-of-turn "can't be blocked" (Rogue's Passage); cleared each cleanup */
+  unblockable: ObjId[]
   objects: Record<ObjId, GameObject>
   zones: {
     perPlayer: Record<PlayerId, Record<NonStackZone, ObjId[]>>

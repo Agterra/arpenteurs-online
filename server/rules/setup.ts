@@ -60,6 +60,8 @@ export function buildRulesGame(
     setPT: [],
     loseAbilities: [],
     protectionGrants: [],
+    keywordGrants: [],
+    unblockable: [],
     objects: {},
     zones: { perPlayer: {}, stack: [] },
     status: 'mulligans',

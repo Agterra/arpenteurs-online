@@ -32,7 +32,9 @@ import {
   fight,
   gainAndDrawEqualToLands,
   gainLifeEqualToPowerForController,
+  grantKeywordsToControlled,
   grantProtection,
+  makeUnblockable,
   returnToHand,
   eachOpponentLoses,
   gainLife,
@@ -2129,5 +2131,24 @@ export const STARTER_SET: CardDefinition[] = [
     entersTapped: true,
     enters: { targets: [{ kind: 'player', count: 1 }], effect: exileGraveyard() },
     abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['B'], effect: addMana('B') }],
+  },
+
+  // --- Coverage batch CARD10: until-end-of-turn keyword grants + "can't be blocked" ---
+  {
+    name: 'Heroic Intervention',
+    types: ['Instant'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "Permanents you control gain hexproof and indestructible until end of turn."
+    spell: { effect: grantKeywordsToControlled(['hexproof', 'indestructible']) },
+  },
+  {
+    name: "Rogue's Passage",
+    types: ['Land'],
+    // "{T}: Add {C}." / "{4}, {T}: Target creature can't be blocked this turn."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      { kind: 'activated', cost: { mana: '{4}', tap: true }, targets: [{ kind: 'creature', count: 1 }], effect: makeUnblockable() },
+    ],
   },
 ]

@@ -588,6 +588,8 @@ function finishCleanup(state: RulesGameState) {
   state.setPT = []
   state.loseAbilities = []
   state.protectionGrants = []
+  state.keywordGrants = []
+  state.unblockable = []
   state.pending = null
   if (state.status === 'ended') return
   nextTurn(state)
@@ -1209,6 +1211,8 @@ function blockRestriction(state: RulesGameState, blocker: GameObject, attacker: 
   const aDef = getDef(attacker.defName)
   const bDef = getDef(blocker.defName)
   if (aDef.cantBeBlocked) return `${a} can't be blocked`
+  // until-end-of-turn "can't be blocked" (Rogue's Passage)
+  if (state.unblockable?.includes(attacker.id)) return `${a} can't be blocked this turn`
   // landwalk: unblockable if the defending player controls a land of that type
   if (attacker.attackingDefender)
     for (const [kw, sub] of LANDWALK)

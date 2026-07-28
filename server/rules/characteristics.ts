@@ -78,11 +78,18 @@ export function currentKeywords(state: RulesGameState, obj: GameObject): Keyword
   // a face-down (morph) creature has no printed keywords (CR 707.2); "loses all abilities" strips them too
   const base = obj.faceDown || state.loseAbilities.includes(obj.id) ? [] : (getDef(obj.defName).keywords ?? [])
   if (obj.zone !== 'battlefield') return [...base]
-  // keyword grants ("creatures you control have vigilance", auras/equipment) reach
-  // only CREATURES — a land/artifact/planeswalker never receives a granted keyword
-  if (!defIsCreature(getDef(obj.defName))) return [...base]
   let objSubtypes: string[] | null = null
   let set: Set<Keyword> | null = null
+  // until-end-of-turn grants (Heroic Intervention) reach ANY permanent type — "permanents you
+  // control gain hexproof and indestructible" must protect your lands and artifacts too
+  for (const g of state.keywordGrants ?? []) {
+    if (g.objId !== obj.id) continue
+    set ??= new Set<Keyword>(base)
+    set.add(g.keyword)
+  }
+  // static grants from a permanent ("creatures you control have vigilance", auras/equipment) reach
+  // only CREATURES — a land/artifact/planeswalker never receives one of those
+  if (!defIsCreature(getDef(obj.defName))) return set ? [...set] : [...base]
   for (const pid of state.turnOrder) {
     for (const id of state.zones.perPlayer[pid]!.battlefield) {
       const src = state.objects[id]

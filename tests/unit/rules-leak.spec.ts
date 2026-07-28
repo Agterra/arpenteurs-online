@@ -498,6 +498,11 @@ const FUZZ_DECK = [
   // Bojuka Bog, whose ETB exiles a targeted player's graveyard (public → public, no re-mint).
   ...Array(3).fill('Evolving Wilds'),
   ...Array(2).fill('Bojuka Bog'),
+  // batch CARD10: an until-EOT keyword grant over ALL your permanents (Heroic Intervention —
+  // hexproof/indestructible now reach lands and artifacts, so redaction runs with granted
+  // keywords on non-creatures) and a targeted activated ability on a land (Rogue's Passage).
+  ...Array(3).fill('Heroic Intervention'),
+  ...Array(2).fill("Rogue's Passage"),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

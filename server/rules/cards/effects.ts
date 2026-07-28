@@ -17,10 +17,10 @@ import { currentKeywords, currentPower } from '../characteristics'
 // init), so it is safe — mirrors the existing effects→registry (getDef) cycle.
 import { fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
 
-// intrinsic-keyword check (avoids an effects→characteristics→registry→starter
-// import cycle); granted indestructible is honored by checkSBA's damage path
+// intrinsic OR granted indestructible (Heroic Intervention) — the same check checkSBA's
+// damage path uses, so a destroy effect and lethal damage agree on who survives
 const isIndestructible = (ctx: EffectContext, id: ObjId) =>
-  getDef(ctx.state.objects[id]!.defName).keywords?.includes('indestructible') ?? false
+  currentKeywords(ctx.state, ctx.state.objects[id]!).includes('indestructible')
 
 // Object.hasOwn (not `in`) so prototype keys like "__proto__"/"toString" are
 // never treated as players — otherwise a forged target could write to a builtin.
@@ -553,6 +553,30 @@ export const monstrosity = (n: number): Effect => (ctx) => {
 }
 
 /** Grant protection from the given colour(s) to each target creature until end of turn (CR 613 layer 6). */
+/**
+ * Every permanent the controller controls gains `keywords` until end of turn (Heroic
+ * Intervention). Unlike a static grant from a permanent, this reaches ANY permanent type —
+ * lands and artifacts included (see `currentKeywords`).
+ */
+export const grantKeywordsToControlled = (keywords: Keyword[]): Effect => (ctx) => {
+  const ids = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield
+  for (const id of ids) for (const keyword of keywords) (ctx.state.keywordGrants ??= []).push({ objId: id, keyword })
+  logLine(
+    ctx.state,
+    `${ctx.state.players[ctx.controllerId]!.name}'s permanents gain ${keywords.join(' and ')} until end of turn.`,
+  )
+}
+
+/** Target creature can't be blocked this turn (Rogue's Passage). */
+export const makeUnblockable = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
+    const list = (ctx.state.unblockable ??= [])
+    if (!list.includes(t)) list.push(t)
+    logLine(ctx.state, `${getDef(ctx.state.objects[t]!.defName).name} can't be blocked this turn.`)
+  }
+}
+
 export const grantProtection = (colors: ManaColor[]): Effect => (ctx) => {
   for (const t of ctx.targets) {
     if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
