@@ -742,6 +742,9 @@ function confirmKeep() {
 function sendWard(pay: boolean) {
   send({ type: 'r.ward', pay })
 }
+function sendOptionalPay(pay: boolean) {
+  send({ type: 'r.optionalPay', pay })
+}
 function sendEntersChoice(pay: boolean) {
   send({ type: 'r.entersChoice', pay })
 }
@@ -950,7 +953,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsSacrifice || l.needsWard || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsSacrifice || l.needsWard || l.needsOptionalPay || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1723,6 +1726,24 @@ onBeforeUnmount(() => {
             <UButton size="sm" variant="ghost" color="neutral" @click="sendWard(false)">Decline (counter)</UButton>
             <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
               Pay ward
+            </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- "…unless that player pays {N}" (Rhystic Study / Esper Sentinel) -->
+      <div v-if="legal?.needsOptionalPay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-w-sm flex-col rounded-lg border border-indigo-400 bg-default p-4 shadow-xl">
+          <p class="mb-1 flex items-center gap-1 text-sm font-semibold">
+            {{ legal.optionalPaySourceName }} — pay <ManaSymbols :value="legal.optionalPayCost" :size="13" /> ?
+          </p>
+          <p class="mb-3 text-xs text-dimmed">
+            {{ legal.optionalPayAffordable ? "If you don't, its ability happens." : 'You cannot pay from your current pool — its ability will happen.' }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton size="sm" variant="ghost" color="neutral" @click="sendOptionalPay(false)">Don't pay</UButton>
+            <UButton size="sm" icon="i-lucide-coins" :disabled="!legal.optionalPayAffordable" @click="sendOptionalPay(true)">
+              Pay {{ legal.optionalPayCost }}
             </UButton>
           </div>
         </div>

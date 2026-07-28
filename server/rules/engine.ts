@@ -362,13 +362,20 @@ function repairControlFlow(state: RulesGameState) {
     const wardTriggeringId = state.pendingWard?.triggeringId
     const cascadeExiled = state.pendingCascade?.exiledIds
     const entersChoiceObjId = state.pendingEntersChoice?.objId
+    const optionalPay = state.pendingOptionalPay
     state.pending = null
     state.pendingTrigger = null // a departed player's trigger is removed
     state.pendingScry = null
     state.pendingWard = null
     state.pendingCascade = null
     state.pendingEntersChoice = null
-    if (kind === 'entersChoice') {
+    state.pendingOptionalPay = null
+    if (kind === 'optionalPay') {
+      // the payer left → they can't pay, so the ability happens for its controller
+      if (optionalPay && !state.players[optionalPay.beneficiary]!.hasLost)
+        getDef(optionalPay.defName).castSpell?.effect({ state, controllerId: optionalPay.beneficiary, sourceId: optionalPay.sourceId, targets: [] })
+      grantPriority(state, state.activePlayer)
+    } else if (kind === 'entersChoice') {
       // the chooser left → treat it as a decline (the permanent is tapped), then carry on
       const obj = entersChoiceObjId ? state.objects[entersChoiceObjId] : undefined
       if (obj && obj.zone === 'battlefield') obj.tapped = true
@@ -486,6 +493,7 @@ function beginStep(state: RulesGameState) {
     case 'untap': {
       const p = state.players[ap]!
       p.landsPlayedThisTurn = 0
+      p.noncreatureSpellsThisTurn = 0
       // CR 502.1 — phasing happens FIRST, before permanents untap
       runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
@@ -783,7 +791,11 @@ function resolveTop(state: RulesGameState) {
 
 /** The triggered ability on `def` for a given trigger kind. */
 function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
-  return kind === 'dies' ? def.dies : kind === 'attacks' ? def.attacks : kind === 'upkeep' ? def.upkeep : def.enters
+  return kind === 'dies' ? def.dies
+    : kind === 'attacks' ? def.attacks
+    : kind === 'upkeep' ? def.upkeep
+    : kind === 'cast' ? def.castSpell
+    : def.enters
 }
 
 const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
@@ -791,6 +803,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   dies: 'dies',
   attacks: 'attacks',
   upkeep: 'upkeep',
+  cast: 'cast',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -837,6 +850,22 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
     }
     checkSBA(state)
     return
+  }
+  // cast-trigger with an "…unless that player pays {N}" clause (Rhystic Study, Esper Sentinel):
+  // open the decision for the player who cast the spell; the effect happens only if they decline.
+  if (item.trigger === 'cast') {
+    const cd = getDef(item.defName).castSpell
+    const payer = item.castPayer
+    if (cd && (cd.unlessPay || cd.unlessPayFromPower) && payer && !state.players[payer]!.hasLost) {
+      const src = state.objects[item.sourceId]
+      const cost = cd.unlessPayFromPower
+        ? `{${src && src.zone === 'battlefield' ? Math.max(0, currentPower(state, src)) : 0}}`
+        : cd.unlessPay!
+      state.pending = { kind: 'optionalPay', player: payer }
+      state.pendingOptionalPay = { player: payer, beneficiary: item.controllerId, cost, defName: item.defName, sourceId: item.sourceId }
+      logLine(state, `${getDef(item.defName).name}: ${name(state, payer)} may pay ${cost}.`)
+      return
+    }
   }
   const def = getDef(item.defName)
   const ability =
@@ -995,6 +1024,41 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
           !(w.excludeSelf && isSelf) &&
           !(w.controllerOnly && subject.controllerId !== p.controllerId)
       if (fires) queueTriggeredAbility(state, p.id, 'etb')
+    }
+  }
+}
+
+/**
+ * "Whenever an opponent casts a spell, …" (CR 603.2). Called from r.cast once the spell is on the
+ * stack: each matching battlefield permanent's ability goes ABOVE it, so the trigger resolves
+ * first (that is what lets Rhystic Study tax the spell before it resolves). `castPayer` records who
+ * cast the spell — the player who may pay the "unless" cost.
+ */
+function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: CardDefinition) {
+  const isCreatureSpell = spellDef.types.includes('Creature')
+  for (const pid of state.turnOrder) {
+    for (const id of [...state.zones.perPlayer[pid]!.battlefield]) {
+      const p = state.objects[id]
+      const ab = p && getDef(p.defName).castSpell
+      if (!p || !ab || p.phasedOut || state.loseAbilities.includes(p.id)) continue
+      const w = ab.watch
+      if (w?.opponentsOnly && p.controllerId === caster) continue
+      if (w?.noncreatureOnly && isCreatureSpell) continue
+      // "their FIRST noncreature spell each turn" — the counter is incremented by r.cast before
+      // this runs, so the first such spell of the turn is the one that makes it 1
+      if (w?.firstEachTurn && (state.players[caster]!.noncreatureSpellsThisTurn ?? 0) !== 1) continue
+      state.zones.stack.push({
+        id: mintCardId(),
+        kind: 'ability',
+        trigger: 'cast',
+        controllerId: p.controllerId,
+        defName: p.defName,
+        sourceId: p.id,
+        abilityIndex: null,
+        targets: [],
+        castPayer: caster,
+      })
+      logLine(state, `${getDef(p.defName).name}'s cast ability triggers.`)
     }
   }
 }
@@ -1813,6 +1877,15 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       queueWardTriggers(state, obj.id, msg.targets, actor)
       // cascade (CR 702.85): "when you cast this spell" — trigger goes on the stack above it
       if (def.cascade) queueCascade(state, actor, obj.id, manaValue(def))
+      // "Whenever an opponent casts a spell…" (CR 603.2) — count the cast first (Esper Sentinel's
+      // "first noncreature spell each turn" reads the counter), then queue the triggers above it.
+      // The face being cast decides creature-ness (an adventure/split half is a noncreature spell).
+      const castFaceTypes = adv ? adv.types : splitHalf ? splitHalf.types : def.types
+      if (!castFaceTypes.includes('Creature')) {
+        const pl = state.players[actor]!
+        pl.noncreatureSpellsThisTurn = (pl.noncreatureSpellsThisTurn ?? 0) + 1
+      }
+      queueCastTriggers(state, actor, adv ? { ...def, types: adv.types } : splitHalf ? { ...def, types: splitHalf.types } : def)
       // prowess (CR 702.108): applied directly at cast (same end state as the stacked trigger,
       // which resolves before the spell; prowess pumps are effectively never responded to). An
       // adventure is a noncreature spell, so cast off the face's types.
@@ -2276,6 +2349,31 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // resume: active player gets priority; the pass/resolve loop continues the stack
       if (state.status === 'active') grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.optionalPay': {
+      if (state.pending?.kind !== 'optionalPay' || state.pending.player !== actor || !state.pendingOptionalPay)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your payment')
+      const pop = state.pendingOptionalPay
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(parseManaCost(pop.cost), pool)
+      // pay only if they chose to AND can actually afford it; anything else = decline
+      const paid = msg.pay && payment.covered
+      if (msg.pay && !payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      state.pending = null
+      state.pendingOptionalPay = null
+      if (paid) {
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+        logLine(state, `${name(state, actor)} pays ${pop.cost} — ${getDef(pop.defName).name}'s ability does nothing.`)
+      } else {
+        logLine(state, `${name(state, actor)} declines to pay ${pop.cost}.`)
+        const cd = getDef(pop.defName).castSpell
+        cd?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
+      }
+      // resume: the active player gets priority and the stack keeps resolving (CR 117.3c)
+      if (state.status === 'active') grantPriority(state, state.activePlayer)
+      checkSBA(state)
       break
     }
 

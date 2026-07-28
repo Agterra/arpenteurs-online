@@ -52,6 +52,7 @@ export function buildRulesGame(
     pendingCascade: null,
     pendingMadness: null,
     pendingEntersChoice: null,
+    pendingOptionalPay: null,
     entersChoiceQueue: [],
     // CR 103.8a/b: only two-player games skip the first draw
     firstTurnSkipDraw: ordered.length === 2,
@@ -107,6 +108,7 @@ export function buildRulesGame(
       poison: 0,
       manaPool: emptyPool(),
       landsPlayedThisTurn: 0,
+      noncreatureSpellsThisTurn: 0,
       hasLost: false,
       commanderId: null,
       commanderTax: 0,

@@ -136,6 +136,14 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       applyRulesAction(state, p, { type: 'r.scry', toBottom })
       return true
     }
+    if (state.pending.kind === 'optionalPay') {
+      // pay the "unless that player pays {N}" tax when affordable (randomly), else decline and let
+      // the ability happen (Rhystic Study draws for its controller — a library→hand move, so the
+      // history-aware assertion covers the declined branch too). Must be handled or the fuzzer
+      // stalls the moment such a trigger resolves.
+      applyRulesAction(state, p, { type: 'r.optionalPay', pay: legal.optionalPayAffordable && rnd() < 0.5 })
+      return true
+    }
     if (state.pending.kind === 'entersChoice') {
       // pay the life (randomly, when affordable) or let the shockland enter tapped — must be
       // handled or the fuzzer stalls the moment one enters, by any path
@@ -547,6 +555,9 @@ const FUZZ_DECK = [
   // caster doesn't control to hand — battlefield(public) → hand(hidden) for many objects at once,
   // so the history-aware assertion checks every one of those ids was re-minted (invariant #3).
   ...Array(3).fill('Cyclonic Rift'),
+  // batch CARD16: Rhystic Study — every opponent cast opens the pay-or-let-them-draw decision, so
+  // the fuzzer exercises the new pending on both branches (declining draws a card = library→hand).
+  ...Array(2).fill('Rhystic Study'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

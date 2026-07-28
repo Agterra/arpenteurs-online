@@ -190,6 +190,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
+    needsOptionalPay: false,
+    optionalPayCost: '',
+    optionalPaySourceName: '',
+    optionalPayAffordable: false,
     needsEntersChoice: false,
     entersChoiceLife: 0,
     entersChoiceName: '',
@@ -284,6 +288,17 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         needsWard: true,
         wardCost: state.pendingWard.cost,
         wardAffordable: planPayment(parseManaCost(state.pendingWard.cost), state.players[viewer]!.manaPool).covered,
+      }
+    }
+    if (state.pending.kind === 'optionalPay' && state.pendingOptionalPay) {
+      // the spell's caster may pay the tax; declining lets the ability happen (Rhystic Study)
+      const pop = state.pendingOptionalPay
+      return {
+        ...none,
+        needsOptionalPay: true,
+        optionalPayCost: pop.cost,
+        optionalPaySourceName: getDef(pop.defName).name,
+        optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
       }
     }
     if (state.pending.kind === 'entersChoice' && state.pendingEntersChoice) {

@@ -208,6 +208,21 @@ export interface CardDefinition {
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
   /**
+   * "Whenever an opponent casts a spell, …" (CR 603.2) — a CAST trigger, put on the stack above the
+   * spell that caused it, so it resolves first. `watch` narrows which casts fire it.
+   *
+   * `unlessPay` makes it the "tax" shape (Rhystic Study, Esper Sentinel): when the ability resolves,
+   * the player who cast the spell may pay that cost; only if they DON'T does `effect` happen (for
+   * this permanent's controller). `unlessPayFromPower` computes the cost as {X} = the source's
+   * current power instead of a fixed string.
+   */
+  castSpell?: {
+    watch?: { opponentsOnly?: boolean; noncreatureOnly?: boolean; firstEachTurn?: boolean }
+    unlessPay?: string
+    unlessPayFromPower?: boolean
+    effect: Effect
+  }
+  /**
    * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
    * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the
    * controller's draw steps (→ the next chapter), and sacrifices it after the final chapter's

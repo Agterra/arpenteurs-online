@@ -144,7 +144,7 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep'
+  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -160,6 +160,9 @@ export interface StackItem {
   /** cascade's triggered ability on the stack (CR 702.85): on resolution, dig the controller's
    *  library for a nonland with mana value < `mv`. */
   cascade?: { mv: number }
+  /** cast-trigger (CR 603.2): who cast the spell that triggered this — the player who may pay an
+   *  "unless that player pays {N}" cost when it resolves (Rhystic Study). */
+  castPayer?: PlayerId
   /** whether this spell was cast kicked (its optional kicker cost was paid) — CR 702.33 */
   kicked?: boolean
   /** Saga chapter ability on the stack (CR 714): the 1-based chapter number resolving (its
@@ -198,6 +201,8 @@ export interface PlayerRState {
   poison: number
   manaPool: ManaPool
   landsPlayedThisTurn: number
+  /** noncreature spells this player has cast this turn (Esper Sentinel's "first each turn") */
+  noncreatureSpellsThisTurn?: number
   hasLost: boolean
   /** the player's commander object id (exactly one; no partners yet) */
   commanderId: ObjId | null
@@ -223,7 +228,7 @@ export interface RulesGameState {
   /** players who have passed priority since the last stack change / step start */
   passed: PlayerId[]
   /** engine is waiting for a player decision (no priority until it's made) */
-  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness' | 'entersChoice'; player: PlayerId } | null
+  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay'; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
   pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
@@ -313,6 +318,19 @@ export interface RulesGameState {
   pendingEntersChoice: { player: PlayerId; objId: ObjId; life: number } | null
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
   entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number }[]
+  /**
+   * An "…unless that player pays {N}" decision (Rhystic Study, Esper Sentinel): a triggered ability
+   * has resolved and `player` — the one who cast the spell — may pay `cost` to stop it. Declining
+   * runs the trigger's effect for `beneficiary`. `defName`/`sourceId` identify the ability (its
+   * effect is read back from the definition, which is not serialisable). Public ids only.
+   */
+  pendingOptionalPay: {
+    player: PlayerId
+    beneficiary: PlayerId
+    cost: string
+    defName: string
+    sourceId: ObjId
+  } | null
   /** true only on the very first turn's first player (skips their draw) */
   firstTurnSkipDraw: boolean
   /**
@@ -474,6 +492,12 @@ export interface LegalActions {
   /** the ward cost you'd pay, and whether your current mana pool covers it */
   wardCost: string
   wardAffordable: boolean
+  /** an "unless you pay {N}" decision is waiting on YOU (Rhystic Study): pay, or the ability happens */
+  needsOptionalPay: boolean
+  /** the mana cost you'd pay, the ability's source name, and whether your pool covers it */
+  optionalPayCost: string
+  optionalPaySourceName: string
+  optionalPayAffordable: boolean
   /** an as-enters choice is waiting on YOU: pay the life or the permanent enters tapped (shocklands) */
   needsEntersChoice: boolean
   /** the life you'd pay, the permanent's name, and whether your life total allows it (CR 119.4) */

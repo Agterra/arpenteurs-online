@@ -63,6 +63,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
   // as-enters choice (CR 614.12, shocklands): pay the life, or the permanent enters tapped
   z.object({ type: z.literal('r.entersChoice'), pay: z.boolean() }),
+  // "…unless that player pays {N}" (Rhystic Study / Esper Sentinel): pay, or the ability resolves
+  z.object({ type: z.literal('r.optionalPay'), pay: z.boolean() }),
   z.object({ type: z.literal('r.cascade'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }),
   z.object({
     type: z.literal('r.loyalty'),

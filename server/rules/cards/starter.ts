@@ -2295,4 +2295,31 @@ export const STARTER_SET: CardDefinition[] = [
     spell: { targets: [{ kind: 'creature', count: 1 }], effect: destroyTarget() },
     overload: { cost: '{2}{W}{W}', effect: destroyAllCreatures() },
   },
+
+  // --- Coverage batch CARD16: cast triggers with an "unless that player pays" tax ---
+  {
+    name: 'Rhystic Study',
+    types: ['Enchantment'],
+    manaCost: '{2}{U}',
+    colors: ['U'],
+    // "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}."
+    castSpell: { watch: { opponentsOnly: true }, unlessPay: '{1}', effect: drawCards(1) },
+  },
+  {
+    name: 'Esper Sentinel',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Human', 'Soldier'],
+    manaCost: '{W}',
+    colors: ['W'],
+    power: 1,
+    toughness: 1,
+    // "Whenever an opponent casts their first noncreature spell each turn, draw a card unless that
+    //  player pays {X}, where X is this creature's power." (X follows its CURRENT power — anthems
+    //  and counters raise the tax)
+    castSpell: {
+      watch: { opponentsOnly: true, noncreatureOnly: true, firstEachTurn: true },
+      unlessPayFromPower: true,
+      effect: drawCards(1),
+    },
+  },
 ]

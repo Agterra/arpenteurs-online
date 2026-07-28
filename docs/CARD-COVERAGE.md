@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**301 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**303 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -95,6 +95,7 @@
 - Elvish Mystic
 - Elvish Visionary
 - Errant Ephemeron
+- Esper Sentinel
 - Evolving Wilds
 - Exotic Orchard
 - Fabled Passage
@@ -229,6 +230,7 @@
 - Regrowth
 - Reliquary Tower
 - Revitalize
+- Rhystic Study
 - Rogue's Passage
 - Sacred Foundry
 - Savannah Lions
