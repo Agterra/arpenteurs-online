@@ -19,6 +19,7 @@ import {
   addManaPerOpponentTappedLand,
   chaosWarpTarget,
   chooseFromHand,
+  countersOnEachCreatureOfTarget,
   counterTarget,
   counterTargetGrantingToken,
   counterTargetGrantingTreasures,
@@ -83,6 +84,7 @@ import {
   monstrosity,
   playersDiscard,
   playersSacrifice,
+  proliferate,
   pump,
   pumpControlled,
   pumpSelf,
@@ -4426,5 +4428,49 @@ export const STARTER_SET: CardDefinition[] = [
     //  doubled — a documented limitation)
     tokenReplacement: 'double',
     counterReplacement: { mode: 'double', scope: 'permanentsYouControl' },
+  },
+  // --- Coverage batch CARD51: PROLIFERATE (CR 701.28) ---
+  {
+    name: "Karn's Bastion",
+    types: ['Land'],
+    // "{T}: Add {C}. / {4}, {T}: Proliferate."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      { kind: 'activated', cost: { mana: '{4}', tap: true }, effect: proliferate() },
+    ],
+  },
+  {
+    name: 'Evolution Sage',
+    types: ['Creature'],
+    subtypes: ['Elf', 'Druid'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    power: 2,
+    toughness: 3,
+    // "Landfall — Whenever a land you control enters, proliferate."
+    landEnters: { effect: proliferate() },
+  },
+  {
+    name: 'Flux Channeler',
+    types: ['Creature'],
+    subtypes: ['Human', 'Wizard'],
+    manaCost: '{2}{U}',
+    colors: ['U'],
+    power: 2,
+    toughness: 2,
+    // "Whenever you cast a noncreature spell, proliferate."
+    castSpell: { watch: { selfOnly: true, noncreatureOnly: true }, effect: proliferate() },
+  },
+  {
+    name: 'Contagion Engine',
+    types: ['Artifact'],
+    manaCost: '{6}',
+    // "When this artifact enters, put a -1/-1 counter on each creature target player controls. /
+    //  {4}, {T}: Proliferate twice." (each proliferation is its own choice)
+    enters: {
+      targets: [{ kind: 'player', count: 1 }],
+      effect: countersOnEachCreatureOfTarget('-1/-1', 1),
+    },
+    abilities: [{ kind: 'activated', cost: { mana: '{4}', tap: true }, effect: proliferate(2) }],
   },
 ]

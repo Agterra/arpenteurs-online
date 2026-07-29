@@ -91,6 +91,12 @@ export const RulesMsg = z.discriminatedUnion('type', [
   // "you may put a land card from your hand onto the battlefield" / Chrome Mox's imprint: the chosen
   // cards from your OWN hand (empty = decline, when the choice is optional)
   z.object({ type: z.literal('r.handChoice'), objIds: z.array(Id).max(4).default([]) }),
+  // proliferate: any number of permanents and/or players that already have a counter
+  z.object({
+    type: z.literal('r.proliferate'),
+    objIds: z.array(Id).max(64).default([]),
+    playerIds: z.array(Id).max(4).default([]),
+  }),
   // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
   // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
   z.object({ type: z.literal('r.chooseType'), creatureType: z.string().trim().min(2).max(30).regex(/^[A-Za-z][A-Za-z' -]*$/) }),

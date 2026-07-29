@@ -609,6 +609,11 @@ function onBattlefieldClick(id: ObjId) {
     }
     return
   }
+  if (legal.value?.needsProliferate) {
+    // only things that already have a counter are eligible (the server re-checks)
+    if (legal.value.proliferateIds.includes(id)) toggleProliferate(id)
+    return
+  }
   if (equipping.value) {
     // click one of your creatures to attach the equipment to it
     if (isEquipTargetCreature(id)) {
@@ -843,6 +848,26 @@ const gyAbility = ref<{ kind: 'activate' | 'channel'; objId: ObjId; abilityIndex
 const typePick = ref('')
 // "choose a card from your hand" (Growth Spiral's land, Chrome Mox's imprint)
 const handChoicePick = ref<Set<ObjId>>(new Set())
+// proliferate: pick any number of permanents / players that already have a counter
+const prolifObjs = ref<Set<ObjId>>(new Set())
+const prolifPlayers = ref<Set<PlayerId>>(new Set())
+function toggleProliferate(id: ObjId) {
+  const next = new Set(prolifObjs.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  prolifObjs.value = next
+}
+function toggleProliferatePlayer(pid: PlayerId) {
+  const next = new Set(prolifPlayers.value)
+  if (next.has(pid)) next.delete(pid)
+  else next.add(pid)
+  prolifPlayers.value = next
+}
+function sendProliferate() {
+  send({ type: 'r.proliferate', objIds: [...prolifObjs.value], playerIds: [...prolifPlayers.value] })
+  prolifObjs.value = new Set()
+  prolifPlayers.value = new Set()
+}
 function toggleHandChoice(id: ObjId) {
   const l = legal.value
   if (!l?.needsHandChoice || !l.handChoiceIds.includes(id)) return
@@ -1291,7 +1316,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -2046,6 +2071,23 @@ onBeforeUnmount(() => {
               @click="confirmModes"
             >Confirm</UButton>
           </div>
+        </div>
+      </div>
+
+      <!-- proliferate: any number of permanents and/or players that already have a counter -->
+      <div v-if="legal?.needsProliferate" class="fixed inset-x-0 bottom-24 z-40 flex justify-center">
+        <div class="flex flex-col items-center gap-2 rounded-lg border border-primary bg-default px-3 py-2 text-sm shadow-xl">
+          <span>Proliferate — pick any number ({{ prolifObjs.size + prolifPlayers.size }} chosen)</span>
+          <div v-if="legal.proliferatePlayerIds.length" class="flex flex-wrap items-center gap-1">
+            <UButton
+              v-for="pid in legal.proliferatePlayerIds"
+              :key="pid"
+              size="xs"
+              :variant="prolifPlayers.has(pid) ? 'solid' : 'soft'"
+              @click="toggleProliferatePlayer(pid)"
+            >{{ st.players[pid]?.name ?? pid }} (poison)</UButton>
+          </div>
+          <UButton size="xs" @click="sendProliferate">Confirm</UButton>
         </div>
       </div>
 

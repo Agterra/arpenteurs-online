@@ -17,7 +17,7 @@ import { defKey, getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
 import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
-import { handCardMatches, untapOwnLands } from './cards/effects'
+import { handCardMatches, proliferateTargets, untapOwnLands } from './cards/effects'
 import {
   putCounters,
   alivePlayers,
@@ -3418,6 +3418,46 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // the next queued as-enters choice first (two shocklands can enter together), else resume:
       // the active player gets priority (CR 117.3c) and checkSBA runs (paying to 0 life loses)
       if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.proliferate': {
+      if (state.pending?.kind !== 'proliferate' || state.pending.player !== actor || !state.pendingProliferate)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your proliferate')
+      const eligible = proliferateTargets(state)
+      const objIds = [...new Set(msg.objIds)]
+      const playerIds = [...new Set(msg.playerIds)] as PlayerId[]
+      for (const id of objIds)
+        if (!eligible.permanents.includes(id)) throw new RulesError('BAD_CHOICE', 'That permanent has no counter')
+      for (const pid of playerIds)
+        if (!eligible.players.includes(pid)) throw new RulesError('BAD_CHOICE', 'That player has no counter')
+      const remaining = state.pendingProliferate.remaining - 1
+      state.pending = null
+      state.pendingProliferate = null
+      // "give each another counter of each kind already there" — every kind, one more each. It goes
+      // through putCounters, so Hardened Scales / Doubling Season apply to what proliferate adds.
+      for (const id of objIds) {
+        const obj = state.objects[id]!
+        for (const [kind, n] of Object.entries(obj.counters)) if (n > 0) putCounters(state, id, kind, 1)
+        logLine(state, `${objName(state, id)} gets another counter of each kind (proliferate).`)
+      }
+      for (const pid of playerIds) {
+        state.players[pid]!.poison++
+        logLine(state, `${name(state, pid)} gets another poison counter (proliferate) — ${state.players[pid]!.poison} total.`)
+      }
+      if (!objIds.length && !playerIds.length) logLine(state, `${name(state, actor)} proliferates nothing.`)
+      // Contagion Engine: "Then do it again." — a fresh choice, with eligibility recomputed
+      if (remaining > 0) {
+        const next = proliferateTargets(state)
+        if (next.permanents.length || next.players.length) {
+          state.pending = { kind: 'proliferate', player: actor }
+          state.pendingProliferate = { player: actor, remaining }
+        }
+      }
+      if (!state.pending) {
+        checkSBA(state)
+        if (state.status === 'active') grantPriority(state, state.activePlayer)
+      }
       break
     }
 

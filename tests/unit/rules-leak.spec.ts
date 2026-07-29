@@ -284,6 +284,14 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'proliferate') {
+      // pick a random subset of the eligible permanents/players (declining is legal too)
+      const lg = computeLegal(state, p)
+      const objIds = lg.proliferateIds.filter(() => rnd() < 0.5)
+      const playerIds = lg.proliferatePlayerIds.filter(() => rnd() < 0.5)
+      applyRulesAction(state, p, { type: 'r.proliferate', objIds, playerIds })
+      return true
+    }
     if (state.pending.kind === 'handChoice') {
       // "you may put a land from your hand onto the battlefield" / Chrome Mox's imprint: take a legal
       // card about half the time, else decline — a hidden→public move either way when it is taken
@@ -981,6 +989,11 @@ const FUZZ_DECK = [
   // batch CARD50: replacement effects — Hardened Scales makes every +1/+1 counter one bigger and
   // Parallel Lives doubles every token, so the fuzzer's counter and token paths run through the new
   // single funnel constantly (Bitterblossom / Rampaging Baloths / the Altars all feed it).
+  // batch CARD51: proliferate — Evolution Sage fires on every land drop (constant in a fuzz game) and
+  // Karn's Bastion offers it as an activated ability, so the new multi-select decision is answered
+  // often, and its counters run through the CARD50 replacement funnel.
+  ...Array(2).fill('Evolution Sage'),
+  ...Array(2).fill("Karn's Bastion"),
   ...Array(2).fill('Hardened Scales'),
   ...Array(2).fill('Parallel Lives'),
   ...Array(2).fill('Mana Vault'),

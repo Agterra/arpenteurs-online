@@ -21,7 +21,7 @@ import type {
 } from '#shared/rules/types'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { getDef } from './cards/registry'
-import { handCardMatches } from './cards/effects'
+import { handCardMatches, proliferateTargets } from './cards/effects'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
@@ -247,6 +247,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayAffordable: false,
     needsTypeChoice: false,
     typeChoiceName: '',
+    needsProliferate: false,
+    proliferateIds: [],
+    proliferatePlayerIds: [],
     needsHandChoice: false,
     handChoiceCount: 0,
     handChoiceOptional: false,
@@ -388,6 +391,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPaySourceName: getDef(pop.defName).name,
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
       }
+    }
+    if (state.pending.kind === 'proliferate' && state.pendingProliferate) {
+      // everything with a counter is on the battlefield or a player total — all public information
+      const t = proliferateTargets(state)
+      return { ...none, needsProliferate: true, proliferateIds: t.permanents, proliferatePlayerIds: t.players }
     }
     if (state.pending.kind === 'handChoice' && state.pendingHandChoice) {
       // your OWN hand, so listing the eligible ids reveals nothing new to you and nothing to anyone else

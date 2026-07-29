@@ -362,6 +362,12 @@ export interface RulesGameState {
     sourceId?: ObjId
     imprint?: boolean
   } | null
+  /**
+   * PROLIFERATE (CR 701.28): "Choose any number of permanents and/or players with a counter on them,
+   * then give each another counter of each kind already there." `remaining` counts how many
+   * proliferations are still to come (Contagion Engine proliferates twice, each with its own choice).
+   */
+  pendingProliferate: { player: PlayerId; remaining: number } | null
   pendingDiscard: {
     player: PlayerId
     count: number
@@ -604,6 +610,10 @@ export interface LegalActions {
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
   needsBlockers: boolean
+  /** a PROLIFERATE choice is waiting: the permanents and players that have a counter right now */
+  needsProliferate: boolean
+  proliferateIds: ObjId[]
+  proliferatePlayerIds: PlayerId[]
   /** a "choose a card from your hand" decision is waiting (r.handChoice) */
   needsHandChoice: boolean
   handChoiceCount: number

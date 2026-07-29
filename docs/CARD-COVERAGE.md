@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**578 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**582 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -118,6 +118,7 @@
 - Commune with Lava
 - Concentrate
 - Consider
+- Contagion Engine
 - Corpsejack Menace
 - Counterspell
 - Craw Wurm
@@ -170,6 +171,7 @@
 - Errant Ephemeron
 - Esper Sentinel
 - Eternal Witness
+- Evolution Sage
 - Evolving Wilds
 - Exotic Orchard
 - Exploration
@@ -200,6 +202,7 @@
 - Fleshbag Marauder
 - Flooded Grove
 - Flooded Strand
+- Flux Channeler
 - Foreboding Ruins
 - Forest
 - Forgotten Cave
@@ -272,6 +275,7 @@
 - Jet Medallion
 - Jetmir's Garden
 - Jungle Shrine
+- Karn's Bastion
 - Karplusan Forest
 - Ketria Triome
 - Knight of Glory

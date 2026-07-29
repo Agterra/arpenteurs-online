@@ -1498,6 +1498,50 @@ export const damageToController = (n: number): Effect => (ctx) => {
   )
 }
 
+/**
+ * PROLIFERATE (CR 701.28): open the choice for the controller — any number of permanents and/or
+ * players that already have a counter, each of which then gets one more of every kind it has.
+ * `times` runs it that many times, each with its own choice (Contagion Engine proliferates twice).
+ * No eligible permanent or player → nothing to choose, so no prompt.
+ */
+export const proliferate = (times = 1): Effect => (ctx) => {
+  if (!proliferateTargets(ctx.state).permanents.length && !proliferateTargets(ctx.state).players.length) {
+    logLine(ctx.state, `Nothing has a counter — proliferate does nothing.`)
+    return
+  }
+  ctx.state.pending = { kind: 'proliferate', player: ctx.controllerId }
+  ctx.state.pendingProliferate = { player: ctx.controllerId, remaining: times }
+}
+
+/**
+ * Contagion Engine's ETB: put `n` counters of `kind` on each creature a TARGET player controls (real
+ * counters, unlike the until-end-of-turn `weakenControlledCreatures`). Skips fallback cards, like every
+ * other mass-creature effect, and goes through putCounters so replacements apply.
+ */
+export const countersOnEachCreatureOfTarget = (kind: '+1/+1' | '-1/-1', n: number): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    for (const c of battlefieldCreatures(ctx.state, t)) {
+      if (getDef(c.defName).unimplemented) continue
+      putCounters(ctx.state, c.id, kind, n)
+    }
+    logLine(ctx.state, `Each creature ${ctx.state.players[t]!.name} controls gets ${n} ${kind} counter${n === 1 ? '' : 's'}.`)
+  }
+}
+
+/** Everything that can be proliferated right now: permanents with any counter, players with poison. */
+export function proliferateTargets(state: EffectContext['state']) {
+  const permanents: ObjId[] = []
+  for (const pid of state.turnOrder) {
+    for (const id of state.zones.perPlayer[pid]!.battlefield) {
+      const obj = state.objects[id]
+      if (obj && Object.values(obj.counters).some((n) => n > 0)) permanents.push(id)
+    }
+  }
+  const players = state.turnOrder.filter((pid) => !state.players[pid]!.hasLost && state.players[pid]!.poison > 0)
+  return { permanents, players }
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {
