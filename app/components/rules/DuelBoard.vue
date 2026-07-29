@@ -220,8 +220,29 @@ const castManaCostStr = computed(() =>
   casting.value ? casting.value.costStr + (casting.value.kicked && casting.value.kickerCost ? casting.value.kickerCost : '') : '',
 )
 const castIsAbility = computed(() => casting.value?.abilityIndex != null)
-const castCovered = computed(
-  () => !!castCost.value && !!me.value && planPayment(castCost.value, me.value.manaPool).covered,
+/**
+ * The mana available for the spell being paid for: the open pool plus every RESTRICTED bucket this
+ * card satisfies ("only to cast a creature spell of the chosen type" / "only … a legendary spell").
+ * Mirrors the server's spellPayablePool, off the printed type line.
+ */
+const castPayablePool = computed(() => {
+  const pool = { ...(me.value?.manaPool ?? { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 }) }
+  const line = display.value[cardOf(casting.value?.cardId ?? '')?.defName ?? '']?.typeLine ?? ''
+  for (const b of me.value?.restrictedMana ?? []) {
+    if (b.legendary && !line.includes('Legendary')) continue
+    if (b.creatureType && !(line.includes('Creature') && line.includes(b.creatureType))) continue
+    pool[b.color] += b.amount
+  }
+  return pool
+})
+const castCovered = computed(() => !!castCost.value && !!me.value && planPayment(castCost.value, castPayablePool.value).covered)
+/** restricted mana, summarised for the pool readout ("{G} ×1 — Elf creatures only") */
+const restrictedPool = computed(() =>
+  (me.value?.restrictedMana ?? []).map((b) => ({
+    color: b.color,
+    amount: b.amount,
+    only: b.legendary ? 'legendary spells' : `${b.creatureType} creatures`,
+  })),
 )
 
 function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode: number | null = null, alt?: AltKind, altCost?: string, modes?: number[]) {
@@ -796,6 +817,19 @@ function confirmCastExtra() {
 const activationFor = (id: ObjId): Activation | null => legal.value?.activations.find((a) => a.objId === id) ?? null
 // a graveyard-card target for an ACTIVATED or CHANNEL ability: pick from the legal cards, then pay
 const gyAbility = ref<{ kind: 'activate' | 'channel'; objId: ObjId; abilityIndex?: number; cost: string; ids: ObjId[] } | null>(null)
+// "As this permanent enters, choose a creature type": a suggested list plus free text, since the
+// printed card allows ANY creature type
+const typePick = ref('')
+const TYPE_SUGGESTIONS = [
+  'Human', 'Elf', 'Goblin', 'Zombie', 'Dragon', 'Angel', 'Wizard', 'Warrior', 'Soldier', 'Beast',
+  'Merfolk', 'Vampire', 'Sliver', 'Elemental', 'Dinosaur', 'Cat', 'Spirit', 'Knight', 'Rogue', 'Cleric',
+]
+function sendTypeChoice(t: string) {
+  const creatureType = t.trim()
+  if (creatureType.length < 2) return
+  send({ type: 'r.chooseType', creatureType })
+  typePick.value = ''
+}
 function pickGraveyardForAbility(id: ObjId) {
   const g = gyAbility.value
   if (!g || !g.ids.includes(id)) return
@@ -1222,7 +1256,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1485,7 +1519,15 @@ onBeforeUnmount(() => {
                     <ManaSymbols :value="`{${c}}`" :size="12" />×{{ me?.manaPool[c] }}
                   </span>
                 </template>
-                <span v-if="POOL_COLORS.every((c) => (me?.manaPool[c] ?? 0) === 0)" class="text-dimmed">empty</span>
+                <span
+                  v-for="(r, i) in restrictedPool"
+                  :key="`rp${i}`"
+                  class="flex items-center gap-0.5 rounded-full border border-warning bg-elevated px-1.5 py-0.5"
+                  :title="`only for ${r.only}`"
+                >
+                  <ManaSymbols :value="`{${r.color}}`" :size="12" />×{{ r.amount }}*
+                </span>
+                <span v-if="POOL_COLORS.every((c) => (me?.manaPool[c] ?? 0) === 0) && !restrictedPool.length" class="text-dimmed">empty</span>
               </span>
               <span v-if="casting.xCount > 0 || casting.lifeX" class="flex items-center gap-1">
                 {{ casting.lifeX ? 'X life =' : 'X =' }}
@@ -1650,6 +1692,15 @@ onBeforeUnmount(() => {
                     <ManaSymbols :value="`{${c}}`" :size="13" />×{{ me.manaPool[c] }}
                   </span>
                 </template>
+                <!-- restricted mana ("spend this only to cast …") — marked with a star -->
+                <span
+                  v-for="(r, i) in restrictedPool"
+                  :key="`rp2${i}`"
+                  class="flex items-center gap-0.5 rounded-full border border-warning bg-elevated px-1.5 py-0.5 font-semibold"
+                  :title="`only for ${r.only}`"
+                >
+                  <ManaSymbols :value="`{${r.color}}`" :size="13" />×{{ r.amount }}*
+                </span>
               </div>
               <!-- your battlefield: creatures | rest, side by side -->
               <div class="flex min-w-0 flex-1 flex-wrap items-start gap-x-5 gap-y-1 py-1">
@@ -1952,6 +2003,26 @@ onBeforeUnmount(() => {
               :disabled="modalPick.selected.length < modalMin"
               @click="confirmModes"
             >Confirm</UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- as-enters "choose a creature type" (Cavern of Souls, Patchwork Banner) -->
+      <div v-if="legal?.needsTypeChoice" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="w-full max-w-md rounded-lg border border-primary bg-default p-4 shadow-xl">
+          <p class="mb-2 text-sm font-semibold">{{ legal.typeChoiceName }} — choose a creature type</p>
+          <div class="mb-3 flex flex-wrap gap-1">
+            <UButton
+              v-for="t in TYPE_SUGGESTIONS"
+              :key="t"
+              size="xs"
+              variant="soft"
+              @click="sendTypeChoice(t)"
+            >{{ t }}</UButton>
+          </div>
+          <div class="flex items-center gap-2">
+            <UInput v-model="typePick" size="sm" placeholder="Another type…" class="flex-1" @keyup.enter="sendTypeChoice(typePick)" />
+            <UButton size="sm" :disabled="typePick.trim().length < 2" @click="sendTypeChoice(typePick)">Choose</UButton>
           </div>
         </div>
       </div>

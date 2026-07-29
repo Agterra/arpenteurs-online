@@ -87,6 +87,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
   // as-enters choice (CR 614.12, shocklands): pay the life, or the permanent enters tapped
   z.object({ type: z.literal('r.entersChoice'), pay: z.boolean() }),
+  // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
+  // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
+  z.object({ type: z.literal('r.chooseType'), creatureType: z.string().trim().min(2).max(30).regex(/^[A-Za-z][A-Za-z' -]*$/) }),
   // "…unless that player pays {N}" (Rhystic Study / Esper Sentinel): pay, or the ability resolves
   z.object({ type: z.literal('r.optionalPay'), pay: z.boolean() }),
   // "put N cards from your hand on top of your library in any order" (Brainstorm) — first id = top

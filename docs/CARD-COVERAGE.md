@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**554 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**559 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -94,6 +94,7 @@
 - Capsize
 - Cascade Bluffs
 - Cathars' Crusade
+- Cavern of Souls
 - Caves of Koilos
 - Centaur Courser
 - Chaos Warp
@@ -130,6 +131,7 @@
 - Deadly Rollick
 - Deathcap Glade
 - Decanter of Endless Water
+- Delighted Halfling
 - Delver of Secrets
 - Demonic Tutor
 - Deserted Beach
@@ -337,6 +339,7 @@
 - Pact of Negation
 - Paladin en-Vec
 - Pale Bears
+- Patchwork Banner
 - Path to Exile
 - Pearl Medallion
 - Phyrexian Altar
@@ -408,6 +411,7 @@
 - Search for Tomorrow
 - Seaside Citadel
 - Seat of the Synod
+- Secluded Courtyard
 - Secluded Steppe
 - Seething Song
 - Selesnya Guildgate
@@ -509,6 +513,7 @@
 - Tukatongue Thallid
 - Tundra
 - Twilight Mire
+- Unclaimed Territory
 - Undercity Sewers
 - Underground Mortuary
 - Underground River

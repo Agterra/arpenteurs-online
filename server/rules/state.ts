@@ -82,6 +82,10 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
     // several permanents entering at once each get their own choice and no pending is clobbered.
     const payLife = def.entersTappedUnlessPayLife
     if (payLife) (state.entersChoiceQueue ??= []).push({ player: obj.controllerId, objId: obj.id, life: payLife })
+    // "As this permanent enters, choose a creature type" (CR 614.12c) — the same queue, so a type
+    // choice and a shockland's pay-life choice entering together are asked one after the other
+    if (def.entersChooseType)
+      (state.entersChoiceQueue ??= []).push({ player: obj.controllerId, objId: obj.id, life: 0, chooseType: true })
     // check lands: "enters tapped UNLESS you control an Island or a Mountain" — evaluated here so
     // every entry path (played, fetched, reanimated, moved by hand) agrees
     const need = def.entersTappedUnlessControlLandType
@@ -272,7 +276,10 @@ export function battlefieldCreatures(state: RulesGameState, controller?: PlayerI
 }
 
 export function emptyManaPools(state: RulesGameState) {
-  for (const p of Object.values(state.players)) p.manaPool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 }
+  for (const p of Object.values(state.players)) {
+    p.manaPool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 }
+    p.restrictedMana = [] // restricted mana empties with the pool (CR 500.4)
+  }
 }
 
 export function alivePlayers(state: RulesGameState): PlayerId[] {

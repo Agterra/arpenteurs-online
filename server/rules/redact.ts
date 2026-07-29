@@ -12,6 +12,7 @@
 import type {
   LegalActions,
   ManaColor,
+  ManaPool,
   ObjId,
   PlayerId,
   RulesClientCard,
@@ -33,9 +34,24 @@ import {
   hasAnyLegalTarget,
   isImpulsePlayable,
   isLegalTarget,
+  spellPayablePool,
   landDropAllowance,
   permanentCostReduction,
 } from './engine'
+
+/**
+ * `potential` (open pool + what untapped sources could make) plus the RESTRICTED buckets this card
+ * satisfies — restricted mana is already in the pool, so it is added on top of the open potential.
+ */
+function restrictedPotential(state: RulesGameState, viewer: PlayerId, def: CardDefinition, potential: ManaPool): ManaPool {
+  const buckets = state.players[viewer]!.restrictedMana ?? []
+  if (!buckets.length) return potential
+  const own = spellPayablePool(state, viewer, def)
+  const plain = state.players[viewer]!.manaPool
+  const out = { ...potential }
+  for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) out[c] += own[c] - plain[c]
+  return out
+}
 
 /** does the exiled card have flash? (an impulse card with flash is castable outside your main phase) */
 function hasFlashInExile(state: RulesGameState, id: ObjId): boolean {
@@ -95,6 +111,7 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     controllerId: obj.controllerId,
     zone: obj.zone,
     tapped: obj.tapped,
+    chosenType: obj.chosenType ?? null,
     summoningSick: obj.summoningSick,
     damageMarked: obj.damageMarked,
     counters: obj.counters,
@@ -227,6 +244,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayCost: '',
     optionalPaySourceName: '',
     optionalPayAffordable: false,
+    needsTypeChoice: false,
+    typeChoiceName: '',
     needsEntersChoice: false,
     entersChoiceLife: 0,
     entersChoiceName: '',
@@ -362,6 +381,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPaySourceName: getDef(pop.defName).name,
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
       }
+    }
+    if (state.pending.kind === 'typeChoice' && state.pendingTypeChoice) {
+      // "As this permanent enters, choose a creature type" — the board opens its type picker
+      const obj = state.objects[state.pendingTypeChoice.objId]
+      return { ...none, needsTypeChoice: true, typeChoiceName: obj ? getDef(obj.defName).name : '' }
     }
     if (state.pending.kind === 'entersChoice' && state.pendingEntersChoice) {
       // its controller pays the life (keeping it untapped) or declines and it enters tapped
@@ -547,7 +571,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     // same function as r.cast, so the highlight can't drift from what the server will accept
     const fromPermanents = permanentCostReduction(state, viewer, def)
     if (fromPermanents) castCost.generic = Math.max(0, castCost.generic - fromPermanents)
-    if (planPayment(castCost, potential).covered) castableIds.push(id)
+    // RESTRICTED mana can only pay for a spell that satisfies it, so each card is checked against
+    // its OWN payable pool (the open potential plus the buckets this card matches)
+    const cardPotential = restrictedPotential(state, viewer, def, potential)
+    if (planPayment(castCost, cardPotential).covered) castableIds.push(id)
     // not castable if no legal targets: for a modal spell at least ONE mode must have
     // all its targets legal; otherwise every target spec of the plain spell must be
     // satisfiable (filter-aware: "artifact or enchantment", "creature an opponent controls")

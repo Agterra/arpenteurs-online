@@ -217,7 +217,8 @@ export const counterTarget = (): Effect => (ctx) => {
   for (const t of ctx.targets) {
     const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
     if (!item) continue // already resolved / countered
-    if (getDef(item.defName).cantBeCountered) {
+    // printed ("Dovin's Veto") OR granted by the mana that paid for it (Cavern of Souls)
+    if (getDef(item.defName).cantBeCountered || item.cantBeCountered) {
       logLine(ctx.state, `${getDef(item.defName).name} can't be countered.`)
       continue
     }
@@ -763,7 +764,8 @@ export const counterTargetGrantingToken = (spec: TokenSpec, count: number): Effe
   for (const t of ctx.targets) {
     const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
     if (!item) continue // already resolved / countered
-    if (getDef(item.defName).cantBeCountered) {
+    // printed ("Dovin's Veto") OR granted by the mana that paid for it (Cavern of Souls)
+    if (getDef(item.defName).cantBeCountered || item.cantBeCountered) {
       logLine(ctx.state, `${getDef(item.defName).name} can't be countered.`)
       continue
     }

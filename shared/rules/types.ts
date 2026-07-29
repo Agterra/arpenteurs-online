@@ -104,6 +104,8 @@ export interface GameObject {
    * exiled on, so the longer window can tell "your next turn" from the current one. Cleared as the
    * window closes; the card then simply stays in exile.
    */
+  /** "As this permanent enters, choose a creature type." (Cavern of Souls, Patchwork Banner) */
+  chosenType?: string
   playableBy?: PlayerId
   playableUntil?: 'endOfTurn' | 'endOfYourNextTurn'
   playableFromTurn?: number
@@ -183,6 +185,11 @@ export interface StackItem {
   /** cast-trigger (CR 603.2): who cast the spell that triggered this — the player who may pay an
    *  "unless that player pays {N}" cost when it resolves (Rhystic Study). */
   castPayer?: PlayerId
+  /**
+   * "…and that spell can't be countered" (Cavern of Souls, Delighted Halfling): true when RESTRICTED
+   * mana carrying that rider paid for this spell. `def.cantBeCountered` covers the printed version.
+   */
+  cantBeCountered?: boolean
   /** whether this spell was cast kicked (its optional kicker cost was paid) — CR 702.33 */
   kicked?: boolean
   /** Saga chapter ability on the stack (CR 714): the 1-based chapter number resolving (its
@@ -220,6 +227,21 @@ export interface PlayerRState {
   /** poison counters (infect) — a player with 10+ loses the game (CR 704.5c) */
   poison: number
   manaPool: ManaPool
+  /**
+   * RESTRICTED mana (CR 106.6): "Spend this mana only to cast a creature spell of the chosen type"
+   * (Cavern of Souls) / "only to cast a legendary spell" (Delighted Halfling). Kept apart from
+   * `manaPool` so it can only pay for a matching spell; emptied with the pool at every step change.
+   * `uncounterable` carries the "and that spell can't be countered" rider onto whatever it pays for.
+   */
+  restrictedMana?: {
+    color: ManaColor
+    amount: number
+    creatureType?: string
+    legendary?: boolean
+    uncounterable?: boolean
+    /** Secluded Courtyard: may also pay to ACTIVATE an ability of a creature source of that type */
+    typeAbilities?: boolean
+  }[]
   landsPlayedThisTurn: number
   /** noncreature spells this player has cast this turn (Esper Sentinel's "first each turn") */
   noncreatureSpellsThisTurn?: number
@@ -364,6 +386,11 @@ export interface RulesGameState {
    */
   pendingEntersChoice: { player: PlayerId; objId: ObjId; life: number } | null
   /**
+   * "As this permanent enters, choose a creature type." — its controller picks one before anything
+   * else happens (r.chooseType). Queued like the pay-life as-enters choice.
+   */
+  pendingTypeChoice: { player: PlayerId; objId: ObjId } | null
+  /**
    * "…then put two cards from your hand on top of your library in any order." (Brainstorm) — the
    * player picks `count` cards from their own hand; the ids sent back are hand ids they already
    * hold, and hand → library is hidden → hidden, so nothing new is revealed either way.
@@ -384,7 +411,7 @@ export interface RulesGameState {
     createdTurn: number
   }[]
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
-  entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number }[]
+  entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number; chooseType?: boolean }[]
   /**
    * An "…unless that player pays {N}" decision (Rhystic Study, Esper Sentinel): a triggered ability
    * has resolved and `player` — the one who cast the spell — may pay `cost` to stop it. Declining
@@ -460,6 +487,8 @@ export interface RulesClientCard {
   /** current loyalty (planeswalkers only; null otherwise) */
   loyalty: number | null
   isCommander: boolean
+  /** the creature type chosen as this permanent entered, if any (Cavern of Souls) */
+  chosenType?: string | null
   /** host this Aura/Equipment is attached to (null/absent = unattached) */
   attachedTo?: ObjId | null
   /** true = an assisted-table fallback (printed body known, rules player-run) */
@@ -615,6 +644,9 @@ export interface LegalActions {
   optionalPaySourceName: string
   optionalPayAffordable: boolean
   /** an as-enters choice is waiting on YOU: pay the life or the permanent enters tapped (shocklands) */
+  /** an as-enters "choose a creature type" is waiting for you (r.chooseType) */
+  needsTypeChoice: boolean
+  typeChoiceName: string
   needsEntersChoice: boolean
   /** the life you'd pay, the permanent's name, and whether your life total allows it (CR 119.4) */
   entersChoiceLife: number

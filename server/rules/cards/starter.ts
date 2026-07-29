@@ -4053,4 +4053,106 @@ export const STARTER_SET: CardDefinition[] = [
       effect: sequence(dealDamage(2), drawCards(1)),
     },
   },
+  // --- Coverage batch CARD44: as-enters creature-type choice + RESTRICTED mana ---
+  {
+    name: 'Cavern of Souls',
+    types: ['Land'],
+    // "As this land enters, choose a creature type. / {T}: Add {C}. / {T}: Add one mana of any color.
+    //  Spend this mana only to cast a creature spell of the chosen type, and that spell can't be
+    //  countered."
+    entersChooseType: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaRestriction: { chosenTypeOnly: true, uncounterable: true },
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Unclaimed Territory',
+    types: ['Land'],
+    // "As this land enters, choose a creature type. / {T}: Add {C}. / {T}: Add one mana of any color.
+    //  Spend this mana only to cast a creature spell of the chosen type."
+    entersChooseType: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaRestriction: { chosenTypeOnly: true },
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Secluded Courtyard',
+    types: ['Land'],
+    // "As this land enters, choose a creature type. / {T}: Add {C}. / {T}: Add one mana of any color.
+    //  Spend this mana only to cast a creature spell of the chosen type or activate an ability of a
+    //  creature source of the chosen type."
+    entersChooseType: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaRestriction: { chosenTypeOnly: true, alsoTypeAbilities: true },
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Delighted Halfling',
+    types: ['Creature'],
+    subtypes: ['Halfling', 'Citizen'],
+    manaCost: '{G}',
+    colors: ['G'],
+    power: 1,
+    toughness: 1,
+    // "{T}: Add {C}. / {T}: Add one mana of any color. Spend this mana only to cast a legendary
+    //  spell, and that spell can't be countered."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaRestriction: { legendaryOnly: true, uncounterable: true },
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Patchwork Banner',
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "As this artifact enters, choose a creature type. / Creatures you control of the chosen type get
+    //  +1/+1. / {T}: Add one mana of any color." (its mana is NOT restricted)
+    entersChooseType: true,
+    statics: [{ affects: { controllerOnly: true, subtypeChosen: true }, power: 1, toughness: 1 }],
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        effect: addMana('W'),
+      },
+    ],
+  },
 ]

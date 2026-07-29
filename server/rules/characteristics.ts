@@ -36,6 +36,9 @@ function affectsMatch(affects: AffectsFilter, src: GameObject, obj: GameObject, 
   if (affects.controllerOnly && src.controllerId !== obj.controllerId) return false
   if (affects.excludeSelf && src.id === obj.id) return false
   if (affects.subtype && !objSubtypes.includes(affects.subtype)) return false
+  // "of the chosen type": the type this source's controller picked as it entered (Patchwork Banner).
+  // No type chosen yet (it left before the choice) → the effect applies to nothing.
+  if (affects.subtypeChosen && !(src.chosenType && objSubtypes.includes(src.chosenType))) return false
   return true
 }
 

@@ -7,7 +7,7 @@
  * `applyRulesAction(state, actor, msg)` per player action (throws RulesError
  * on anything illegal — enforcement IS the feature).
  */
-import type { GameObject, ObjId, PlayerId, RulesGameState, StackItem } from '#shared/rules/types'
+import type { GameObject, ManaPool, ObjId, PlayerId, PlayerRState, RulesGameState, StackItem } from '#shared/rules/types'
 import { currentKeywords, currentPower, currentToughness, hostCantAttack, hostCantBlock } from './characteristics'
 import { STEPS } from '#shared/rules/types'
 import type { RulesMsgT } from '#shared/rules/messages'
@@ -125,6 +125,57 @@ export function abilityLifeCost(state: RulesGameState, actor: PlayerId, cost: Co
     life += new Set(colors).size
   }
   return life
+}
+
+/** Does a restricted-mana bucket accept being spent on `def`? (CR 106.6) */
+function restrictionAllows(
+  bucket: NonNullable<PlayerRState['restrictedMana']>[number],
+  def: CardDefinition,
+): boolean {
+  if (bucket.legendary && !(def.supertypes?.includes('Legendary') ?? false)) return false
+  if (bucket.creatureType) {
+    if (!def.types.includes('Creature')) return false
+    if (!(def.subtypes ?? []).includes(bucket.creatureType)) return false
+  }
+  return true
+}
+
+/**
+ * The mana a player can actually spend on casting `def`: their pool plus every RESTRICTED bucket
+ * whose "spend this mana only to cast …" clause `def` satisfies. Used by r.cast and by redact, so a
+ * highlighted-as-castable card is exactly one the server will accept.
+ */
+export function spellPayablePool(state: RulesGameState, player: PlayerId, def: CardDefinition): ManaPool {
+  const pool = { ...state.players[player]!.manaPool }
+  for (const bucket of state.players[player]!.restrictedMana ?? []) {
+    if (restrictionAllows(bucket, def)) pool[bucket.color] += bucket.amount
+  }
+  return pool
+}
+
+/**
+ * Spend `deduct` on a spell, taking RESTRICTED mana first (it is useless for anything else, and CR
+ * 601.2g leaves the choice to the player — spending the restricted mana is never worse). Returns
+ * whether any bucket carried the "…and that spell can't be countered" rider.
+ */
+function spendSpellMana(state: RulesGameState, player: PlayerId, deduct: ManaPool, def: CardDefinition) {
+  const p = state.players[player]!
+  const buckets = (p.restrictedMana ??= []).filter((b) => restrictionAllows(b, def))
+  let uncounterable = false
+  for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) {
+    let owed = deduct[c]
+    for (const bucket of buckets) {
+      if (owed <= 0) break
+      if (bucket.color !== c || bucket.amount <= 0) continue
+      const take = Math.min(owed, bucket.amount)
+      bucket.amount -= take
+      owed -= take
+      if (bucket.uncounterable) uncounterable = true
+    }
+    p.manaPool[c] -= owed
+  }
+  p.restrictedMana = p.restrictedMana!.filter((b) => b.amount > 0)
+  return { uncounterable }
 }
 
 /**
@@ -415,6 +466,12 @@ function drainEntersChoices(state: RulesGameState): boolean {
     const next = queue.shift()!
     const obj = state.objects[next.objId]
     if (!obj || obj.zone !== 'battlefield') continue // it left before the choice was made
+    if (next.chooseType) {
+      // "As this permanent enters, choose a creature type" — its own pending kind (r.chooseType)
+      state.pending = { kind: 'typeChoice', player: next.player }
+      state.pendingTypeChoice = { player: next.player, objId: next.objId }
+      return true
+    }
     state.pending = { kind: 'entersChoice', player: next.player }
     state.pendingEntersChoice = next
     return true
@@ -2150,6 +2207,22 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         const n = devotionTo(state, actor, msg.color!)
         state.players[actor]!.manaPool[msg.color!] += n
         logLine(state, `${name(state, actor)} adds ${n} {${msg.color}} (devotion).`)
+      } else if (ability.manaRestriction) {
+        // RESTRICTED mana (Cavern of Souls, Delighted Halfling): its own bucket, spendable only on a
+        // matching spell. A chosenTypeOnly source with no type chosen yet makes nothing useful, which
+        // can't happen in practice (the type is chosen as it enters).
+        const restriction = ability.manaRestriction
+        const bucket = {
+          color: msg.color!,
+          amount: 1,
+          ...(restriction.chosenTypeOnly ? { creatureType: obj.chosenType ?? '' } : {}),
+          ...(restriction.legendaryOnly ? { legendary: true } : {}),
+          ...(restriction.uncounterable ? { uncounterable: true } : {}),
+          ...(restriction.alsoTypeAbilities ? { typeAbilities: true } : {}),
+        }
+        ;(state.players[actor]!.restrictedMana ??= []).push(bucket)
+        const only = restriction.legendaryOnly ? 'legendary spells' : `${obj.chosenType ?? 'the chosen type'} creature spells`
+        logLine(state, `${name(state, actor)} adds {${msg.color}} (only for ${only}).`)
       } else if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
       // pay a mana ability's sacrifice cost (the Altars) — after the mana is in the pool, so a dies
@@ -2217,13 +2290,35 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const lifeCost = abilityLifeCost(state, actor, ability.cost)
       if (lifeCost > state.players[actor]!.life)
         throw new RulesError('CANT_PAY', `Not enough life (need ${lifeCost})`)
-      // pay the mana part of the cost (only {T} + generic/colored mana supported)
+      // pay the mana part of the cost. Secluded Courtyard's mana may also pay to "activate an ability
+      // of a creature source of the chosen type", so those buckets join the pool for such a source.
       if (ability.cost.mana) {
         const cost = parseManaCost(ability.cost.mana)
-        const pool = state.players[actor]!.manaPool
-        const payment = planPayment(cost, pool)
+        const srcDef = getDef(obj.defName)
+        const buckets = (state.players[actor]!.restrictedMana ??= []).filter(
+          (bk) =>
+            bk.typeAbilities &&
+            !!bk.creatureType &&
+            srcDef.types.includes('Creature') &&
+            (srcDef.subtypes ?? []).includes(bk.creatureType),
+        )
+        const merged = { ...state.players[actor]!.manaPool }
+        for (const bk of buckets) merged[bk.color] += bk.amount
+        const payment = planPayment(cost, merged)
         if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
-        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+        const pool = state.players[actor]!.manaPool
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) {
+          let owed = payment.deduct[c]
+          for (const bk of buckets) {
+            if (owed <= 0) break
+            if (bk.color !== c || bk.amount <= 0) continue
+            const take = Math.min(owed, bk.amount)
+            bk.amount -= take
+            owed -= take
+          }
+          pool[c] -= owed
+        }
+        state.players[actor]!.restrictedMana = state.players[actor]!.restrictedMana!.filter((bk) => bk.amount > 0)
       }
       // targets chosen now (like casting)
       const specs = flattenSpecs(ability.targets)
@@ -2473,10 +2568,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         cost.generic = 0
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] = 0
       }
-      const payment = planPayment(cost, state.players[actor]!.manaPool)
+      // RESTRICTED mana ("spend this mana only to cast a creature spell of the chosen type") is
+      // available only to a spell that satisfies it, and is spent before the open pool
+      const payment = planPayment(cost, spellPayablePool(state, actor, def))
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
-      const pool = state.players[actor]!.manaPool
-      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      const spent = spendSpellMana(state, actor, payment.deduct, def)
       for (const c of convokeCreatures) c.tapped = true // convoke is paid by tapping (CR 702.51c)
       if (lifeX) {
         state.players[actor]!.life -= lifeX
@@ -2511,6 +2607,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         x: xCount > 0 ? x : lifeX ? lifeX : undefined,
         mode: !adv && !multiModes && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
         modes: multiModes ?? undefined,
+        cantBeCountered: spent.uncounterable || undefined,
         faceDown: castingFaceDown || undefined,
         kicked: kicked || undefined,
         adventure: castingAdventure || undefined,
@@ -3223,6 +3320,24 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // the next queued as-enters choice first (two shocklands can enter together), else resume:
       // the active player gets priority (CR 117.3c) and checkSBA runs (paying to 0 life loses)
+      if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.chooseType': {
+      if (state.pending?.kind !== 'typeChoice' || state.pending.player !== actor || !state.pendingTypeChoice)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your creature-type choice')
+      const ptc = state.pendingTypeChoice
+      state.pending = null
+      state.pendingTypeChoice = null
+      const obj = state.objects[ptc.objId]
+      // normalise to Title Case so "goblin" and "Goblin" match a card's subtypes
+      const chosen = msg.creatureType.trim().replace(/\s+/g, ' ')
+      const typeName = chosen.charAt(0).toUpperCase() + chosen.slice(1).toLowerCase()
+      if (obj && obj.zone === 'battlefield') {
+        obj.chosenType = typeName
+        logLine(state, `${name(state, actor)} chooses ${typeName} for ${objName(state, obj.id)}.`)
+      }
       if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
       break
     }

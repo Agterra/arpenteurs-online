@@ -145,6 +145,19 @@ export interface ActivatedAbility {
    * symbols of it among the mana costs of permanents you control (CR 700.5).
    */
   manaEqualToDevotion?: boolean
+  /**
+   * RESTRICTED mana (CR 106.6): the mana this ability makes goes into a separate bucket that can only
+   * pay for a matching spell. `chosenTypeOnly` = "only to cast a creature spell of the chosen type"
+   * (reads the source's as-enters `chosenType`), `legendaryOnly` = "only to cast a legendary spell",
+   * `uncounterable` = "…and that spell can't be countered" (Cavern of Souls, Delighted Halfling).
+   */
+  manaRestriction?: {
+    chosenTypeOnly?: boolean
+    legendaryOnly?: boolean
+    uncounterable?: boolean
+    /** Secluded Courtyard: "…or activate an ability of a creature source of the chosen type" */
+    alsoTypeAbilities?: boolean
+  }
   targets?: TargetSpec[]
   effect: Effect
 }
@@ -204,6 +217,8 @@ export interface AffectsFilter {
   controllerOnly?: boolean // "creatures YOU control"
   excludeSelf?: boolean // "OTHER creatures…"
   subtype?: string // lord filter, e.g. "Goblin"
+  /** "creatures you control of the CHOSEN type" (Patchwork Banner) — reads the source's chosenType */
+  subtypeChosen?: boolean
 }
 
 /**
@@ -251,6 +266,12 @@ export interface CardDefinition {
   staticKeywords?: StaticKeywordGrant[]
   /** the spell ability for instants/sorceries */
   spell?: SpellAbility
+  /**
+   * "As this permanent enters, choose a creature type." (Cavern of Souls, Patchwork Banner) — its
+   * controller chooses before anything else happens (CR 614.12c); the pick lands on the object as
+   * `chosenType` and is read by that card's own abilities (a type anthem, restricted mana, …).
+   */
+  entersChooseType?: boolean
   /** modal ("choose one") spell: the caster picks one mode at cast time */
   modes?: SpellMode[]
   /**

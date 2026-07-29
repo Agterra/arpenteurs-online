@@ -284,6 +284,12 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'typeChoice') {
+      // "As this permanent enters, choose a creature type" — pick from a small pool so some choices
+      // match the deck's creatures and the restricted mana is actually spendable
+      applyRulesAction(state, p, { type: 'r.chooseType', creatureType: pick(['Bear', 'Elf', 'Ogre', 'Giant', 'Human', 'Beast']) })
+      return true
+    }
     const hand = state.zones.perPlayer[p]!.hand
     applyRulesAction(state, p, { type: 'r.discard', objIds: hand.slice(0, hand.length - 7) })
     return true
@@ -938,6 +944,10 @@ const FUZZ_DECK = [
   // Famine — the damaged player discards, i.e. an opponent's hidden→public move driven by MY trigger,
   // and all my lands untap) and Professional Face-Breaker, whose "one or more creatures you control"
   // wording fires once per damaged player and whose Treasure sacrifice feeds an impulse exile.
+  // batch CARD44: a type-choosing land whose second ability makes RESTRICTED mana — the fuzzer must
+  // answer the as-enters choice, and its mana must never pay for something that doesn't match (the
+  // engine keeps it out of the open pool entirely).
+  ...Array(3).fill('Unclaimed Territory'),
   ...Array(2).fill('Sword of Feast and Famine'),
   ...Array(2).fill('Professional Face-Breaker'),
   ...Array(3).fill('Reckless Impulse'),
