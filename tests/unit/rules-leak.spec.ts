@@ -425,8 +425,9 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
   // occasionally use an activated ability (exercises r.activate incl. sacrifice costs)
   if (legal.activations.length && rnd() < 0.3) {
     const a = pick(legal.activations)
-    // pay any mana part by tapping sources (best-effort; passing is the fallback)
-    const need = (a.cost.match(/\{/g) ?? []).length
+    // pay any mana part by tapping sources (best-effort; passing is the fallback). Generic pips
+    // carry an AMOUNT ({3} is three mana, not one), or a cost like War Room's would never be paid.
+    const need = [...a.cost.matchAll(/\{([^}]+)\}/g)].reduce((n, m) => n + (/^\d+$/.test(m[1]!) ? Number(m[1]) : 1), 0)
     for (const src of legal.manaSourceIds) {
       const pool = state.players[actor]!.manaPool
       if (Object.values(pool).reduce((x, y) => x + y, 0) >= need) break
@@ -524,7 +525,18 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
         const creatures = Object.values(state.objects)
           .filter((o) => o.zone === 'battlefield' && getDef(o.defName).types.includes('Creature'))
           .map((o) => o.id)
-        const perms = Object.values(state.objects).filter((o) => o.zone === 'battlefield').map((o) => o.id)
+        // honour a "an opponent controls" / "you control" filter, or a spell like Assassin's Trophy
+        // would almost always be aimed at an illegal target and skipped
+        const perms = Object.values(state.objects)
+          .filter((o) => o.zone === 'battlefield')
+          .filter((o) =>
+            spec.filter?.controller === 'opponent'
+              ? o.controllerId !== actor
+              : spec.filter?.controller === 'you'
+                ? o.controllerId === actor
+                : true,
+          )
+          .map((o) => o.id)
         const players = state.turnOrder.filter((p) => !state.players[p]!.hasLost)
         // graveyardCard (Raise Dead / Regrowth): pick from the ACTOR's own graveyard,
         // honouring the spec's type filter — this is the leak-critical graveyard→hand path
@@ -832,6 +844,15 @@ const FUZZ_DECK = [
   // (Takenuma) — both move a card graveyard→hand, the leak-critical re-mint path.
   ...Array(2).fill('Buried Ruin'),
   ...Array(2).fill('Takenuma, Abandoned Mire'),
+  // batch CARD39: Windfall (EVERY player's hand → the graveyard at once, then everyone draws the
+  // greatest count — a mass hidden→public move followed by many library→hand draws), Assassin's
+  // Trophy (its search belongs to the OPPONENT whose permanent died, so a peek is opened for a
+  // player who is not the actor), Ash Barrens (landcycling: a hand→graveyard cost whose ability then
+  // searches the library) and War Room (an activated ability with a mana + tap + life cost).
+  ...Array(2).fill('Windfall'),
+  ...Array(2).fill("Assassin's Trophy"),
+  ...Array(2).fill('Ash Barrens'),
+  ...Array(2).fill('War Room'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

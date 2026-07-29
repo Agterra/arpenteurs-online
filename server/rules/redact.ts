@@ -24,6 +24,7 @@ import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from '.
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
 import {
+  abilityLifeCost,
   channelCost,
   controlledArtifacts,
   controlledLands,
@@ -472,7 +473,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       const sacCost = ab.cost.sacrifice?.count ?? 0
       if (sacCost > battlefieldCreatures(state, viewer).length) return
       // "pay N life" is payable only at life ≥ N (CR 119.4) — mirrors the engine's check
-      const lifeCost = ab.cost.life ?? 0
+      const lifeCost = abilityLifeCost(state, viewer, ab.cost)
       if (lifeCost > state.players[viewer]!.life) return
       const spec = ab.targets?.[0]
       // a graveyardCard target needs the graveyard picker, so hand the client the legal cards
@@ -668,6 +669,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
           ? spec.kind
           : null,
       ...(chGraveyard ? { graveyardIds: chGraveyard } : {}),
+      ...(def.channel.label ? { label: def.channel.label } : {}),
     })
   }
 

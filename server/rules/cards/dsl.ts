@@ -69,6 +69,14 @@ export interface Cost {
    */
   life?: number
   /**
+   * "Pay life equal to the number of colors in your commanders' color identity" (War Room) — a
+   * life cost whose amount depends on the board, so it can't be a fixed `life`. DOCUMENTED
+   * SIMPLIFICATION: colour identity is approximated by the commander card's printed COLOURS,
+   * which differs for a commander whose identity comes only from mana symbols in its text.
+   * Adds to `life` when both are present.
+   */
+  lifeFromCommanderColors?: boolean
+  /**
    * "Sacrifice this permanent" as part of the cost (Evolving Wilds, Mind Stone). Nothing to
    * choose — the source itself is sacrificed once the ability is on the stack, so the ability
    * still resolves from the graveyard (CR 602.2a: paying costs doesn't remove it from the stack).
@@ -278,8 +286,12 @@ export interface CardDefinition {
    * is paid, the card is discarded as part of the cost, and the ability goes on the stack (so it can
    * be responded to). `reducedByLegendaries` implements "costs {1} less to activate for each
    * legendary creature you control" against the GENERIC portion.
+   *
+   * LANDCYCLING (CR 702.29) has the very same shape — "[cost], Discard this card: Search your
+   * library for a … land card, reveal it, put it into your hand, then shuffle" — so it reuses this
+   * plumbing; `label` renames the client's button ("Landcycle {1}" for Ash Barrens).
    */
-  channel?: { cost: string; reducedByLegendaries?: boolean; targets?: TargetSpec[]; effect: Effect }
+  channel?: { cost: string; label?: string; reducedByLegendaries?: boolean; targets?: TargetSpec[]; effect: Effect }
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
   /**

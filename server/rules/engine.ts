@@ -15,7 +15,7 @@ import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { emptyPool } from '#shared/rules/types'
 import { getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
-import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type TargetSpec, type TargetFilter } from './cards/dsl'
+import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 import { untapOwnLands } from './cards/effects'
 import {
@@ -109,6 +109,22 @@ export function channelCost(state: RulesGameState, actor: PlayerId, def: CardDef
     cost.generic = Math.max(0, cost.generic - legends)
   }
   return cost
+}
+
+/**
+ * The life an activated ability costs right now: its fixed `life` plus, for War Room's
+ * `lifeFromCommanderColors`, one per colour of the activating player's commander (see the DSL note
+ * — colour identity is approximated by the commander card's printed colours). Shared with redact so
+ * the board shows the same number the engine charges.
+ */
+export function abilityLifeCost(state: RulesGameState, actor: PlayerId, cost: Cost) {
+  let life = cost.life ?? 0
+  if (cost.lifeFromCommanderColors) {
+    const cmd = state.players[actor]!.commanderId
+    const colors = cmd && state.objects[cmd] ? (getDef(state.objects[cmd]!.defName).colors ?? []) : []
+    life += new Set(colors).size
+  }
+  return life
 }
 
 /**
@@ -1957,7 +1973,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
             throw new RulesError('BAD_SACRIFICE', 'Not a creature you control')
         }
       }
-      const manaLifeCost = ability.cost.life ?? 0
+      const manaLifeCost = abilityLifeCost(state, actor, ability.cost)
       if (manaLifeCost > state.players[actor]!.life)
         throw new RulesError('CANT_PAY', `Not enough life (need ${manaLifeCost})`)
       // pay the ability's own mana cost first (e.g. a Signet's {1}) — atomic: throws before tapping
@@ -2036,7 +2052,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         }
       }
       // "Pay N life" (CR 119.4) — validated before any mutation, paid below with the other costs
-      const lifeCost = ability.cost.life ?? 0
+      const lifeCost = abilityLifeCost(state, actor, ability.cost)
       if (lifeCost > state.players[actor]!.life)
         throw new RulesError('CANT_PAY', `Not enough life (need ${lifeCost})`)
       // pay the mana part of the cost (only {T} + generic/colored mana supported)

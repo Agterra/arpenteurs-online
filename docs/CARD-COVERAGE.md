@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**536 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**541 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -31,7 +31,9 @@
 - Arcane Signet
 - Archmage Emeritus
 - Arid Mesa
+- Ash Barrens
 - Ashnod's Altar
+- Assassin's Trophy
 - Assault // Battery
 - Audacious Thief
 - Augury Raven
@@ -178,6 +180,7 @@
 - Flame Rift
 - Flame Slash
 - Flametongue Kavu
+- Flawless Maneuver
 - Fleshbag Marauder
 - Flooded Grove
 - Flooded Strand
@@ -521,6 +524,7 @@
 - Wall of Blossoms
 - Wall of Omens
 - Wall of Wood
+- War Room
 - Waterfall Aerialist
 - Waterlogged Grove
 - Watery Grave
@@ -529,6 +533,7 @@
 - White Knight
 - Wind Drake
 - Windborn Muse
+- Windfall
 - Windswept Heath
 - Withering Torment
 - Woe Strider

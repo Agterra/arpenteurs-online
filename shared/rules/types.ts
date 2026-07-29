@@ -567,6 +567,8 @@ export interface LegalActions {
     targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'graveyardCard' | null
     /** for a graveyardCard target: the legal cards right now */
     graveyardIds?: ObjId[]
+    /** button label when the ability is not literally "Channel" (landcycling) */
+    label?: string
   }[]
   /** castable cards that have a kicker — the client offers a "kick" toggle (cost = kicker's mana) — CR 702.33 */
   kickable: { objId: ObjId; cost: string }[]

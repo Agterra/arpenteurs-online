@@ -49,6 +49,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'swan song': 'spell', // enchantment / instant / sorcery only (the server enforces the filter)
   'fierce guardianship': 'spell', // noncreature spell (also castable free — see ALT_TARGET_CLASS)
   "dovin's veto": 'spell', // noncreature spell; itself uncounterable
+  "assassin's trophy": 'permanent', // any permanent an opponent controls; they may fetch a basic
   vindicate: 'permanent',
   'beast within': 'permanent',
   'generous gift': 'permanent',

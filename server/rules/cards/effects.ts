@@ -671,14 +671,16 @@ export const monstrosity = (n: number): Effect => (ctx) => {
 /**
  * Every permanent the controller controls gains `keywords` until end of turn (Heroic
  * Intervention). Unlike a static grant from a permanent, this reaches ANY permanent type —
- * lands and artifacts included (see `currentKeywords`).
+ * lands and artifacts included (see `currentKeywords`). `creaturesOnly` narrows it to the
+ * creatures ("Creatures you control gain indestructible" — Flawless Maneuver).
  */
-export const grantKeywordsToControlled = (keywords: Keyword[]): Effect => (ctx) => {
-  const ids = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield
+export const grantKeywordsToControlled = (keywords: Keyword[], opts?: { creaturesOnly?: boolean }): Effect => (ctx) => {
+  const all = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield
+  const ids = opts?.creaturesOnly ? all.filter((id) => isCreatureDef(getDef(ctx.state.objects[id]!.defName))) : all
   for (const id of ids) for (const keyword of keywords) (ctx.state.keywordGrants ??= []).push({ objId: id, keyword })
   logLine(
     ctx.state,
-    `${ctx.state.players[ctx.controllerId]!.name}'s permanents gain ${keywords.join(' and ')} until end of turn.`,
+    `${ctx.state.players[ctx.controllerId]!.name}'s ${opts?.creaturesOnly ? 'creatures' : 'permanents'} gain ${keywords.join(' and ')} until end of turn.`,
   )
 }
 
@@ -973,8 +975,9 @@ export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) =
 /**
  * Boseiju: destroy the target, then ITS controller may search their library for a land with a basic
  * land type and put it onto the battlefield (a search opened for that player — they may take nothing).
+ * `basicOnly` narrows the search to actual BASIC lands (Assassin's Trophy).
  */
-export const destroyTargetControllerFetchesLand = (): Effect => (ctx) => {
+export const destroyTargetControllerFetchesLand = (opts?: { basicOnly?: boolean }): Effect => (ctx) => {
   for (const t of ctx.targets) {
     if (isPlayerId(ctx, t)) continue
     const obj = ctx.state.objects[t]
@@ -987,11 +990,13 @@ export const destroyTargetControllerFetchesLand = (): Effect => (ctx) => {
     }
     logLine(ctx.state, `${nm} is destroyed.`)
     moveToGraveyard(ctx.state, t)
-    // the affected player searches for a land with a basic land type (untapped, per the card)
-    searchLibrary({ filter: { landSubtypes: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] }, dest: 'battlefield', count: 1 })({
-      ...ctx,
-      controllerId: owner,
-    })
+    // the affected player searches for a land (untapped, per the card) — a basic land for
+    // Assassin's Trophy, any land with a basic land type for Boseiju
+    searchLibrary({
+      filter: opts?.basicOnly ? 'basicLand' : { landSubtypes: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] },
+      dest: 'battlefield',
+      count: 1,
+    })({ ...ctx, controllerId: owner })
   }
 }
 
@@ -1158,6 +1163,25 @@ export const addManaPerColorAmongPermanents = (): Effect => (ctx) => {
     ctx.state,
     `${ctx.state.players[ctx.controllerId]!.name} adds ${colors.size} mana (one per colour among their permanents).`,
   )
+}
+
+/**
+ * Windfall: every player discards their ENTIRE hand, then each draws cards equal to the greatest
+ * number any one player discarded this way. No decision to make (the whole hand goes), so this
+ * needs no discard prompt — unlike the choice-based `playersDiscard`.
+ */
+export const windfall = (): Effect => (ctx) => {
+  const order = apnapOrder(ctx.state, ctx.state.activePlayer)
+  let greatest = 0
+  for (const pid of order) {
+    const hand = ctx.state.zones.perPlayer[pid]!.hand
+    const n = hand.length
+    greatest = Math.max(greatest, n)
+    for (const id of [...hand]) moveToGraveyard(ctx.state, id)
+    if (n) logLine(ctx.state, `${ctx.state.players[pid]!.name} discards their hand (${n} card${n === 1 ? '' : 's'}).`)
+  }
+  for (const pid of order) for (let i = 0; i < greatest; i++) drawOne(ctx.state, pid)
+  logLine(ctx.state, `Each player draws ${greatest} card${greatest === 1 ? '' : 's'}.`)
 }
 
 /** Gamble: discard a card at random from the controller's hand. */

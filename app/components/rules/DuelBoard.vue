@@ -1659,7 +1659,7 @@ onBeforeUnmount(() => {
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   icon="i-lucide-sparkles"
                   @click.stop="startChannel(id)"
-                >Channel {{ channelOf(id)!.cost }}</UButton>
+                >{{ channelOf(id)!.label ?? 'Channel' }} {{ channelOf(id)!.cost }}</UButton>
                 <UButton
                   v-if="cycleCost(id)"
                   size="xs"
