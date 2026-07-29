@@ -286,7 +286,37 @@ export function grantedLandManaColors(state: RulesGameState, player: PlayerId): 
     if (state.objects[id]!.phasedOut || state.loseAbilities.includes(id)) continue
     for (const c of getDef(state.objects[id]!.defName).grantsLandManaColors ?? []) out.add(c)
   }
+  // "Each land is a Swamp in addition to its other land types" (Urborg / Yavimaya) — GLOBAL, so any
+  // player's such permanent gives EVERY land that basic type's intrinsic mana ability (CR 305.7)
+  for (const c of globalLandTypeColors(state)) out.add(c)
   return (['W', 'U', 'B', 'R', 'G', 'C'] as const).filter((c) => out.has(c))
+}
+
+/** The basic land TYPES granted to every land by a global type-adding static (Urborg, Yavimaya). */
+export function globalLandTypes(state: RulesGameState): string[] {
+  const out = new Set<string>()
+  for (const pid of state.turnOrder) {
+    for (const id of zoneArr(state, pid, 'battlefield')) {
+      const obj = state.objects[id]
+      if (!obj || obj.phasedOut || state.loseAbilities.includes(id)) continue
+      const t = getDef(obj.defName).grantsLandTypeToAll
+      if (t) out.add(t)
+    }
+  }
+  return [...out]
+}
+const BASIC_TYPE_COLOR: Record<string, ManaColor> = {
+  Plains: 'W',
+  Island: 'U',
+  Swamp: 'B',
+  Mountain: 'R',
+  Forest: 'G',
+}
+/** The mana colours those granted land types bring with them. */
+function globalLandTypeColors(state: RulesGameState): ManaColor[] {
+  return globalLandTypes(state)
+    .map((t) => BASIC_TYPE_COLOR[t])
+    .filter((c): c is ManaColor => !!c)
 }
 
 /** How many artifacts a player controls (Mox Opal's metalcraft). */
@@ -1214,6 +1244,7 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'drawStep' ? def.drawStep
     : kind === 'beginCombat' ? def.beginCombat
     : kind === 'leavesBattlefield' ? def.leavesBattlefield
+    : kind === 'etbWatch' ? def.entersWatch
     : def.enters
 }
 
@@ -1229,6 +1260,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   drawStep: 'draw step',
   beginCombat: 'beginning of combat',
   leavesBattlefield: 'leaves-the-battlefield',
+  etbWatch: 'enters-the-battlefield',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1538,8 +1570,22 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
         ? isSelf && !subject.faceDown // plain ETB — a face-down creature has no own ETB (CR 707.2)
         : subjectIsCreature &&
           !(w.excludeSelf && isSelf) &&
-          !(w.controllerOnly && subject.controllerId !== p.controllerId)
+          !(w.controllerOnly && subject.controllerId !== p.controllerId) &&
+          // "whenever a creature WITH POWER 4 OR GREATER you control enters" (Garruk's Uprising)
+          (w.minPower == null || currentPower(state, subject) >= w.minPower)
       if (fires) queueTriggeredAbility(state, p.id, 'etb')
+      // a separate ETB WATCHER, for a card that also has its own enters trigger (Garruk's Uprising)
+      const watcher = getDef(p.defName).entersWatch
+      const ww = watcher?.watch
+      if (
+        watcher &&
+        ww &&
+        subjectIsCreature &&
+        !(ww.excludeSelf && isSelf) &&
+        !(ww.controllerOnly && subject.controllerId !== p.controllerId) &&
+        (ww.minPower == null || currentPower(state, subject) >= ww.minPower)
+      )
+        queueTriggeredAbility(state, p.id, 'etbWatch')
     }
   }
 }
@@ -1860,9 +1906,11 @@ const LANDWALK: [Keyword, string][] = [
 ]
 /** True if `player` controls a land with the given subtype (for landwalk evasion). */
 function controlsLandType(state: RulesGameState, player: PlayerId, subtype: string): boolean {
+  // a global type grant (Urborg) makes EVERY land that type, so swampwalk turns on for everyone
+  const granted = globalLandTypes(state).includes(subtype)
   return state.zones.perPlayer[player]!.battlefield.some((id) => {
     const def = getDef(state.objects[id]!.defName)
-    return defIsLand(def) && (def.subtypes?.includes(subtype) ?? false)
+    return defIsLand(def) && (granted || (def.subtypes?.includes(subtype) ?? false))
   })
 }
 const sharesColor = (a: CardDefinition, b: CardDefinition): boolean => (a.colors ?? []).some((c) => (b.colors ?? []).includes(c))
@@ -2265,9 +2313,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const filterAbility = msg.pair != null ? manaAbilities.find((a) => a.filter) : undefined
       const ability =
         filterAbility || (msg.color && manaAbilities.find((a) => (a.produces ?? []).includes(msg.color!))) || manaAbilities[0]
-      if (!ability) throw new RulesError('NO_MANA_ABILITY', 'No mana ability')
-      // a colour GRANTED to your lands (Chromatic Lantern): tap the land and add it, whatever the
-      // land's own abilities produce
+      // a colour GRANTED to your lands (Chromatic Lantern) or to EVERY land (Urborg / Yavimaya): tap the
+      // land and add it, whatever the land's own abilities produce. Checked BEFORE the no-ability throw:
+      // a land with no mana ability of its own (Urborg itself) must still be able to use the grant.
       if (
         msg.color &&
         defIsLand(getDef(obj.defName)) &&
@@ -2283,6 +2331,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         state.passed = []
         break
       }
+      if (!ability) throw new RulesError('NO_MANA_ABILITY', 'No mana ability')
       // asking for a colour none of its mana abilities can make is illegal (rather than silently
       // falling back to another ability's output)
       if (

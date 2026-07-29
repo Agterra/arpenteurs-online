@@ -1020,6 +1020,11 @@ const FUZZ_DECK = [
   // batch CARD57: Myriad Landscape — a sac-fetch whose search takes TWO cards at once with a
   // share-a-land-type constraint, so the fuzzer's search branch now has to satisfy a relation between
   // its picks (it takes one card when it cannot).
+  // batch CARD58: Urborg makes EVERY land (both players') a Swamp, so the fuzzer's mana taps go through
+  // the granted-colour path constantly and swampwalk turns on for the whole table; Garruk's Uprising
+  // draws whenever a big creature you control enters.
+  ...Array(2).fill('Urborg, Tomb of Yawgmoth'),
+  ...Array(2).fill("Garruk's Uprising"),
   ...Array(3).fill('Myriad Landscape'),
   ...Array(2).fill("Herald's Horn"),
   ...Array(3).fill("Urza's Saga"),

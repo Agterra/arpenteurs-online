@@ -160,7 +160,7 @@ export interface StackItem {
   /** which triggered ability this is (for kind: 'ability') */
   trigger?:
     | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-    | 'beginCombat' | 'leavesBattlefield'
+    | 'beginCombat' | 'leavesBattlefield' | 'etbWatch'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number

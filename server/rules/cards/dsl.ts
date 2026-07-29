@@ -209,7 +209,13 @@ export interface TriggeredAbility {
    * `scope: 'attachedCreature'` fires only for the creature this Aura/Equipment is
    * attached to (Skullclamp's "whenever equipped creature dies").
    */
-  watch?: { scope: 'anyCreature' | 'attachedCreature'; controllerOnly?: boolean; excludeSelf?: boolean }
+  watch?: {
+    scope: 'anyCreature' | 'attachedCreature'
+    controllerOnly?: boolean
+    excludeSelf?: boolean
+    /** "whenever a creature WITH POWER 4 OR GREATER you control enters" (Garruk's Uprising) */
+    minPower?: number
+  }
   /**
    * An "intervening if" clause (Land Tax: "if an opponent controls more lands than you"). Checked as
    * the trigger would go on the stack; a false condition simply means it does not trigger.
@@ -224,7 +230,7 @@ export interface TriggeredAbility {
 /** The trigger events the engine emits. */
 export type TriggerKind =
   | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-  | 'beginCombat' | 'leavesBattlefield'
+  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -604,6 +610,12 @@ export interface CardDefinition {
    * cycle) — like `entersTappedUnlessOtherLandsAtLeast`, but counting only lands with that SUBTYPE.
    */
   entersTappedUnlessOtherSubtypeAtLeast?: { subtype: string; count: number }
+  /**
+   * "Each land is a Swamp in addition to its other land types." (Urborg, Tomb of Yawgmoth; Yavimaya,
+   * Cradle of Growth) — a GLOBAL type-adding static (CR 305.7), so every land on the battlefield, any
+   * controller's, gains that basic land type and with it that type's intrinsic mana ability.
+   */
+  grantsLandTypeToAll?: string
   /** "This permanent doesn't untap during your untap step." (Mana Vault, the Monoliths) */
   doesNotUntap?: boolean
   /**
@@ -611,6 +623,12 @@ export interface CardDefinition {
    * the draw. Mana Vault's self-damage lives here (its pay-to-untap is an upkeep trigger).
    */
   drawStep?: TriggeredAbility
+  /**
+   * "Whenever a creature with power 4 or greater you control enters, …" (Garruk's Uprising) — an ETB
+   * WATCHER kept separate from `enters`, so one card can have BOTH its own enters trigger and a watcher
+   * for other permanents entering. `watch` is required here.
+   */
+  entersWatch?: TriggeredAbility
   /** "At the beginning of combat on your turn, …" (Helm of the Host, The Ozolith) — CR 506.1 */
   beginCombat?: TriggeredAbility
   /**

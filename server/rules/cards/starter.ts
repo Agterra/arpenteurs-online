@@ -6,6 +6,7 @@
 import type { CardDefinition } from './dsl'
 import { battlefieldCreatures } from '../state'
 import { controlledLands } from '../engine'
+import { currentPower } from '../characteristics'
 import {
   adapt,
   addCounters,
@@ -4771,5 +4772,39 @@ export const STARTER_SET: CardDefinition[] = [
         }),
       },
     ],
+  },
+  // --- Coverage batch CARD58: global land-type grants + Garruk's Uprising ---
+  {
+    name: 'Urborg, Tomb of Yawgmoth',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "Each land is a Swamp in addition to its other land types." (CR 305.7: with the type comes the
+    //  intrinsic "{T}: Add {B}", for EVERY player's lands — including Urborg itself)
+    grantsLandTypeToAll: 'Swamp',
+  },
+  {
+    name: 'Yavimaya, Cradle of Growth',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "Each land is a Forest in addition to its other land types."
+    grantsLandTypeToAll: 'Forest',
+  },
+  {
+    name: "Garruk's Uprising",
+    types: ['Enchantment'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    // "When this enchantment enters, if you control a creature with power 4 or greater, draw a card. /
+    //  Creatures you control have trample. / Whenever a creature with power 4 or greater you control
+    //  enters, draw a card."
+    enters: {
+      condition: (state, controllerId) => battlefieldCreatures(state, controllerId).some((c) => currentPower(state, c) >= 4),
+      effect: drawCards(1),
+    },
+    staticKeywords: [{ affects: { controllerOnly: true }, keywords: ['trample'] }],
+    entersWatch: {
+      watch: { scope: 'anyCreature', controllerOnly: true, excludeSelf: true, minPower: 4 },
+      effect: drawCards(1),
+    },
   },
 ]

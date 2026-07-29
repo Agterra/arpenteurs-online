@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**600 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**603 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -219,6 +219,7 @@
 - Gaea's Anthem
 - Gamble
 - Game Trail
+- Garruk's Uprising
 - Generous Gift
 - Ghostly Prison
 - Giant Growth
@@ -559,6 +560,7 @@
 - Unexpected Windfall
 - Unholy Strength
 - Unsummon
+- Urborg, Tomb of Yawgmoth
 - Urza's Saga
 - Utter End
 - Vampire Cutthroat
@@ -604,6 +606,7 @@
 - Wrenn's Resolve
 - Xander's Lounge
 - Yavimaya Coast
+- Yavimaya, Cradle of Growth
 - Young Wolf
 - Youthful Knight
 - Zagoth Triome
