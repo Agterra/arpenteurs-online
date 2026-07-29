@@ -22,7 +22,7 @@ import { getDef } from './cards/registry'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
-import { hasAnyLegalTarget } from './engine'
+import { controlledLands, hasAnyLegalTarget } from './engine'
 
 function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean {
   const obj = state.objects[id]
@@ -353,7 +353,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         a.isMana &&
         a.cost.tap &&
         // "Pay N life" mana abilities (Mana Confluence) are only usable at life ≥ N (CR 119.4)
-        (a.cost.life ?? 0) <= state.players[viewer]!.life,
+        (a.cost.life ?? 0) <= state.players[viewer]!.life &&
+        // "Activate only if you control five or more lands" (Temple of the False God)
+        (a.requiresLandsAtLeast == null || controlledLands(state, viewer) >= a.requiresLandsAtLeast),
     )
     if (!manaAbilities.length) continue
     manaSourceIds.push(obj.id)

@@ -95,6 +95,12 @@ export interface ActivatedAbility {
    * tapping-for-mana — the only way it is tapped in practice.
    */
   damageOnTapForMana?: number
+  /**
+   * "Activate only if you control five or more lands." (Temple of the False God) — a declarative
+   * condition so `redact` can hide the source when it isn't active, instead of a predicate the
+   * client can't evaluate.
+   */
+  requiresLandsAtLeast?: number
   targets?: TargetSpec[]
   effect: Effect
 }
@@ -356,6 +362,12 @@ export interface CardDefinition {
   isBackFace?: boolean
   /** replacement effect: this permanent enters the battlefield tapped (e.g. Guildgates) */
   entersTapped?: boolean
+  /**
+   * The check lands: "This land enters tapped unless you control an Island or a Mountain." Listed
+   * as land SUBTYPES; on any battlefield entry it enters tapped unless its controller already
+   * controls a land with one of them (a basic Island, a shockland with the Island type, …).
+   */
+  entersTappedUnlessControlLandType?: string[]
   /**
    * As-enters replacement CHOICE (CR 614.12) — the shocklands' "As this land enters, you may pay N
    * life. If you don't, it enters tapped." Set to the life amount. The engine opens an

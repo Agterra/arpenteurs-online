@@ -54,6 +54,10 @@ const setCounter = (obj: GameObject, name: string, value: number) => {
  * CR 402.2 exception — does this player control a permanent granting "you have no maximum hand
  * size" (Reliquary Tower, Thought Vessel)? Checked live at cleanup, so it follows the permanent.
  */
+/** How many lands a player controls (Temple of the False God's activation condition). */
+export const controlledLands = (state: RulesGameState, player: PlayerId) =>
+  zoneArr(state, player, 'battlefield').filter((id) => defIsLand(getDef(state.objects[id]!.defName))).length
+
 const hasNoMaxHandSize = (state: RulesGameState, player: PlayerId) =>
   zoneArr(state, player, 'battlefield').some((id) => getDef(state.objects[id]!.defName).noMaxHandSize)
 
@@ -1447,7 +1451,12 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
 /** Is there at least one legal target for `spec` right now? (drives CR 603.3c trigger removal + client castability) */
 export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
   if (spec.kind === 'spell')
-    return state.zones.stack.some((s) => s.kind === 'spell' && !spec.filter?.excludeTypes?.some((x) => getDef(s.defName).types.includes(x)))
+    return state.zones.stack.some(
+      (s) =>
+        s.kind === 'spell' &&
+        !spec.filter?.excludeTypes?.some((x) => getDef(s.defName).types.includes(x)) &&
+        (!spec.filter?.types || spec.filter.types.some((x) => getDef(s.defName).types.includes(x))),
+    )
   if (spec.kind === 'player')
     return spec.filter?.controller === 'opponent' ? opponentsOf(state, byController).length > 0 : alivePlayers(state).length > 0
   if (spec.kind === 'anyTarget') return alivePlayers(state).length > 0
@@ -1472,6 +1481,8 @@ function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | Playe
     if (!item) return false
     // spell-target filter (e.g. Negate "noncreature spell"): reject excluded card types
     if (spec.filter?.excludeTypes?.some((x) => getDef(item.defName).types.includes(x))) return false
+    // positive list (Swan Song: "enchantment, instant, or sorcery spell")
+    if (spec.filter?.types && !spec.filter.types.some((x) => getDef(item.defName).types.includes(x))) return false
     return true
   }
   // Object.hasOwn (not `in`) so prototype keys can't masquerade as players
@@ -1600,6 +1611,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('CHOOSE_COLOR', `Choose which colour (${produces.join('/')})`)
       // "Pay N life" as part of a mana ability's cost (Mana Confluence) — CR 119.4, checked
       // before any mutation
+      // "Activate only if you control five or more lands." (Temple of the False God)
+      if (ability.requiresLandsAtLeast != null && controlledLands(state, actor) < ability.requiresLandsAtLeast)
+        throw new RulesError('NOT_ACTIVE', `Needs ${ability.requiresLandsAtLeast} lands`)
       const manaLifeCost = ability.cost.life ?? 0
       if (manaLifeCost > state.players[actor]!.life)
         throw new RulesError('CANT_PAY', `Not enough life (need ${manaLifeCost})`)

@@ -75,6 +75,18 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
     // several permanents entering at once each get their own choice and no pending is clobbered.
     const payLife = def.entersTappedUnlessPayLife
     if (payLife) (state.entersChoiceQueue ??= []).push({ player: obj.controllerId, objId: obj.id, life: payLife })
+    // check lands: "enters tapped UNLESS you control an Island or a Mountain" — evaluated here so
+    // every entry path (played, fetched, reanimated, moved by hand) agrees
+    const need = def.entersTappedUnlessControlLandType
+    if (need?.length) {
+      const has = zoneArr(state, obj.controllerId, 'battlefield').some((id) => {
+        const other = state.objects[id]
+        if (!other || other.id === obj.id) return false
+        const d = getDef(other.defName)
+        return d.types.includes('Land') && (d.subtypes ?? []).some((st) => need.includes(st))
+      })
+      if (!has) obj.tapped = true
+    }
   }
   const holder = zone === 'battlefield' ? obj.controllerId : obj.ownerId
   const arr = zoneArr(state, holder, zone)

@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**318 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**330 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -68,6 +68,7 @@
 - Centaur Courser
 - Char
 - City of Brass
+- Clifftop Retreat
 - Cloudblazer
 - Cloudkin Seer
 - Colossal Dreadmaw
@@ -96,6 +97,8 @@
 - Divination
 - Doomed Traveler
 - Dragon Fodder
+- Dragonskull Summit
+- Drowned Catacomb
 - Earthquake
 - Elvish Lookout
 - Elvish Mystic
@@ -128,6 +131,7 @@
 - Giant Growth
 - Giant Spider
 - Gird for Battle
+- Glacial Fortress
 - Gladecover Scout
 - Glistener Elf
 - Glorious Anthem
@@ -148,10 +152,12 @@
 - Hero's Downfall
 - Heroic Intervention
 - Hill Giant
+- Hinterland Harbor
 - Holy Strength
 - Impact Tremors
 - Isamaru, Hound of Konda
 - Island
+- Isolated Chapel
 - Izzet Guildgate
 - Izzet Signet
 - Jayemdae Tome
@@ -241,6 +247,7 @@
 - Revitalize
 - Rhystic Study
 - Rogue's Passage
+- Rootbound Crag
 - Sacred Foundry
 - Savannah Lions
 - Scalding Tarn
@@ -268,8 +275,11 @@
 - Steam Vents
 - Stomping Ground
 - Strangleroot Geist
+- Sulfur Falls
 - Sulfurous Springs
+- Sunpetal Grove
 - Swamp
+- Swan Song
 - Swiftfoot Boots
 - Sword of Vengeance
 - Swords to Plowshares
@@ -284,6 +294,7 @@
 - Temple of Mystery
 - Temple of Plenty
 - Temple of Silence
+- Temple of the False God
 - Temple of Triumph
 - Terminate
 - Terramorphic Expanse
@@ -321,6 +332,7 @@
 - Windswept Heath
 - Woe Strider
 - Wooded Foothills
+- Woodland Cemetery
 - Worn Powerstone
 - Wrath of God
 - Yavimaya Coast

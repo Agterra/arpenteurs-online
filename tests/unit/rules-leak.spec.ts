@@ -567,6 +567,10 @@ const FUZZ_DECK = [
   // (including each draw step), exercising the draw-trigger → optionalPay chain constantly.
   ...Array(2).fill('Toxic Deluge'),
   ...Array(2).fill('Smothering Tithe'),
+  // batch CARD19: a check land (its enters-tapped condition is evaluated on every entry path) and
+  // Swan Song, whose counter hands the countered player a Bird token.
+  ...Array(3).fill('Dragonskull Summit'),
+  ...Array(2).fill('Swan Song'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

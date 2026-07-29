@@ -42,6 +42,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   cancel: 'spell',
   negate: 'spell',
   "an offer you can't refuse": 'spell',
+  'swan song': 'spell', // enchantment / instant / sorcery only (the server enforces the filter)
   vindicate: 'permanent',
   'beast within': 'permanent',
   'generous gift': 'permanent',

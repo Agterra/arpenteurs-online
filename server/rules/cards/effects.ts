@@ -664,10 +664,10 @@ export const createTreasures = (count: number, who: 'you' | 'targets' = 'you'): 
 }
 
 /**
- * Counter each target spell, then its CONTROLLER creates `count` Treasure tokens (An Offer You
- * Can't Refuse — the compensation goes to the countered player, not to you).
+ * Counter each target spell, then its CONTROLLER gets `count` tokens of `spec` — the compensation
+ * goes to the countered player, not to you (An Offer You Can't Refuse's Treasures, Swan Song's Bird).
  */
-export const counterTargetGrantingTreasures = (count: number): Effect => (ctx) => {
+export const counterTargetGrantingToken = (spec: TokenSpec, count: number): Effect => (ctx) => {
   for (const t of ctx.targets) {
     const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
     if (!item) continue // already resolved / countered
@@ -675,9 +675,12 @@ export const counterTargetGrantingTreasures = (count: number): Effect => (ctx) =
     logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name}.`)
     if (item.flashback) moveTo(ctx.state, item.id, 'exile')
     else moveToGraveyard(ctx.state, item.id)
-    spawnTokens(ctx.state, victim, TREASURE, count)
+    spawnTokens(ctx.state, victim, spec, count)
   }
 }
+
+/** An Offer You Can't Refuse: counter, then its controller creates `count` Treasures. */
+export const counterTargetGrantingTreasures = (count: number): Effect => counterTargetGrantingToken(TREASURE, count)
 
 /** Mint `count` real (mortal) tokens onto `ownerId`'s battlefield. */
 function spawnTokens(state: EffectContext['state'], ownerId: PlayerId, spec: TokenSpec, count: number) {

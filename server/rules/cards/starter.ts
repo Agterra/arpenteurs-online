@@ -13,6 +13,7 @@ import {
   addMana,
   monstrosity,
   counterTarget,
+  counterTargetGrantingToken,
   counterTargetGrantingTreasures,
   createToken,
   createTreasures,
@@ -146,6 +147,17 @@ const painLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => (
       effect: addMana(a),
     },
   ],
+})
+
+/**
+ * A check land (M10 / Innistrad cycles): "This land enters tapped unless you control an [x] or a
+ * [y]. {T}: Add {a} or {b}." The subtypes checked are the two basic land types of its colours.
+ */
+const checkLand = (name: string, a: ManaColor, b: ManaColor, need: [string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTappedUnlessControlLandType: need,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
 })
 
 /** A scry-land: enters tapped, "When ~ enters, scry 1.", "{T}: Add {a} or {b}." */
@@ -2417,5 +2429,37 @@ export const STARTER_SET: CardDefinition[] = [
     // "Whenever an opponent draws a card, that player may pay {2}. If they don't, you create a
     //  Treasure token."
     drawnCard: { watch: { opponentsOnly: true }, unlessPay: '{2}', effect: createTreasures(1) },
+  },
+
+  // --- Coverage batch CARD19: the check lands + a conditional mana land + Swan Song ---
+  checkLand('Sulfur Falls', 'U', 'R', ['Island', 'Mountain']),
+  checkLand('Clifftop Retreat', 'R', 'W', ['Mountain', 'Plains']),
+  checkLand('Dragonskull Summit', 'B', 'R', ['Swamp', 'Mountain']),
+  checkLand('Isolated Chapel', 'W', 'B', ['Plains', 'Swamp']),
+  checkLand('Glacial Fortress', 'W', 'U', ['Plains', 'Island']),
+  checkLand('Hinterland Harbor', 'G', 'U', ['Forest', 'Island']),
+  checkLand('Drowned Catacomb', 'U', 'B', ['Island', 'Swamp']),
+  checkLand('Woodland Cemetery', 'B', 'G', ['Swamp', 'Forest']),
+  checkLand('Rootbound Crag', 'R', 'G', ['Mountain', 'Forest']),
+  checkLand('Sunpetal Grove', 'G', 'W', ['Forest', 'Plains']),
+  {
+    name: 'Temple of the False God',
+    types: ['Land'],
+    // "{T}: Add {C}{C}. Activate only if you control five or more lands."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], requiresLandsAtLeast: 5, effect: addMana('C', 'C') },
+    ],
+  },
+  {
+    name: 'Swan Song',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Counter target enchantment, instant, or sorcery spell. Its controller creates a 2/2 blue
+    //  Bird creature token with flying."
+    spell: {
+      targets: [{ kind: 'spell', count: 1, filter: { types: ['Enchantment', 'Instant', 'Sorcery'] } }],
+      effect: counterTargetGrantingToken({ name: 'Bird', power: 2, toughness: 2, subtypes: ['Bird'], keywords: ['flying'] }, 1),
+    },
   },
 ]
