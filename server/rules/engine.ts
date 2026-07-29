@@ -1122,7 +1122,7 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
  * exists, CR 603.3c). The dies trigger keeps its own bespoke pusher in state.ts
  * (it must snapshot watchers BEFORE the zone change).
  */
-function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, kind: NonNullable<StackItem['trigger']>) {
+export function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, kind: NonNullable<StackItem['trigger']>) {
   const obj = state.objects[sourceId]
   if (!obj) return
   const def = getDef(obj.defName)

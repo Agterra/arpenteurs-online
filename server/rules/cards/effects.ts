@@ -873,6 +873,34 @@ export const pumpSelf = (power: number, toughness: number): Effect => (ctx) => {
   logLine(ctx.state, `${getDef(ctx.state.objects[ctx.sourceId]!.defName).name} gets +${power}/+${toughness} until end of turn.`)
 }
 
+/**
+ * Add one mana of `color` for each land with `subtype` the controller controls (Cabal Coffers'
+ * "{B} for each Swamp you control"). A count-based mana ability, so the engine runs this effect
+ * rather than adding a fixed/chosen mana; redact's pre-tap potential pool counts it as one (it
+ * re-checks the real pool on tap, and a source that produces MORE than predicted never overpays).
+ */
+export const addManaPerLandSubtype = (color: ManaColor, subtype: string): Effect => (ctx) => {
+  const n = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.filter((id) => {
+    const def = getDef(ctx.state.objects[id]!.defName)
+    return def.types.includes('Land') && (def.subtypes ?? []).includes(subtype)
+  }).length
+  ctx.state.players[ctx.controllerId]!.manaPool[color] += n
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} adds ${n} {${color}} (one per ${subtype}).`)
+}
+
+/**
+ * Blood Artist: the target player loses N life and the ability's controller gains N (a drain, not
+ * damage — no prevention, no lifelink interaction).
+ */
+export const drainTargetPlayer = (n: number): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    ctx.state.players[t]!.life -= n
+    ctx.state.players[ctx.controllerId]!.life += n
+    logLine(ctx.state, `${ctx.state.players[t]!.name} loses ${n} life; ${ctx.state.players[ctx.controllerId]!.name} gains ${n}.`)
+  }
+}
+
 /** Add mana to the controller's pool (mana abilities — no stack). */
 export const addMana = (...colors: ManaColor[]): Effect => (ctx) => {
   for (const c of colors) ctx.state.players[ctx.controllerId]!.manaPool[c]++

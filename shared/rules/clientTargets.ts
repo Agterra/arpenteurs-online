@@ -60,6 +60,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'feed the swarm': 'permanent', // creature or enchantment an opponent controls
   'chaos warp': 'permanent', // any permanent — its owner shuffles it away
   'cyclonic rift': 'permanent', // nonland permanent you don't control
+  'stroke of midnight': 'permanent', // nonland permanent; its controller gets a 1/1 Human
   vandalblast: 'permanent', // artifact you don't control
   'diabolic edict': 'player',
   'sign in blood': 'player',

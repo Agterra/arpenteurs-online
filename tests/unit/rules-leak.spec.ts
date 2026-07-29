@@ -593,6 +593,10 @@ const FUZZ_DECK = [
   // history-aware assertion checks; plus Lotus Petal (a sac-self mana source).
   ...Array(3).fill('Vampiric Tutor'),
   ...Array(2).fill('Lotus Petal'),
+  // batch CARD23: Blood Artist — a TARGETED dies trigger, so every fuzz death now opens a trigger
+  // target choice (the branch added for Bojuka Bog), and Prismatic Vista (life + sac + fetch).
+  ...Array(2).fill('Blood Artist'),
+  ...Array(2).fill('Prismatic Vista'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

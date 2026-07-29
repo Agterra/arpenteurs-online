@@ -11,6 +11,7 @@ import {
   addCountersToEachControlled,
   addLoyaltyToOtherPlaneswalkers,
   addMana,
+  addManaPerLandSubtype,
   monstrosity,
   counterTarget,
   chaosWarpTarget,
@@ -29,6 +30,7 @@ import {
   destroyPermanent,
   destroyPermanentGrantToken,
   destroyTarget,
+  drainTargetPlayer,
   drawCards,
   drawCardsX,
   earthquakeX,
@@ -202,6 +204,22 @@ const battleLand = (name: string, a: ManaColor, b: ManaColor, subtypes: [string,
   types: ['Land'],
   subtypes,
   entersTappedUnlessBasicsAtLeast: 2,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/** A Battlebond land: "enters tapped unless you have two or more opponents", dual-colour. */
+const bondLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTappedUnlessOpponentsAtLeast: 2,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/** A slow land (Innistrad: Midnight Hunt / Crimson Vow): "unless you control two or more OTHER lands". */
+const slowLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTappedUnlessOtherLandsAtLeast: 2,
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
 })
 
@@ -2639,5 +2657,82 @@ export const STARTER_SET: CardDefinition[] = [
         effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1 }),
       },
     ],
+  },
+
+  // --- Coverage batch CARD23: the Battlebond + slow land cycles, and four singles ---
+  bondLand('Morphic Pool', 'U', 'B'),
+  bondLand('Rejuvenating Springs', 'G', 'U'),
+  bondLand('Training Center', 'U', 'R'),
+  bondLand('Luxury Suite', 'B', 'R'),
+  bondLand('Sea of Clouds', 'W', 'U'),
+  bondLand('Vault of Champions', 'W', 'B'),
+  bondLand('Spectator Seating', 'R', 'W'),
+  bondLand('Undergrowth Stadium', 'B', 'G'),
+  bondLand('Spire Garden', 'R', 'G'),
+  bondLand('Bountiful Promenade', 'G', 'W'),
+  slowLand('Dreamroot Cascade', 'G', 'U'),
+  slowLand('Stormcarved Coast', 'U', 'R'),
+  slowLand('Rockfall Vale', 'R', 'G'),
+  slowLand('Shipwreck Marsh', 'U', 'B'),
+  slowLand('Deserted Beach', 'W', 'U'),
+  slowLand('Haunted Ridge', 'B', 'R'),
+  slowLand('Sundown Pass', 'R', 'W'),
+  slowLand('Shattered Sanctum', 'W', 'B'),
+  slowLand('Overgrown Farmland', 'G', 'W'),
+  slowLand('Deathcap Glade', 'B', 'G'),
+  {
+    name: 'Prismatic Vista',
+    types: ['Land'],
+    // "{T}, Pay 1 life, Sacrifice this land: Search your library for a basic land card, put it onto
+    //  the battlefield, then shuffle." (untapped — unlike the tapped fetches)
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true, life: 1, sacrificeSelf: true },
+        effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', count: 1 }),
+      },
+    ],
+  },
+  {
+    name: 'Cabal Coffers',
+    types: ['Land'],
+    // "{2}, {T}: Add {B} for each Swamp you control." (a count-based amount, so the engine runs the
+    //  effect rather than a fixed/chosen output)
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true },
+        isMana: true,
+        produces: ['B'],
+        effect: addManaPerLandSubtype('B', 'Swamp'),
+      },
+    ],
+  },
+  {
+    name: 'Blood Artist',
+    types: ['Creature'],
+    subtypes: ['Vampire'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    power: 0,
+    toughness: 1,
+    // "Whenever this creature or another creature dies, target player loses 1 life and you gain 1
+    //  life." (this OR another → a watcher that does not exclude itself)
+    dies: {
+      watch: { scope: 'anyCreature' },
+      targets: [{ kind: 'player', count: 1 }],
+      effect: drainTargetPlayer(1),
+    },
+  },
+  {
+    name: 'Stroke of Midnight',
+    types: ['Instant'],
+    manaCost: '{2}{W}',
+    colors: ['W'],
+    // "Destroy target nonland permanent. Its controller creates a 1/1 white Human creature token."
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { excludeTypes: ['Land'] } }],
+      effect: destroyPermanentGrantToken({ name: 'Human', power: 1, toughness: 1, subtypes: ['Human'] }),
+    },
   },
 ]

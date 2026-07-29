@@ -374,6 +374,14 @@ export interface CardDefinition {
    */
   entersTappedUnlessBasicsAtLeast?: number
   /**
+   * The Battlebond lands: "This land enters tapped unless you have two or more opponents." In a
+   * duel they always enter tapped; in 3–4 player Commander they don't. Opponents = players still in
+   * the game other than the controller.
+   */
+  entersTappedUnlessOpponentsAtLeast?: number
+  /** The slow lands: "This land enters tapped unless you control two or more OTHER lands." */
+  entersTappedUnlessOtherLandsAtLeast?: number
+  /**
    * "If you control a commander, you may cast this spell without paying its mana cost."
    * (the free-spell cycle: Fierce Guardianship, Deadly Rollick, …). Cast via `r.cast.free`; the
    * engine verifies a commander permanent is on the caster's battlefield and skips the mana entirely.

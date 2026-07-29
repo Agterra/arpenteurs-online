@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**356 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**380 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -46,6 +46,7 @@
 - Black Knight
 - Blasphemous Act
 - Blaze
+- Blood Artist
 - Blood Crypt
 - Bloodbraid Elf
 - Bloodstained Mire
@@ -58,10 +59,12 @@
 - Borderland Marauder
 - Boros Guildgate
 - Boros Signet
+- Bountiful Promenade
 - Brainstorm
 - Breeding Pool
 - Brushland
 - Burst Lightning
+- Cabal Coffers
 - Cancel
 - Canopy Vista
 - Capsize
@@ -91,8 +94,10 @@
 - Darksteel Myr
 - Day of Judgment
 - Deadly Rollick
+- Deathcap Glade
 - Delver of Secrets
 - Demonic Tutor
+- Deserted Beach
 - Diabolic Edict
 - Diabolic Tutor
 - Dimir Guildgate
@@ -103,6 +108,7 @@
 - Doomed Traveler
 - Dragon Fodder
 - Dragonskull Summit
+- Dreamroot Cascade
 - Drowned Catacomb
 - Earthquake
 - Elvish Lookout
@@ -156,6 +162,7 @@
 - Gruul Signet
 - Hallowed Fountain
 - Harmonize
+- Haunted Ridge
 - Hero's Downfall
 - Heroic Intervention
 - Hill Giant
@@ -187,6 +194,7 @@
 - Lonely Sandbar
 - Lotus Petal
 - Loxodon Warhammer
+- Luxury Suite
 - Mahamoti Djinn
 - Man-o'-War
 - Mana Confluence
@@ -204,6 +212,7 @@
 - Mind Stone
 - Misty Rainforest
 - Monastery Swiftspear
+- Morphic Pool
 - Mortify
 - Mountain
 - Mulldrifter
@@ -219,6 +228,7 @@
 - Nyxborn Rollicker
 - Orzhov Guildgate
 - Orzhov Signet
+- Overgrown Farmland
 - Overgrown Tomb
 - Ovinize
 - Pacifism
@@ -236,6 +246,7 @@
 - Prairie Stream
 - Prey Upon
 - Prickly Boggart
+- Prismatic Vista
 - Prodigal Sorcerer
 - Putrefy
 - Putrid Goblin
@@ -253,21 +264,26 @@
 - Ravenous Rats
 - Reanimate
 - Regrowth
+- Rejuvenating Springs
 - Reliquary Tower
 - Revitalize
 - Rhystic Study
+- Rockfall Vale
 - Rogue's Passage
 - Rootbound Crag
 - Sacred Foundry
 - Sakura-Tribe Elder
 - Savannah Lions
 - Scalding Tarn
+- Sea of Clouds
 - Search for Tomorrow
 - Secluded Steppe
 - Selesnya Guildgate
 - Selesnya Signet
 - Serra Angel
 - Shardless Agent
+- Shattered Sanctum
+- Shipwreck Marsh
 - Shivan Dragon
 - Shivan Reef
 - Shock
@@ -283,12 +299,17 @@
 - Soltari Foot Soldier
 - Soul Warden
 - Soul's Attendant
+- Spectator Seating
 - Sphinx's Revelation
+- Spire Garden
 - Steam Vents
 - Stomping Ground
+- Stormcarved Coast
 - Strangleroot Geist
+- Stroke of Midnight
 - Sulfur Falls
 - Sulfurous Springs
+- Sundown Pass
 - Sunken Hollow
 - Sunpetal Grove
 - Swamp
@@ -330,9 +351,11 @@
 - Tome Scour
 - Torsten Von Ursus
 - Toxic Deluge
+- Training Center
 - Tranquil Thicket
 - Tukatongue Thallid
 - Underground River
+- Undergrowth Stadium
 - Unholy Strength
 - Unsummon
 - Utter End
@@ -340,6 +363,7 @@
 - Vampire Nighthawk
 - Vampiric Tutor
 - Vandalblast
+- Vault of Champions
 - Verdant Catacombs
 - Vicious Conquistador
 - Vindicate
