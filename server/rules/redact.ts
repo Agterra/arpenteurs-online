@@ -252,6 +252,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayAffordable: false,
     needsTypeChoice: false,
     typeChoiceName: '',
+    needsMayDraw: false,
+    mayDrawMax: 0,
+    mayDrawSourceName: '',
     needsRevealTop: false,
     revealTopCardId: null,
     revealTopSourceName: '',
@@ -399,6 +402,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPaySourceName: getDef(pop.defName).name,
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
       }
+    }
+    if (state.pending.kind === 'mayDraw' && state.pendingMayDraw) {
+      const pmd = state.pendingMayDraw
+      return { ...none, needsMayDraw: true, mayDrawMax: pmd.max, mayDrawSourceName: pmd.sourceName }
     }
     if (state.pending.kind === 'revealTop' && state.pendingRevealTop) {
       // an actor-only peek at ONE card (the sanctioned window of invariant #2, like a scry)

@@ -288,6 +288,11 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'mayDraw' && state.pendingMayDraw) {
+      // "…may draw up to two cards" (Arcane Denial): a random legal count, 0 included
+      applyRulesAction(state, p, { type: 'r.mayDraw', count: Math.floor(rnd() * (state.pendingMayDraw.max + 1)) })
+      return true
+    }
     if (state.pending.kind === 'revealTop') {
       // "you may reveal it and put it into your hand" (Herald's Horn): take it about half the time —
       // library → hand is hidden → hidden, but the card is REVEALED on the way
@@ -1023,6 +1028,9 @@ const FUZZ_DECK = [
   // batch CARD58: Urborg makes EVERY land (both players') a Swamp, so the fuzzer's mana taps go through
   // the granted-colour path constantly and swampwalk turns on for the whole table; Garruk's Uprising
   // draws whenever a big creature you control enters.
+  // batch CARD59: Arcane Denial — a counter whose compensation lands at the NEXT turn's upkeep, so the
+  // fuzzer answers a may-draw decision on somebody else's turn (library→hand for a non-active player).
+  ...Array(2).fill('Arcane Denial'),
   ...Array(2).fill('Urborg, Tomb of Yawgmoth'),
   ...Array(2).fill("Garruk's Uprising"),
   ...Array(3).fill('Myriad Landscape'),

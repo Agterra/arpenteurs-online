@@ -1316,7 +1316,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -2070,6 +2070,22 @@ onBeforeUnmount(() => {
               :disabled="modalPick.selected.length < modalMin"
               @click="confirmModes"
             >Confirm</UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- "…may draw up to two cards" (Arcane Denial) -->
+      <div v-if="legal?.needsMayDraw" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex flex-col items-center gap-2 rounded-lg border border-primary bg-default p-4 shadow-xl">
+          <p class="text-sm font-semibold">{{ legal.mayDrawSourceName }} — you may draw up to {{ legal.mayDrawMax }} cards</p>
+          <div class="flex gap-2">
+            <UButton
+              v-for="n in (legal.mayDrawMax + 1)"
+              :key="n"
+              size="xs"
+              :variant="n - 1 === legal.mayDrawMax ? 'solid' : 'soft'"
+              @click="send({ type: 'r.mayDraw', count: n - 1 })"
+            >{{ n - 1 === 0 ? 'None' : `Draw ${n - 1}` }}</UButton>
           </div>
         </div>
       </div>

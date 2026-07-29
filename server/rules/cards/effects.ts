@@ -1160,16 +1160,41 @@ export const eachOfYouAndTargetDraws = (n: number): Effect => (ctx) => {
  */
 export const scheduleDelayedTrigger = (
   key: string,
-  opts: { at: 'nextUpkeep' | 'nextMainPhase'; captureX?: (ctx: EffectContext) => number } = { at: 'nextUpkeep' },
+  opts: {
+    at: 'nextUpkeep' | 'nextMainPhase'
+    captureX?: (ctx: EffectContext) => number
+    /** "at the beginning of the NEXT TURN's upkeep" — whoever is active then (Arcane Denial) */
+    anyPlayersTurn?: boolean
+    /** schedule it for each TARGETED player instead of the controller (Arcane Denial's victim) */
+    forTargets?: boolean
+  } = { at: 'nextUpkeep' },
 ): Effect => (ctx) => {
   const src = ctx.state.objects[ctx.sourceId]
   const defName = src ? src.defName : ''
   if (!defName) return
+  if (opts.forTargets) {
+    // the countered spell's CONTROLLER gets the delayed draw, not the caster
+    for (const t of ctx.targets) {
+      const item = ctx.state.zones.stack.find((x) => x.id === t)
+      const who = item ? item.controllerId : isPlayerId(ctx, t) ? (t as PlayerId) : null
+      if (!who) continue
+      scheduleDelayed(ctx.state, {
+        at: opts.at,
+        player: who,
+        defName,
+        key,
+        ...(opts.anyPlayersTurn ? { anyPlayersTurn: true } : {}),
+      })
+      logLine(ctx.state, `${getDef(defName).name} sets up a delayed trigger for ${ctx.state.players[who]!.name}.`)
+    }
+    return
+  }
   scheduleDelayed(ctx.state, {
     at: opts.at,
     player: ctx.controllerId,
     defName,
     key,
+    ...(opts.anyPlayersTurn ? { anyPlayersTurn: true } : {}),
     ...(opts.captureX ? { x: opts.captureX(ctx) } : {}),
   })
   logLine(ctx.state, `${getDef(defName).name} sets up a delayed trigger.`)
@@ -1730,6 +1755,16 @@ export const lookTopTakeIfChosenType = (): Effect => (ctx) => {
     cardId: top,
     sourceName: getDef(src!.defName).name,
   }
+}
+
+/**
+ * "…may draw up to N cards" (Arcane Denial's compensation) — a 0..N choice for its controller. `label`
+ * is passed explicitly because this runs from a DELAYED trigger, which has no source object to name
+ * (the card is long gone from the stack by then).
+ */
+export const mayDrawUpTo = (max: number, label: string): Effect => (ctx) => {
+  ctx.state.pending = { kind: 'mayDraw', player: ctx.controllerId }
+  ctx.state.pendingMayDraw = { player: ctx.controllerId, max, sourceName: label }
 }
 
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */

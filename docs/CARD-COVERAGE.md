@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**603 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**604 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -30,6 +30,7 @@
 - Anguished Unmaking
 - Animate Dead
 - Anointed Procession
+- Arcane Denial
 - Arcane Sanctum
 - Arcane Signet
 - Archmage Emeritus

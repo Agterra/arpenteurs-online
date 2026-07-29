@@ -99,6 +99,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   }),
   // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
   // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
+  // "…may draw up to two cards" (Arcane Denial)
+  z.object({ type: z.literal('r.mayDraw'), count: z.number().int().min(0).max(4) }),
   // "you may reveal it and put it into your hand" (Herald's Horn)
   z.object({ type: z.literal('r.revealTop'), take: z.boolean() }),
   z.object({ type: z.literal('r.chooseType'), creatureType: z.string().trim().min(2).max(30).regex(/^[A-Za-z][A-Za-z' -]*$/) }),

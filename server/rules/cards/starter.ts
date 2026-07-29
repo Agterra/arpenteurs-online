@@ -86,6 +86,7 @@ import {
   loseLifePerBurdenCounter,
   loseTheGame,
   makeUnblockable,
+  mayDrawUpTo,
   mill,
   millSelf,
   monstrosity,
@@ -4805,6 +4806,29 @@ export const STARTER_SET: CardDefinition[] = [
     entersWatch: {
       watch: { scope: 'anyCreature', controllerOnly: true, excludeSelf: true, minPower: 4 },
       effect: drawCards(1),
+    },
+  },
+  // --- Coverage batch CARD59: Arcane Denial (delayed draws at the NEXT turn's upkeep) ---
+  {
+    name: 'Arcane Denial',
+    types: ['Instant'],
+    manaCost: '{1}{U}',
+    colors: ['U'],
+    // "Counter target spell. Its controller may draw up to two cards at the beginning of the next
+    //  turn's upkeep. / You draw a card at the beginning of the next turn's upkeep."
+    spell: {
+      targets: [{ kind: 'spell', count: 1 }],
+      // the victim's delayed draw is scheduled FIRST: `forTargets` reads the countered spell's
+      // controller off the stack, and counterTarget removes that stack item
+      effect: sequence(
+        scheduleDelayedTrigger('victimDraws', { at: 'nextUpkeep', anyPlayersTurn: true, forTargets: true }),
+        scheduleDelayedTrigger('casterDraws', { at: 'nextUpkeep', anyPlayersTurn: true }),
+        counterTarget(),
+      ),
+    },
+    delayed: {
+      victimDraws: { at: 'nextUpkeep', effect: mayDrawUpTo(2, 'Arcane Denial') },
+      casterDraws: { at: 'nextUpkeep', effect: drawCards(1) },
     },
   },
 ]

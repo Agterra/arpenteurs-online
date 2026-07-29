@@ -236,7 +236,14 @@ function expireImpulseWindows(state: RulesGameState) {
  */
 export function scheduleDelayed(
   state: RulesGameState,
-  entry: { at: 'nextUpkeep' | 'nextMainPhase'; player: PlayerId; defName: string; key: string; x?: number },
+  entry: {
+    at: 'nextUpkeep' | 'nextMainPhase'
+    player: PlayerId
+    defName: string
+    key: string
+    x?: number
+    anyPlayersTurn?: boolean
+  },
 ) {
   ;(state.delayedTriggers ??= []).push({ ...entry, createdTurn: state.turnNumber })
 }
@@ -248,7 +255,12 @@ export function scheduleDelayed(
  */
 function fireDelayedTriggers(state: RulesGameState, at: 'nextUpkeep' | 'nextMainPhase'): boolean {
   const due = (state.delayedTriggers ?? []).filter(
-    (d) => d.at === at && d.player === state.activePlayer && d.createdTurn < state.turnNumber,
+    (d) =>
+      d.at === at &&
+      d.createdTurn < state.turnNumber &&
+      // "at the beginning of the next turn's upkeep" fires whoever is active (Arcane Denial); the
+      // ordinary wording waits for that player's OWN next turn
+      (d.anyPlayersTurn || d.player === state.activePlayer),
   )
   if (!due.length) return false
   state.delayedTriggers = (state.delayedTriggers ?? []).filter((d) => !due.includes(d))
@@ -3648,6 +3660,24 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       if (!ids.length) logLine(state, `${name(state, actor)} declines.`)
       if (!state.pending) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.mayDraw': {
+      if (state.pending?.kind !== 'mayDraw' || state.pending.player !== actor || !state.pendingMayDraw)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your draw')
+      const pmd = state.pendingMayDraw
+      if (msg.count > pmd.max) throw new RulesError('BAD_CHOICE', `Draw at most ${pmd.max}`)
+      state.pending = null
+      state.pendingMayDraw = null
+      for (let i = 0; i < msg.count; i++) drawOne(state, actor)
+      logLine(
+        state,
+        msg.count
+          ? `${name(state, actor)} draws ${msg.count} card${msg.count === 1 ? '' : 's'} (${pmd.sourceName}).`
+          : `${name(state, actor)} declines to draw (${pmd.sourceName}).`,
+      )
+      if (!state.pending && state.status === 'active') grantPriority(state, state.activePlayer)
       break
     }
 

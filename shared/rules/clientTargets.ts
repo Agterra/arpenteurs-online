@@ -43,6 +43,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'titanic growth': 'creature',
   ovinize: 'creature',
   damn: 'creature', // overloaded, it destroys each creature (no target — the Overload button)
+  'arcane denial': 'spell', // its controller may draw two at the next turn's upkeep; you draw one
   counterspell: 'spell',
   'mana drain': 'spell',
   'pact of negation': 'spell',

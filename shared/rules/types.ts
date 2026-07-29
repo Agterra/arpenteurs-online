@@ -391,6 +391,8 @@ export interface RulesGameState {
    * answer (r.revealTop). The id is published to that player alone, like a scry.
    */
   pendingRevealTop: { player: PlayerId; cardId: ObjId; sourceName: string } | null
+  /** "…may draw up to two cards" (Arcane Denial): a count between 0 and `max` (r.mayDraw) */
+  pendingMayDraw: { player: PlayerId; max: number; sourceName: string } | null
   pendingDiscard: {
     player: PlayerId
     count: number
@@ -465,6 +467,12 @@ export interface RulesGameState {
     key: string
     x?: number
     createdTurn: number
+    /**
+     * "at the beginning of the NEXT TURN's upkeep" (Arcane Denial) — fires at the first such step after
+     * it was created, whoever is active, rather than waiting for `player`'s own next turn. `player`
+     * still says who the effect is for.
+     */
+    anyPlayersTurn?: boolean
   }[]
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
   entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number; chooseType?: boolean }[]
@@ -643,6 +651,10 @@ export interface LegalActions {
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
   needsBlockers: boolean
+  /** a "you may draw up to N cards" decision is waiting (r.mayDraw) */
+  needsMayDraw: boolean
+  mayDrawMax: number
+  mayDrawSourceName: string
   /** a "look at the top card, you may take it" decision is waiting (r.revealTop) */
   needsRevealTop: boolean
   revealTopCardId: ObjId | null
