@@ -426,6 +426,10 @@ export const searchLibrary = (opts: {
   count?: number
   /** Fabled Passage: untap the fetched land if its controller then controls ≥ N lands */
   untapIfLandsAtLeast?: number
+  /** Myriad Landscape: the picks must SHARE a land type */
+  shareSubtype?: boolean
+  /** Krosan Verge: the picks must cover both of these subtypes ("a Forest card and a Plains card") */
+  pairSubtypes?: [string, string]
   /** Split destination — e.g. Cultivate: first pick → battlefield tapped, rest → hand. */
   split?: {
     first: { dest: 'battlefield' | 'hand'; tapped: boolean }
@@ -461,6 +465,8 @@ export const searchLibrary = (opts: {
     count: opts.count ?? 1,
     ...(opts.untapIfLandsAtLeast != null ? { untapIfLandsAtLeast: opts.untapIfLandsAtLeast } : {}),
     ...(opts.reveal ? { reveal: true } : {}),
+    ...(opts.shareSubtype ? { shareSubtype: true } : {}),
+    ...(opts.pairSubtypes ? { pairSubtypes: opts.pairSubtypes } : {}),
     ...(opts.split ? { split: opts.split } : {}),
   }
   logLine(ctx.state, `${who} searches their library.`)

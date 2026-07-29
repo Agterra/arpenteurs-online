@@ -259,7 +259,11 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     if (state.pending.kind === 'search' && state.pendingSearch) {
       // pick a random legal subset (exercises tutor/ramp + shuffle + re-mint)
       const ps = state.pendingSearch
-      const cardIds = ps.matchIds.filter(() => rnd() < 0.5).slice(0, ps.count)
+      let cardIds = ps.matchIds.filter(() => rnd() < 0.5).slice(0, ps.count)
+      // Myriad Landscape / Krosan Verge constrain the RELATION between two picks ("that share a land
+      // type" / "a Forest card and a Plains card"). Rather than solve it, take a single card whenever
+      // the constraint could be violated — every such search is "up to N", so one pick is always legal.
+      if ((ps.shareSubtype || ps.pairSubtypes) && cardIds.length > 1) cardIds = cardIds.slice(0, 1)
       applyRulesAction(state, p, { type: 'r.search', cardIds })
       return true
     }
@@ -1013,6 +1017,10 @@ const FUZZ_DECK = [
   // batch CARD56: Herald's Horn — its upkeep look opens the reveal-top decision every turn cycle (an
   // actor-only peek at ONE library card, so the history-aware assertion watches that id), and its
   // type-gated discount changes what the fuzzer can afford.
+  // batch CARD57: Myriad Landscape — a sac-fetch whose search takes TWO cards at once with a
+  // share-a-land-type constraint, so the fuzzer's search branch now has to satisfy a relation between
+  // its picks (it takes one card when it cannot).
+  ...Array(3).fill('Myriad Landscape'),
   ...Array(2).fill("Herald's Horn"),
   ...Array(3).fill("Urza's Saga"),
   ...Array(2).fill('The One Ring'),

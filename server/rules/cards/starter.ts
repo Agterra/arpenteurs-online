@@ -4719,4 +4719,57 @@ export const STARTER_SET: CardDefinition[] = [
       },
     ],
   },
+  // --- Coverage batch CARD57: the two-card sac-fetch lands ---
+  {
+    name: 'Myriad Landscape',
+    types: ['Land'],
+    entersTapped: true,
+    // "This land enters tapped. / {T}: Add {C}. / {2}, {T}, Sacrifice this land: Search your library for
+    //  up to two basic land cards that share a land type, put them onto the battlefield tapped, then
+    //  shuffle."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true, sacrificeSelf: true },
+        effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 2, shareSubtype: true }),
+      },
+    ],
+  },
+  {
+    name: 'Blighted Woodland',
+    types: ['Land'],
+    // "{T}: Add {C}. / {3}{G}, {T}, Sacrifice this land: Search your library for up to two basic land
+    //  cards, put them onto the battlefield tapped, then shuffle." (no share constraint)
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{3}{G}', tap: true, sacrificeSelf: true },
+        effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 2 }),
+      },
+    ],
+  },
+  {
+    name: 'Krosan Verge',
+    types: ['Land'],
+    entersTapped: true,
+    // "This land enters tapped. / {T}: Add {C}. / {2}, {T}, Sacrifice this land: Search your library for a
+    //  Forest card and a Plains card, put them onto the battlefield tapped, then shuffle." (the picks must
+    //  cover BOTH subtypes — basic or not)
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true, sacrificeSelf: true },
+        effect: searchLibrary({
+          filter: { landSubtypes: ['Forest', 'Plains'] },
+          dest: 'battlefield',
+          tapped: true,
+          count: 2,
+          pairSubtypes: ['Forest', 'Plains'],
+        }),
+      },
+    ],
+  },
 ]

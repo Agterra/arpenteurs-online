@@ -3144,6 +3144,19 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const chosen = [...new Set(msg.cardIds)]
       if (chosen.length > ps.count) throw new RulesError('BAD_SEARCH', `Choose at most ${ps.count}`)
       for (const id of chosen) if (!ps.matchIds.includes(id)) throw new RulesError('BAD_SEARCH', 'Not among the matches')
+      // "…that share a land type" (Myriad Landscape): two picks must have a subtype in common
+      if (ps.shareSubtype && chosen.length === 2) {
+        const [a, b] = chosen.map((id) => getDef(state.objects[id]!.defName).subtypes ?? [])
+        if (!a!.some((st) => b!.includes(st)))
+          throw new RulesError('BAD_SEARCH', 'Those cards share no land type')
+      }
+      // "a Forest card and a Plains card" (Krosan Verge): the picks must cover both subtypes
+      if (ps.pairSubtypes && chosen.length > 1) {
+        const have = chosen.map((id) => getDef(state.objects[id]!.defName).subtypes ?? [])
+        for (const want of ps.pairSubtypes)
+          if (!have.some((sts) => sts.includes(want)))
+            throw new RulesError('BAD_SEARCH', `Choose a ${want} card too`)
+      }
       // 'libraryTop' picks (the tutors) stay in the library: they are shuffled with everything
       // else, re-minted, and only THEN moved to the top — otherwise the searcher, who legitimately
       // saw the peeked id, could keep following that id inside the hidden library (invariant #3).

@@ -325,6 +325,10 @@ export interface RulesGameState {
     count: number
     /** the tutors: the chosen card is REVEALED (its name is logged) as it goes on top */
     reveal?: boolean
+    /** Myriad Landscape: "up to two basic land cards THAT SHARE A LAND TYPE" */
+    shareSubtype?: boolean
+    /** Krosan Verge: "a Forest card AND a Plains card" — the picks must cover both subtypes */
+    pairSubtypes?: [string, string]
     /**
      * Split destination (e.g. Cultivate / Kodama's Reach: "put one onto the battlefield
      * tapped and the other into your hand"): the FIRST chosen card is routed via `first`,

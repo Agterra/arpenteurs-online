@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**597 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**600 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -68,6 +68,7 @@
 - Black Knight
 - Blasphemous Act
 - Blaze
+- Blighted Woodland
 - Blood Artist
 - Blood Crypt
 - Bloodbraid Elf
@@ -288,6 +289,7 @@
 - Kodama's Reach
 - Krenko's Command
 - Krenko's Enforcer
+- Krosan Verge
 - Land Tax
 - Languish
 - Levitation
@@ -335,6 +337,7 @@
 - Mulldrifter
 - Murder
 - Murderous Rider
+- Myriad Landscape
 - Mystic Gate
 - Mystic Monastery
 - Mystic Sanctuary
