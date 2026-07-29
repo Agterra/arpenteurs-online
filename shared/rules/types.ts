@@ -158,7 +158,7 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage'
+  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -452,7 +452,9 @@ export interface RulesGameState {
     defName: string
     sourceId: ObjId
     /** which trigger opened it — picks `castSpell` / `drawnCard` / a `delayed` entry off the def */
-    trigger: 'cast' | 'draw' | 'delayed'
+    trigger: 'cast' | 'draw' | 'delayed' | 'upkeep'
+    /** true when the effect happens ON PAYMENT ("you may pay {4}: if you do, untap") */
+    effectOnPay?: boolean
     /** for a delayed trigger: which `CardDefinition.delayed` entry this is */
     delayedKey?: string
   } | null

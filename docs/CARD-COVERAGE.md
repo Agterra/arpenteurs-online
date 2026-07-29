@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**569 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**572 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -49,6 +49,7 @@
 - Baleful Strix
 - Barktooth Warbeard
 - Barren Moor
+- Basalt Monolith
 - Basilisk Collar
 - Bastion of Remembrance
 - Battering Craghorn
@@ -231,6 +232,7 @@
 - Gray Merchant of Asphodel
 - Gray Ogre
 - Great Furnace
+- Grim Monolith
 - Grizzly Bears
 - Growth Spiral
 - Gruul Guildgate
@@ -293,6 +295,7 @@
 - Mana Confluence
 - Mana Drain
 - Mana Geyser
+- Mana Vault
 - Manalith
 - Marhault Elsdragon
 - Marsh Boa

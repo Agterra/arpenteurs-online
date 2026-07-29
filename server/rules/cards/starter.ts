@@ -25,6 +25,7 @@ import {
   createToken,
   createTreasures,
   damageAllCreatures,
+  damageToController,
   dealDamage,
   dealDamageKicked,
   dealDamageX,
@@ -103,6 +104,7 @@ import {
   targetPlayerDrawDrain,
   targetSpellManaValue,
   untapAllOwnLands,
+  untapSelf,
   weakenAllCreatures,
   weakenAllCreaturesX,
   weakenControlledCreatures,
@@ -4323,6 +4325,44 @@ export const STARTER_SET: CardDefinition[] = [
     abilities: [
       { kind: 'activated', cost: { mana: '{1}' }, effect: lookAndReorder(3) },
       { kind: 'activated', cost: { tap: true }, effect: drawThenSelfOnTopOfLibrary() },
+    ],
+  },
+  // --- Coverage batch CARD49: "doesn't untap during your untap step" ---
+  {
+    name: 'Mana Vault',
+    types: ['Artifact'],
+    manaCost: '{1}',
+    // "This artifact doesn't untap during your untap step. / At the beginning of your upkeep, you may
+    //  pay {4}. If you do, untap this artifact. / At the beginning of your draw step, if this artifact
+    //  is tapped, it deals 1 damage to you. / {T}: Add {C}{C}{C}."
+    doesNotUntap: true,
+    upkeep: { mayPay: '{4}', effect: untapSelf() },
+    drawStep: {
+      condition: (state, _controllerId, sourceId) => !!state.objects[sourceId]?.tapped,
+      effect: damageToController(1),
+    },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C', 'C', 'C') }],
+  },
+  {
+    name: 'Grim Monolith',
+    types: ['Artifact'],
+    manaCost: '{2}',
+    // "This artifact doesn't untap during your untap step. / {T}: Add {C}{C}{C}. / {4}: Untap this artifact."
+    doesNotUntap: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C', 'C', 'C') },
+      { kind: 'activated', cost: { mana: '{4}' }, effect: untapSelf() },
+    ],
+  },
+  {
+    name: 'Basalt Monolith',
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "This artifact doesn't untap during your untap step. / {T}: Add {C}{C}{C}. / {3}: Untap this artifact."
+    doesNotUntap: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C', 'C', 'C') },
+      { kind: 'activated', cost: { mana: '{3}' }, effect: untapSelf() },
     ],
   },
 ]

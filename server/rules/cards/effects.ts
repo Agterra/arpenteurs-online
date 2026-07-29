@@ -1470,6 +1470,23 @@ export const drawThenSelfOnTopOfLibrary = (): Effect => (ctx) => {
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws a card and puts ${name} on top of their library.`)
 }
 
+/** "Untap this artifact" (Mana Vault's upkeep payment, the Monoliths' activated ability). */
+export const untapSelf = (): Effect => (ctx) => {
+  const obj = ctx.state.objects[ctx.sourceId]
+  if (!obj || obj.zone !== 'battlefield' || !obj.tapped) return
+  obj.tapped = false
+  logLine(ctx.state, `${getDef(obj.defName).name} untaps.`)
+}
+
+/** "…it deals N damage to you" (Mana Vault's draw-step trigger). */
+export const damageToController = (n: number): Effect => (ctx) => {
+  ctx.state.players[ctx.controllerId]!.life -= n
+  logLine(
+    ctx.state,
+    `${getDef(ctx.state.objects[ctx.sourceId]?.defName ?? '').name} deals ${n} damage to ${ctx.state.players[ctx.controllerId]!.name}.`,
+  )
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {

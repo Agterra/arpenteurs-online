@@ -975,6 +975,10 @@ const FUZZ_DECK = [
   // batch CARD48: Sensei's Divining Top — its {T} ability puts ITSELF on top of the library, the
   // leak-critical public→hidden move, and it has TWO activated abilities so the fuzzer's activation
   // branch now picks among several on one permanent.
+  // batch CARD49: Mana Vault — it does NOT untap in the untap step, opens a may-pay decision at every
+  // upkeep of its controller (the mirror of the unless-pay branch the fuzzer already answers) and can
+  // whittle its controller down at their draw step.
+  ...Array(2).fill('Mana Vault'),
   ...Array(2).fill("Sensei's Divining Top"),
   ...Array(2).fill('Growth Spiral'),
   ...Array(2).fill('Chrome Mox'),

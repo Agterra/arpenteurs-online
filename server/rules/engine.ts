@@ -811,7 +811,8 @@ function beginStep(state: RulesGameState) {
       runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
         if (obj.zone === 'battlefield' && obj.controllerId === ap && !obj.phasedOut) {
-          obj.tapped = false
+          // "This permanent doesn't untap during your untap step." (Mana Vault, the Monoliths)
+          if (!getDef(obj.defName).doesNotUntap) obj.tapped = false
           obj.summoningSick = false
           obj.loyaltyActivatedThisTurn = false
       obj.triggeredThisTurn = false // a new turn re-enables one loyalty ability per PW
@@ -822,6 +823,11 @@ function beginStep(state: RulesGameState) {
       return
     }
     case 'draw': {
+      // "At the beginning of your draw step, …" (Mana Vault's self-damage) — before the draw
+      for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
+        if (!getDef(state.objects[id]?.defName ?? '').drawStep) continue
+        queueTriggeredAbility(state, id, 'drawStep')
+      }
       const isVeryFirstDraw = state.turnNumber === 1 && ap === state.turnOrder[0] && state.firstTurnSkipDraw
       if (isVeryFirstDraw) logLine(state, `${name(state, ap)} skips the first draw.`)
       else if (!state.players[ap]!.hasLost) {
@@ -1161,6 +1167,7 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'draw' ? def.drawnCard
     : kind === 'landfall' ? def.landEnters
     : kind === 'combatDamage' ? def.combatDamage
+    : kind === 'drawStep' ? def.drawStep
     : def.enters
 }
 
@@ -1173,6 +1180,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   draw: 'draw',
   landfall: 'landfall',
   combatDamage: 'combat damage',
+  drawStep: 'draw step',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1248,6 +1256,25 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
     }
     checkSBA(state)
     return
+  }
+  // "At the beginning of your upkeep, you may pay {4}. If you do, untap this artifact." (Mana Vault):
+  // the mirror of unlessPay — the effect happens only when the cost IS paid
+  if (item.trigger === 'upkeep') {
+    const ability = getDef(item.defName).upkeep
+    if (ability?.mayPay && !state.players[item.controllerId]!.hasLost) {
+      state.pending = { kind: 'optionalPay', player: item.controllerId }
+      state.pendingOptionalPay = {
+        player: item.controllerId,
+        beneficiary: item.controllerId,
+        cost: ability.mayPay,
+        defName: item.defName,
+        sourceId: item.sourceId,
+        trigger: 'upkeep',
+        effectOnPay: true,
+      }
+      logLine(state, `${getDef(item.defName).name}: ${name(state, item.controllerId)} may pay ${ability.mayPay}.`)
+      return
+    }
   }
   // cast-trigger with an "…unless that player pays {N}" clause (Rhystic Study, Esper Sentinel):
   // open the decision for the player who cast the spell; the effect happens only if they decline.
@@ -1514,7 +1541,7 @@ export function queueTriggeredAbility(
   const ability = abilityFor(def, kind)
   if (!ability) return
   // an intervening "if" clause (Land Tax) — a false condition means it never triggers
-  if ('condition' in ability && ability.condition && !ability.condition(state, obj.controllerId)) return
+  if ('condition' in ability && ability.condition && !ability.condition(state, obj.controllerId, sourceId)) return
   // "This ability triggers only once each turn." (Morbid Opportunist)
   if ('oncePerTurn' in ability && ability.oncePerTurn) {
     if (obj.triggeredThisTurn) return
@@ -3341,15 +3368,27 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (msg.pay && !payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
       state.pending = null
       state.pendingOptionalPay = null
+      const d = getDef(pop.defName)
+      const body =
+        pop.trigger === 'delayed'
+          ? d.delayed?.[pop.delayedKey ?? '']
+          : pop.trigger === 'draw'
+            ? d.drawnCard
+            : pop.trigger === 'upkeep'
+              ? d.upkeep
+              : d.castSpell
       if (paid) {
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
-        logLine(state, `${name(state, actor)} pays ${pop.cost} — ${getDef(pop.defName).name}'s ability does nothing.`)
+        if (pop.effectOnPay) {
+          // "you may pay {4}. If you do, untap this artifact." — paying is what makes it happen
+          logLine(state, `${name(state, actor)} pays ${pop.cost} for ${d.name}.`)
+          body?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
+        } else {
+          logLine(state, `${name(state, actor)} pays ${pop.cost} — ${d.name}'s ability does nothing.`)
+        }
       } else {
         logLine(state, `${name(state, actor)} declines to pay ${pop.cost}.`)
-        const d = getDef(pop.defName)
-        const cd =
-          pop.trigger === 'delayed' ? d.delayed?.[pop.delayedKey ?? ''] : pop.trigger === 'draw' ? d.drawnCard : d.castSpell
-        cd?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
+        if (!pop.effectOnPay) body?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
       }
       // resume: the active player gets priority and the stack keeps resolving (CR 117.3c)
       if (state.status === 'active') grantPriority(state, state.activePlayer)

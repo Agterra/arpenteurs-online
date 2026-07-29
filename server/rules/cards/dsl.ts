@@ -180,6 +180,12 @@ export interface SpellMode {
 
 /** A triggered ability body (CR 603): optional targets chosen when it goes on the stack. */
 export interface TriggeredAbility {
+  /**
+   * "You may pay {N}. If you do, …" (Mana Vault's untap) — the mirror image of the `unlessPay` clause
+   * on cast/draw triggers: here the effect happens only when the cost IS paid. The ability's own
+   * `effect` is what runs on payment; declining does nothing.
+   */
+  mayPay?: string
   targets?: TargetSpec[]
   effect: Effect
   /**
@@ -194,7 +200,7 @@ export interface TriggeredAbility {
    * An "intervening if" clause (Land Tax: "if an opponent controls more lands than you"). Checked as
    * the trigger would go on the stack; a false condition simply means it does not trigger.
    */
-  condition?: (state: RulesGameState, controllerId: PlayerId) => boolean
+  condition?: (state: RulesGameState, controllerId: PlayerId, sourceId: ObjId) => boolean
   /**
    * "This ability triggers only once each turn." (Morbid Opportunist) — tracked per source object,
    * reset with the other per-turn state at the untap step.
@@ -202,7 +208,7 @@ export interface TriggeredAbility {
   oncePerTurn?: boolean
 }
 /** The trigger events the engine emits. */
-export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage'
+export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -539,6 +545,13 @@ export interface CardDefinition {
   transformsTo?: string
   /** engine-set on the back face — used to revert to the front when leaving the battlefield. */
   isBackFace?: boolean
+  /** "This permanent doesn't untap during your untap step." (Mana Vault, the Monoliths) */
+  doesNotUntap?: boolean
+  /**
+   * "At the beginning of your draw step, …" — fires as the active player's draw step begins, BEFORE
+   * the draw. Mana Vault's self-damage lives here (its pay-to-untap is an upkeep trigger).
+   */
+  drawStep?: TriggeredAbility
   /** replacement effect: this permanent enters the battlefield tapped (e.g. Guildgates) */
   entersTapped?: boolean
   /**
