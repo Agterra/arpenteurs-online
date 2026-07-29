@@ -243,7 +243,13 @@ export interface RulesGameState {
    * the scry to be answered — drawing while the peek is open would take a card the player is still
    * looking at (it left a dangling id in the hand; the leak fuzzer caught it).
    */
-  pendingScry: { player: PlayerId; cardIds: ObjId[]; thenDraw?: number } | null
+  pendingScry: {
+    player: PlayerId
+    cardIds: ObjId[]
+    thenDraw?: number
+    /** surveil (CR 701.42): the cards NOT kept on top go to the GRAVEYARD, not to the bottom */
+    surveil?: boolean
+  } | null
   /**
    * An active library search (tutor / land-ramp): the matching library ids the
    * searching player may pick from. Exposed ONLY to the actor (sanctioned peek,
@@ -461,7 +467,7 @@ export interface RulesClientState {
   log: string[]
   seq: number
   /** YOUR active scry (top-N ids you're looking at) — actor-only; null for everyone else */
-  scry: { cardIds: ObjId[] } | null
+  scry: { cardIds: ObjId[]; surveil?: boolean } | null
   /** YOUR active library search — actor-only; the ids you may pick and how many */
   search: { matchIds: ObjId[]; dest: 'battlefield' | 'hand'; count: number } | null
 }

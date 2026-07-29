@@ -466,7 +466,15 @@ export const playersDiscard = (who: 'target' | 'each', count = 1): Effect => (ct
 }
 
 /** Scry N: pause for the controller to look at the top N and bottom any (CR 701.18). */
-export const scry = (n: number, opts: { thenDraw?: number } = {}): Effect => (ctx) => {
+/**
+ * Surveil N (CR 701.42): look at the top N cards; the ones you don't keep on top go to your
+ * GRAVEYARD. Shares the scry decision (r.scry's `toBottom` list means "to the graveyard" here), so
+ * the peek is redacted and re-minted exactly like a scry. `thenDraw` sequences Consider's draw.
+ */
+export const surveil = (n: number, opts: { thenDraw?: number } = {}): Effect => (ctx) =>
+  scry(n, { ...opts, surveil: true })(ctx)
+
+export const scry = (n: number, opts: { thenDraw?: number; surveil?: boolean } = {}): Effect => (ctx) => {
   const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
   const cardIds = lib.slice(0, Math.min(n, lib.length))
   if (!cardIds.length) {
@@ -475,8 +483,16 @@ export const scry = (n: number, opts: { thenDraw?: number } = {}): Effect => (ct
     return
   }
   ctx.state.pending = { kind: 'scry', player: ctx.controllerId }
-  ctx.state.pendingScry = { player: ctx.controllerId, cardIds, ...(opts.thenDraw ? { thenDraw: opts.thenDraw } : {}) }
-  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} scries ${cardIds.length}.`)
+  ctx.state.pendingScry = {
+    player: ctx.controllerId,
+    cardIds,
+    ...(opts.thenDraw ? { thenDraw: opts.thenDraw } : {}),
+    ...(opts.surveil ? { surveil: true } : {}),
+  }
+  logLine(
+    ctx.state,
+    `${ctx.state.players[ctx.controllerId]!.name} ${opts.surveil ? 'surveils' : 'scries'} ${cardIds.length}.`,
+  )
 }
 
 /** Put N counters of a kind on each target permanent (permanent buffs / shrink). */

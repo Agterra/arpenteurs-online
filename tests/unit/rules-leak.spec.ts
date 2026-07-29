@@ -668,6 +668,10 @@ const FUZZ_DECK = [
   ...Array(2).fill('Guttersnipe'),
   ...Array(2).fill('Aetherflux Reservoir'),
   ...Array(2).fill('Land Tax'),
+  // batch CARD30: Consider (surveil 1 → the graveyard, then a sequenced draw) and a surveil land, so
+  // the shared scry decision runs in BOTH modes under the history-aware assertion.
+  ...Array(3).fill('Consider'),
+  ...Array(2).fill('Undercity Sewers'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

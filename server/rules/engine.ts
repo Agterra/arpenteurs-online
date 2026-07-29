@@ -2354,12 +2354,17 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (i >= 0) lib.splice(i, 1)
       }
       lib.unshift(...kept)
-      lib.push(...bottomed)
+      // surveil (CR 701.42): the cards not kept go to the GRAVEYARD instead of the library bottom
+      if (ps.surveil) for (const id of bottomed) moveToGraveyard(state, id)
+      else lib.push(...bottomed)
       remintLibrary(state, actor) // end the peek so post-scry ids can't be tracked
       const thenDraw = ps.thenDraw ?? 0
       state.pending = null
       state.pendingScry = null
-      logLine(state, `${name(state, actor)} keeps ${kept.length} on top, puts ${bottomed.length} on the bottom.`)
+      logLine(
+        state,
+        `${name(state, actor)} keeps ${kept.length} on top, ${ps.surveil ? `puts ${bottomed.length} into the graveyard` : `puts ${bottomed.length} on the bottom`}.`,
+      )
       // "…then draw a card" (Opt / Preordain) — AFTER the scry, never during it
       if (thenDraw) {
         for (let i = 0; i < thenDraw; i++) drawOne(state, actor)

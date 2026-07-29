@@ -72,6 +72,7 @@ import {
   scry,
   searchLibrary,
   sequence,
+  surveil,
   setBasePT,
   lookTransformIfInstantSorcery,
   targetPlayerDrawDrain,
@@ -256,12 +257,35 @@ const karooLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => 
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], effect: addMana(a, b) }],
 })
 
+/** A surveil land (Murders at Karlov Manor): enters tapped, ETB surveil 1, dual-colour. */
+const surveilLand = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  subtypes,
+  entersTapped: true,
+  enters: { effect: surveil(1) },
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
 /** A "Snarl" land: untapped if you reveal a matching land card from hand, else tapped. */
 const revealLand = (name: string, a: ManaColor, b: ManaColor, need: [string, string]): CardDefinition => ({
   name,
   types: ['Land'],
   entersTappedUnlessRevealFromHand: need,
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/**
+ * A horizon land: "{T}, Pay 1 life: Add {a} or {b}." and "{1}, {T}, Sacrifice this land: Draw a card."
+ * (a life-cost mana ability plus a sac-self draw — both existing primitives).
+ */
+const horizonLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  abilities: [
+    { kind: 'activated', cost: { tap: true, life: 1 }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) },
+    { kind: 'activated', cost: { mana: '{1}', tap: true, sacrificeSelf: true }, effect: drawCards(1) },
+  ],
 })
 
 /** A tri-land (Shards/Khans): enters tapped, "{T}: Add {a}, {b}, or {c}." */
@@ -3299,4 +3323,31 @@ export const STARTER_SET: CardDefinition[] = [
       effect: searchLibrary({ filter: 'basicLand', dest: 'hand', count: 3, reveal: true }),
     },
   },
+
+  // --- Coverage batch CARD30: surveil (Consider + the ten surveil lands) and the horizon lands ---
+  {
+    name: 'Consider',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Surveil 1. Draw a card." (the draw waits for the surveil, like Opt's)
+    spell: { effect: surveil(1, { thenDraw: 1 }) },
+  },
+  surveilLand('Undercity Sewers', 'U', 'B', ['Island', 'Swamp']),
+  surveilLand('Underground Mortuary', 'B', 'G', ['Swamp', 'Forest']),
+  surveilLand('Hedge Maze', 'G', 'U', ['Forest', 'Island']),
+  surveilLand('Raucous Theater', 'B', 'R', ['Swamp', 'Mountain']),
+  surveilLand('Shadowy Backstreet', 'W', 'B', ['Plains', 'Swamp']),
+  surveilLand('Thundering Falls', 'U', 'R', ['Island', 'Mountain']),
+  surveilLand('Commercial District', 'R', 'G', ['Mountain', 'Forest']),
+  surveilLand('Meticulous Archive', 'W', 'U', ['Plains', 'Island']),
+  surveilLand('Lush Portico', 'G', 'W', ['Forest', 'Plains']),
+  surveilLand('Elegant Parlor', 'R', 'W', ['Mountain', 'Plains']),
+  // the horizon lands: "{T}, Pay 1 life: Add {a} or {b}" / "{1}, {T}, Sacrifice: Draw a card"
+  horizonLand('Horizon Canopy', 'G', 'W'),
+  horizonLand('Silent Clearing', 'W', 'B'),
+  horizonLand('Sunbaked Canyon', 'R', 'W'),
+  horizonLand('Nurturing Peatland', 'B', 'G'),
+  horizonLand('Waterlogged Grove', 'G', 'U'),
+  horizonLand('Fiery Islet', 'U', 'R'),
 ]

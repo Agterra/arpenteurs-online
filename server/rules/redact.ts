@@ -105,7 +105,10 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     cards[obj.id] = toClientCard(obj)
   }
   // scry peek: the scrying player (and ONLY them) sees the top-N library cards
-  const scry = state.pendingScry && state.pendingScry.player === viewer ? { cardIds: [...state.pendingScry.cardIds] } : null
+  const scry =
+    state.pendingScry && state.pendingScry.player === viewer
+      ? { cardIds: [...state.pendingScry.cardIds], ...(state.pendingScry.surveil ? { surveil: true } : {}) }
+      : null
   if (scry) for (const id of scry.cardIds) if (state.objects[id]) cards[id] = toClientCard(state.objects[id]!)
   // search peek: the searching player (and ONLY them) sees the matching library cards
   const search =

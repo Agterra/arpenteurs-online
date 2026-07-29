@@ -1732,7 +1732,11 @@ onBeforeUnmount(() => {
       <!-- scry: peek at the top-N and choose which to bottom -->
       <div v-if="st.scry" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
         <div class="rounded-lg border border-default bg-default p-4 shadow-xl">
-          <p class="mb-2 text-sm font-semibold">Scry — click a card to put it on the bottom (the rest stay on top)</p>
+          <p class="mb-2 text-sm font-semibold">
+            {{ st?.scry?.surveil
+              ? 'Surveil — click a card to put it into your graveyard (the rest stay on top)'
+              : 'Scry — click a card to put it on the bottom (the rest stay on top)' }}
+          </p>
           <div class="flex gap-3">
             <div v-for="id in st.scry.cardIds" :key="id" class="flex flex-col items-center gap-1">
               <RulesCard

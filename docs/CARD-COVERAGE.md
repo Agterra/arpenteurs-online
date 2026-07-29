@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**481 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**498 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **7** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -97,7 +97,9 @@
 - Colossal Dreadmaw
 - Command Tower
 - Commander's Sphere
+- Commercial District
 - Concentrate
+- Consider
 - Counterspell
 - Craw Wurm
 - Crop Rotation
@@ -135,6 +137,7 @@
 - Dreamroot Cascade
 - Drowned Catacomb
 - Earthquake
+- Elegant Parlor
 - Elvish Lookout
 - Elvish Mystic
 - Elvish Visionary
@@ -158,6 +161,7 @@
 - Fervor
 - Field Marshal
 - Fierce Guardianship
+- Fiery Islet
 - Fiery Temper
 - Firebolt
 - Flame Rift
@@ -205,11 +209,13 @@
 - Harmonize
 - Harrow
 - Haunted Ridge
+- Hedge Maze
 - Hero's Downfall
 - Heroic Intervention
 - Hill Giant
 - Hinterland Harbor
 - Holy Strength
+- Horizon Canopy
 - Impact Tremors
 - Indatha Triome
 - Infernal Grasp
@@ -244,6 +250,7 @@
 - Lonely Sandbar
 - Lotus Petal
 - Loxodon Warhammer
+- Lush Portico
 - Luxury Suite
 - Mahamoti Djinn
 - Man-o'-War
@@ -256,6 +263,7 @@
 - Marsh Flats
 - Merfolk of the Pearl Trident
 - Mesa Pegasus
+- Meticulous Archive
 - Midnight Haunting
 - Mind Rot
 - Mind Sculpt
@@ -281,6 +289,7 @@
 - Night's Whisper
 - Nissa, Voice of Zendikar
 - Nomad Outpost
+- Nurturing Peatland
 - Nykthos, Shrine to Nyx
 - Nyxborn Rollicker
 - Opt
@@ -327,6 +336,7 @@
 - Rampaging Baloths
 - Rampant Growth
 - Rapid Hybridization
+- Raucous Theater
 - Raugrin Triome
 - Raven's Crime
 - Ravenous Chupacabra
@@ -361,6 +371,7 @@
 - Selesnya Sanctuary
 - Selesnya Signet
 - Serra Angel
+- Shadowy Backstreet
 - Shamanic Revelation
 - Shardless Agent
 - Shattered Sanctum
@@ -371,6 +382,7 @@
 - Shock
 - Siege Wurm
 - Sign in Blood
+- Silent Clearing
 - Simic Growth Chamber
 - Simic Guildgate
 - Simic Signet
@@ -394,6 +406,7 @@
 - Stroke of Midnight
 - Sulfur Falls
 - Sulfurous Springs
+- Sunbaked Canyon
 - Sundown Pass
 - Sunken Hollow
 - Sunpetal Grove
@@ -433,6 +446,7 @@
 - Thran Dynamo
 - Three Visits
 - Thrill of Possibility
+- Thundering Falls
 - Titanic Growth
 - Tomakul Honor Guard
 - Tome Scour
@@ -444,6 +458,8 @@
 - Tropical Island
 - Tukatongue Thallid
 - Tundra
+- Undercity Sewers
+- Underground Mortuary
 - Underground River
 - Underground Sea
 - Undergrowth Stadium
@@ -470,6 +486,7 @@
 - Wall of Omens
 - Wall of Wood
 - Waterfall Aerialist
+- Waterlogged Grove
 - Watery Grave
 - Wayfarer's Bauble
 - Whispersilk Cloak
