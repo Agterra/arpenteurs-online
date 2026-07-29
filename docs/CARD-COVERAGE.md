@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**550 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**554 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -358,6 +358,7 @@
 - Prickly Boggart
 - Prismatic Vista
 - Prodigal Sorcerer
+- Professional Face-Breaker
 - Propaganda
 - Putrefy
 - Putrid Goblin
@@ -458,6 +459,9 @@
 - Swamp
 - Swan Song
 - Swiftfoot Boots
+- Sword of Feast and Famine
+- Sword of Fire and Ice
+- Sword of the Animist
 - Sword of Vengeance
 - Swords to Plowshares
 - Taiga

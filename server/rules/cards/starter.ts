@@ -98,6 +98,7 @@ import {
   surveil,
   targetPlayerDrawDrain,
   targetSpellManaValue,
+  untapAllOwnLands,
   weakenAllCreatures,
   weakenAllCreaturesX,
   weakenControlledCreatures,
@@ -3984,5 +3985,72 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['R'],
     // "Exile the top X cards of your library. Until the end of your next turn, you may play those cards."
     spell: { effect: impulseExile('x', 'endOfYourNextTurn') },
+  },
+  // --- Coverage batch CARD43: "deals combat damage to a player" triggers ---
+  {
+    name: 'Professional Face-Breaker',
+    types: ['Creature'],
+    subtypes: ['Human', 'Warrior'],
+    manaCost: '{2}{R}',
+    colors: ['R'],
+    power: 3,
+    toughness: 1,
+    keywords: ['menace'],
+    // "Menace / Whenever one or more creatures you control deal combat damage to a player, create a
+    //  Treasure token. / Sacrifice a Treasure: Exile the top card of your library. You may play that
+    //  card this turn." (the trigger fires ONCE per damaged player, however many creatures connected)
+    combatDamage: { watch: { scope: 'anyCreature', controllerOnly: true }, effect: createTreasures(1) },
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { sacrifice: { count: 1, filter: 'treasure' } },
+        effect: impulseExile(1, 'endOfTurn'),
+      },
+    ],
+  },
+  {
+    name: 'Sword of the Animist',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{2}',
+    // "Equipped creature gets +1/+1. / Whenever equipped creature attacks, you may search your
+    //  library for a basic land card, put it onto the battlefield tapped, then shuffle. / Equip {2}"
+    grantsToHost: { power: 1, toughness: 1 },
+    equipCost: '{2}',
+    attacks: {
+      watch: { scope: 'attachedCreature' },
+      effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1 }),
+    },
+  },
+  {
+    name: 'Sword of Feast and Famine',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{3}',
+    // "Equipped creature gets +2/+2 and has protection from black and from green. / Whenever equipped
+    //  creature deals combat damage to a player, that player discards a card and you untap all lands
+    //  you control. / Equip {2}"
+    grantsToHost: { power: 2, toughness: 2, protectionFrom: ['B', 'G'] },
+    equipCost: '{2}',
+    combatDamage: {
+      watch: { scope: 'attachedCreature' },
+      effect: sequence(playersDiscard('target', 1), untapAllOwnLands()),
+    },
+  },
+  {
+    name: 'Sword of Fire and Ice',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{3}',
+    // "Equipped creature gets +2/+2 and has protection from red and from blue. / Whenever equipped
+    //  creature deals combat damage to a player, this Equipment deals 2 damage to any target and you
+    //  draw a card. / Equip {2}" (it TARGETS, so the damaged player is not its implicit target)
+    grantsToHost: { power: 2, toughness: 2, protectionFrom: ['R', 'U'] },
+    equipCost: '{2}',
+    combatDamage: {
+      watch: { scope: 'attachedCreature' },
+      targets: [{ kind: 'anyTarget', count: 1 }],
+      effect: sequence(dealDamage(2), drawCards(1)),
+    },
   },
 ]

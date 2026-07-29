@@ -297,6 +297,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
           : pt.trigger === 'attacks' ? def.attacks
           : pt.trigger === 'upkeep' ? def.upkeep
           : pt.trigger === 'landfall' ? def.landEnters
+          : pt.trigger === 'combatDamage' ? def.combatDamage
           : def.enters
         : null
       const spec = ab?.targets?.[0] ?? null
@@ -478,7 +479,13 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       }
       // a sacrifice cost is only payable if the player controls enough creatures
       const sacCost = ab.cost.sacrifice?.count ?? 0
-      if (sacCost > battlefieldCreatures(state, viewer).length) return
+      // "Sacrifice a Treasure" is paid with Treasures, not creatures — the picker needs to know which
+      const sacFilter = ab.cost.sacrifice?.filter ?? 'creature'
+      const sacPool =
+        sacFilter === 'treasure'
+          ? zoneArr(state, viewer, 'battlefield').filter((id) => (getDef(state.objects[id]!.defName).subtypes ?? []).includes('Treasure')).length
+          : battlefieldCreatures(state, viewer).length
+      if (sacCost > sacPool) return
       // "pay N life" is payable only at life ≥ N (CR 119.4) — mirrors the engine's check
       const lifeCost = abilityLifeCost(state, viewer, ab.cost)
       if (lifeCost > state.players[viewer]!.life) return
@@ -498,6 +505,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         targetKind: spec?.kind ?? null,
         cost: ab.cost.mana ?? '',
         sacCost,
+        ...(sacCost ? { sacFilter } : {}),
         lifeCost,
         ...(graveyardIds ? { graveyardIds } : {}),
       })

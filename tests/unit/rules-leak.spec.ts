@@ -934,6 +934,12 @@ const FUZZ_DECK = [
   // batch CARD42: impulse draw — Reckless Impulse and Jeska's Will exile the top of the library
   // (hidden → PUBLIC) and let their controller play those cards from exile, so the fuzzer casts and
   // plays lands out of exile while the history-aware assertion watches the ids.
+  // batch CARD43: a "deals combat damage to a player" trigger on an EQUIPMENT (Sword of Feast and
+  // Famine — the damaged player discards, i.e. an opponent's hidden→public move driven by MY trigger,
+  // and all my lands untap) and Professional Face-Breaker, whose "one or more creatures you control"
+  // wording fires once per damaged player and whose Treasure sacrifice feeds an impulse exile.
+  ...Array(2).fill('Sword of Feast and Famine'),
+  ...Array(2).fill('Professional Face-Breaker'),
   ...Array(3).fill('Reckless Impulse'),
   ...Array(2).fill("Jeska's Will"),
   ...Array(2).fill('Boros Charm'),
@@ -990,7 +996,9 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // as dead code (a planeswalker never castable / never attacked)
     expect(pwLoyaltyFired).toBeGreaterThan(0)
     expect(pwAttacked).toBeGreaterThan(0)
-    expect(pwBurned).toBeGreaterThan(0) // the new any-target-includes-planeswalkers path ran
+    // (pwBurned is telemetry, not a guard: a fuzz game's planeswalkers are attacked to death long
+    //  before an any-target burn spell happens to be castable — measured at 0 of 6 such casts — so the
+    //  planeswalker-damage path is pinned by the deterministic test below instead.)
     // Execution budget only — NOT part of the leak assertion. This fuzzes 4 games (2/3/4-player)
     // to a 1500-step cap, redacting the full state for every viewer after EVERY action (history-
     // aware). The 3/4-player games run to the cap (random play rarely ends them), so the work is
@@ -1118,6 +1126,37 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       expect(state.zones.perPlayer[A]!.graveyard.includes(moor)).toBe(true)
       expect(state.zones.perPlayer[A]!.library.length).toBe(libBefore - 1)
       assertNoLeaks(state, '(after cycle)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // "ANY TARGET" INCLUDES A PLANESWALKER (CARD41): burn aimed at one removes loyalty instead of
+  // marking damage, and the 0-loyalty SBA kills it. Pinned here rather than in the fuzz loop, whose
+  // planeswalkers are attacked to death long before an any-target spell is castable.
+  it('burn aimed at a planeswalker removes loyalty, with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(1717))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const pw = putCard(state, B, 'Nissa, Voice of Zendikar', 'battlefield')
+      state.objects[pw]!.loyalty = 3
+      const shock = putCard(state, A, 'Shock', 'hand')
+      assertNoLeaks(state, '(pw setup)', seen)
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.cast', objId: shock, targets: [pw] })
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'the Shock resolves')
+      expect(state.objects[pw]!.loyalty).toBe(1)
+      assertNoLeaks(state, '(after burning the planeswalker)', seen)
+      const bolt = putCard(state, A, 'Lightning Bolt', 'hand')
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.cast', objId: bolt, targets: [pw] })
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'the Bolt resolves')
+      expect(state.objects[pw]!.zone).toBe('graveyard') // 0 loyalty → CR 704.5i
+      assertNoLeaks(state, '(after it died)', seen)
     } finally {
       __setDeterministicRng(null)
     }

@@ -156,7 +156,7 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall'
+  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -566,6 +566,8 @@ export interface LegalActions {
     targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
     cost: string
     sacCost: number
+    /** what that sacrifice cost accepts ('creature' by default; 'treasure' for Face-Breaker) */
+    sacFilter?: 'creature' | 'treasure'
     lifeCost: number
     /** for a graveyardCard target: the legal cards right now (the board renders them as a picker) */
     graveyardIds?: ObjId[]

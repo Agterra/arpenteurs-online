@@ -101,7 +101,7 @@ const selPutBack = ref<ObjId[]>([])
 const equipping = ref<ObjId | null>(null)
 // forced-sacrifice (edict) selection + sacrifice-as-cost (sac outlet) picker
 const selSacrifice = ref<Set<ObjId>>(new Set())
-const costSac = ref<{ objId: ObjId; abilityIndex: number; count: number } | null>(null)
+const costSac = ref<{ objId: ObjId; abilityIndex: number; count: number; filter: 'creature' | 'treasure' } | null>(null)
 // cast-time additional cost (Village Rites / Thrill of Possibility): the permanents to sacrifice
 // and/or the cards to discard, collected before the mana payment panel opens
 const castExtra = ref<{ card: RulesClientCard; targets: (ObjId | PlayerId)[]; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature'; discard: number; free: boolean } | null>(null)
@@ -818,7 +818,7 @@ function startActivate(id: ObjId) {
   }
   if (a.targetKind) return void (activating.value = a) // pick a target first
   // a "sacrifice a creature" cost: pick which creature(s) to sacrifice, then activate
-  if (a.sacCost > 0) return void beginCostSacrifice(id, a.abilityIndex, a.sacCost)
+  if (a.sacCost > 0) return void beginCostSacrifice(id, a.abilityIndex, a.sacCost, a.sacFilter ?? 'creature')
   if (a.cost) beginActivatePayment(id, a.abilityIndex, a.cost, []) // pay the mana cost manually
   else send({ type: 'r.activate', objId: id, abilityIndex: a.abilityIndex, targets: [] })
 }
@@ -1020,8 +1020,8 @@ function confirmSacrifice() {
 }
 
 // sacrifice-as-cost (aristocrat sac outlets): pick creatures to pay, then activate
-function beginCostSacrifice(objId: ObjId, abilityIndex: number, count: number) {
-  costSac.value = { objId, abilityIndex, count }
+function beginCostSacrifice(objId: ObjId, abilityIndex: number, count: number, filter: 'creature' | 'treasure' = 'creature') {
+  costSac.value = { objId, abilityIndex, count, filter }
   costSacPick.value = new Set()
 }
 function toggleCastExtraSac(id: ObjId) {
@@ -1038,6 +1038,10 @@ function toggleCastExtraSac(id: ObjId) {
   castExtraSacPick.value = next
 }
 function toggleCostSac(id: ObjId) {
+  const card = cardOf(id)
+  const line = display.value[card?.defName ?? '']?.typeLine ?? ''
+  const wanted = costSac.value?.filter === 'treasure' ? line.includes('Treasure') : line.includes('Creature')
+  if (!card || card.zone !== 'battlefield' || card.controllerId !== you.value || !wanted) return
   const next = new Set(costSacPick.value)
   if (next.has(id)) next.delete(id)
   else if (next.size < (costSac.value?.count ?? 1)) next.add(id)
@@ -2267,7 +2271,8 @@ onBeforeUnmount(() => {
       <div v-if="costSac" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <div class="flex max-h-[85vh] flex-col rounded-lg border border-rose-400 bg-default p-4 shadow-xl">
           <p class="mb-2 text-sm font-semibold">
-            {{ nameOf(costSac.objId) }} — sacrifice {{ costSac.count }} creature{{ costSac.count === 1 ? '' : 's' }} as a cost
+            {{ nameOf(costSac.objId) }} — sacrifice {{ costSac.count }}
+            {{ costSac.filter === 'treasure' ? 'Treasure' : 'creature' }}{{ costSac.count === 1 ? '' : 's' }} as a cost
             ({{ costSacPick.size }}/{{ costSac.count }})
           </p>
           <div class="flex flex-wrap gap-2 overflow-y-auto">

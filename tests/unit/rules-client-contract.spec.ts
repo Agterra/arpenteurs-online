@@ -30,7 +30,7 @@ import {
 // 'graveyardCard' became selectable in batch CARD38: redact publishes the legal graveyard cards for
 // an activated / channel ability and the board renders them as a picker.
 const CLIENT_TARGET_KINDS = new Set(['creature', 'permanent', 'player', 'anyTarget', 'spell', 'graveyardCard'])
-const TRIGGERS = ['enters', 'dies', 'attacks', 'upkeep'] as const
+const TRIGGERS = ['enters', 'dies', 'attacks', 'upkeep', 'combatDamage'] as const
 
 describe('every implemented targeted trigger uses a client-selectable target kind', () => {
   const cases: { card: string; trigger: string; kind: string }[] = []

@@ -62,7 +62,7 @@ export interface Cost {
   tap?: boolean // {T}
   /** "Sacrifice a creature" as part of the cost (aristocrat sac outlets, and the Altars' mana
    *  abilities). Paid at activation time — the activating player chooses which creature(s). */
-  sacrifice?: { count: number; filter: 'creature' }
+  sacrifice?: { count: number; filter: 'creature' | 'treasure' }
   /**
    * "Pay N life" as part of the cost (the fetch lands). CR 119.4: payable only while your life
    * total is at least N — paying it to 0 is legal and the 0-life SBA then ends your game.
@@ -187,7 +187,7 @@ export interface TriggeredAbility {
   oncePerTurn?: boolean
 }
 /** The trigger events the engine emits. */
-export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall'
+export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -302,6 +302,18 @@ export interface CardDefinition {
    * plumbing; `label` renames the client's button ("Landcycle {1}" for Ash Barrens).
    */
   channel?: { cost: string; label?: string; reducedByLegendaries?: boolean; targets?: TargetSpec[]; effect: Effect }
+  /**
+   * "Whenever [this creature / equipped creature / one or more creatures you control] deals combat
+   * damage to a player, …" (CR 603.2). `watch.scope` picks the source: absent = this permanent itself
+   * dealt the damage, 'attachedCreature' = the creature this Equipment/Aura is attached to,
+   * 'anyCreature' (+ controllerOnly) = the "one or more creatures you control" wording, which fires
+   * ONCE per damaged player however many creatures connected.
+   *
+   * The DAMAGED PLAYER is passed as the ability's implicit target when it declares no `targets`, so
+   * "that player discards a card" needs no choice; an ability that declares targets (Sword of Fire
+   * and Ice: "deals 2 damage to any target") picks them the normal way and cannot see that player.
+   */
+  combatDamage?: TriggeredAbility
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
   /**
@@ -553,6 +565,8 @@ export interface CardDefinition {
     cantBlock?: boolean
     /** "Equipped creature can't be blocked." (Whispersilk Cloak) */
     cantBeBlocked?: boolean
+    /** "Equipped creature has protection from black and from green." (the Swords) — CR 613 layer 6 */
+    protectionFrom?: ManaColor[]
   }
   /** Equipment: the mana cost of its equip activated ability (sorcery speed). */
   equipCost?: string

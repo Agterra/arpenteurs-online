@@ -907,7 +907,7 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
     const double = hasKw(state, id, 'double strike')
     return pass === 'first' ? first || double : double || !first
   }
-  type Hit = { source: ObjId; target: ObjId | PlayerId; amount: number; fromCommander?: ObjId }
+
   const hits: Hit[] = []
 
   for (const attacker of battlefieldCreatures(state)) {
@@ -1020,6 +1020,51 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
       }
     }
   }
+  fireCombatDamageTriggers(state, hits)
+}
+
+/** One assignment of combat damage: who dealt it, to what, how much (and as which commander). */
+type Hit = { source: ObjId; target: ObjId | PlayerId; amount: number; fromCommander?: ObjId }
+
+/**
+ * "Whenever … deals combat damage to a player, …" (CR 603.2) — fired after a whole damage sub-step
+ * has been applied, so all of it is simultaneous. Three wordings, in the order a player reads them:
+ *   - the creature itself (`combatDamage` with no watch),
+ *   - the creature an Equipment/Aura is attached to (`watch.scope: 'attachedCreature'`),
+ *   - "one or more creatures you control" (`watch.scope: 'anyCreature'`), which triggers ONCE per
+ *     damaged player however many of that player's attackers connected.
+ * Each trigger receives the damaged player as its implicit target when it declares no targets.
+ */
+function fireCombatDamageTriggers(state: RulesGameState, hits: Hit[]) {
+  const toPlayers = hits.filter((h) => h.amount > 0 && Object.hasOwn(state.players, h.target))
+  if (!toPlayers.length) return
+  for (const hit of toPlayers) {
+    const src = state.objects[hit.source]
+    if (!src) continue
+    const victim = hit.target as PlayerId
+    if (getDef(src.defName).combatDamage && !getDef(src.defName).combatDamage!.watch) {
+      queueTriggeredAbility(state, src.id, 'combatDamage', [victim])
+    }
+    for (const att of Object.values(state.objects)) {
+      if (att.zone !== 'battlefield' || att.attachedTo !== src.id) continue
+      if (getDef(att.defName).combatDamage?.watch?.scope === 'attachedCreature')
+        queueTriggeredAbility(state, att.id, 'combatDamage', [victim])
+    }
+  }
+  // the "one or more creatures you control" wording: one trigger per (source permanent, victim)
+  for (const watcher of Object.values(state.objects)) {
+    if (watcher.zone !== 'battlefield') continue
+    const ability = getDef(watcher.defName).combatDamage
+    if (ability?.watch?.scope !== 'anyCreature') continue
+    const victims = new Set<PlayerId>()
+    for (const hit of toPlayers) {
+      const src = state.objects[hit.source]
+      if (!src) continue
+      if (ability.watch.controllerOnly && src.controllerId !== watcher.controllerId) continue
+      victims.add(hit.target as PlayerId)
+    }
+    for (const victim of victims) queueTriggeredAbility(state, watcher.id, 'combatDamage', [victim])
+  }
 }
 
 // ---------- the stack ----------
@@ -1044,6 +1089,7 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'cast' ? def.castSpell
     : kind === 'draw' ? def.drawnCard
     : kind === 'landfall' ? def.landEnters
+    : kind === 'combatDamage' ? def.combatDamage
     : def.enters
 }
 
@@ -1055,6 +1101,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   cast: 'cast',
   draw: 'draw',
   landfall: 'landfall',
+  combatDamage: 'combat damage',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1376,7 +1423,12 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
  * exists, CR 603.3c). The dies trigger keeps its own bespoke pusher in state.ts
  * (it must snapshot watchers BEFORE the zone change).
  */
-export function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, kind: NonNullable<StackItem['trigger']>) {
+export function queueTriggeredAbility(
+  state: RulesGameState,
+  sourceId: ObjId,
+  kind: NonNullable<StackItem['trigger']>,
+  implicitTargets?: (ObjId | PlayerId)[],
+) {
   const obj = state.objects[sourceId]
   if (!obj) return
   const def = getDef(obj.defName)
@@ -1393,7 +1445,18 @@ export function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, ki
   const label = TRIGGER_LABEL[kind]
   const specs = flattenSpecs(ability.targets)
   if (!specs.length) {
-    state.zones.stack.push({ id: mintCardId(), kind: 'ability', trigger: kind, controllerId, defName: obj.defName, sourceId, abilityIndex: null, targets: [] })
+    // a combat-damage trigger with no target specs receives the DAMAGED PLAYER implicitly, so
+    // "that player discards a card" resolves without asking anyone to choose
+    state.zones.stack.push({
+      id: mintCardId(),
+      kind: 'ability',
+      trigger: kind,
+      controllerId,
+      defName: obj.defName,
+      sourceId,
+      abilityIndex: null,
+      targets: implicitTargets ? [...implicitTargets] : [],
+    })
     logLine(state, `${def.name}'s ${label} ability triggers.`)
     return
   }
@@ -1606,6 +1669,11 @@ const sharesColor = (a: CardDefinition, b: CardDefinition): boolean => (a.colors
 const protectionColorsOf = (state: RulesGameState, obj: GameObject): ManaColor[] => [
   ...(getDef(obj.defName).protectionFrom ?? []),
   ...state.protectionGrants.filter((g) => g.objId === obj.id).map((g) => g.color),
+  // "Equipped creature has protection from black and from green" (the Swords) — a static grant from
+  // whatever is attached to this permanent (CR 613 layer 6), like grantsToHost's keywords
+  ...Object.values(state.objects).flatMap((src) =>
+    src.zone === 'battlefield' && src.attachedTo === obj.id ? (getDef(src.defName).grantsToHost?.protectionFrom ?? []) : [],
+  ),
 ]
 
 /**
@@ -2136,8 +2204,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           throw new RulesError('BAD_SACRIFICE', `Sacrifice exactly ${sacCost.count} creature${sacCost.count === 1 ? '' : 's'}`)
         for (const id of sacIds) {
           const s = state.objects[id]
-          if (!s || s.zone !== 'battlefield' || s.controllerId !== actor || !defIsCreature(getDef(s.defName)))
-            throw new RulesError('BAD_SACRIFICE', 'Not a creature you control')
+          if (!s || s.zone !== 'battlefield' || s.controllerId !== actor) throw new RulesError('BAD_SACRIFICE', "You don't control that")
+          // "Sacrifice a Treasure" (Professional Face-Breaker) vs "Sacrifice a creature"
+          const ok =
+            sacCost.filter === 'treasure'
+              ? (getDef(s.defName).subtypes ?? []).includes('Treasure')
+              : defIsCreature(getDef(s.defName))
+          if (!ok) throw new RulesError('BAD_SACRIFICE', sacCost.filter === 'treasure' ? 'Not a Treasure you control' : 'Not a creature you control')
         }
       }
       // "Pay N life" (CR 119.4) — validated before any mutation, paid below with the other costs
@@ -2577,6 +2650,12 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // simultaneous ones (declaration order is a fine deterministic approximation)
       for (const { attackerId } of msg.attacks) {
         if (getDef(state.objects[attackerId]!.defName).attacks) queueTriggeredAbility(state, attackerId, 'attacks')
+        // "Whenever equipped creature attacks, …" (Sword of the Animist): the trigger lives on the
+        // Equipment/Aura attached to the attacker, not on the creature
+        for (const att of Object.values(state.objects)) {
+          if (att.zone !== 'battlefield' || att.attachedTo !== attackerId) continue
+          if (getDef(att.defName).attacks?.watch?.scope === 'attachedCreature') queueTriggeredAbility(state, att.id, 'attacks')
+        }
         // same LIMITATION as upkeep: a targeted attacks trigger pending would drop
         // later attackers' triggers (none of the implemented attacks triggers target)
         if (state.pending) break

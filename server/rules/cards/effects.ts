@@ -1369,6 +1369,11 @@ export const addManaPerCardInTargetHand = (color: ManaColor): Effect => (ctx) =>
   }
 }
 
+/** Sword of Feast and Famine: untap EVERY land you control (not the capped Frantic Search rider). */
+export const untapAllOwnLands = (): Effect => (ctx) => {
+  untapOwnLands(ctx.state, ctx.controllerId, Number.MAX_SAFE_INTEGER)
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {
