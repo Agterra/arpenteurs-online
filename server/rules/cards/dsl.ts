@@ -131,7 +131,7 @@ export interface ActivatedAbility {
    * `yourLegendaries` = any colour among legendary creatures and planeswalkers you control (Mox Amber).
    * The engine computes the set for validation and redact surfaces it as the source's colour choices.
    */
-  dynamicProduces?: 'yourLands' | 'yourLegendaries'
+  dynamicProduces?: 'yourLands' | 'yourLegendaries' | 'imprinted'
   /**
    * A FILTER mana ability (the filter lands: "{W/B}, {T}: Add {W}{W}, {W}{B}, or {B}{B}"): pay one
    * mana of any colour in `payFrom`, then add the chosen pair from `outputs`. Both choices come in on

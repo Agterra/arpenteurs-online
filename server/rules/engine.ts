@@ -17,7 +17,7 @@ import { defKey, getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
 import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
-import { untapOwnLands } from './cards/effects'
+import { handCardMatches, untapOwnLands } from './cards/effects'
 import {
   alivePlayers,
   apnapOrder,
@@ -276,8 +276,20 @@ export const controlledArtifacts = (state: RulesGameState, player: PlayerId) =>
  * `yourLands` = every colour a land you control could produce (Reflecting Pool),
  * `yourLegendaries` = every colour among legendary creatures/planeswalkers you control (Mox Amber).
  */
-export function dynamicManaColors(state: RulesGameState, player: PlayerId, kind: 'yourLands' | 'yourLegendaries'): ManaColor[] {
+export function dynamicManaColors(
+  state: RulesGameState,
+  player: PlayerId,
+  kind: 'yourLands' | 'yourLegendaries' | 'imprinted',
+  sourceId?: ObjId,
+): ManaColor[] {
   const out = new Set<ManaColor>()
+  // IMPRINT (Chrome Mox): the colours of the card this permanent exiled — nothing imprinted, no mana
+  if (kind === 'imprinted') {
+    const imprinted = sourceId ? state.objects[sourceId]?.imprintedDefName : undefined
+    if (!imprinted) return []
+    for (const c of getDef(imprinted).colors ?? []) out.add(c)
+    return (['W', 'U', 'B', 'R', 'G', 'C'] as const).filter((c) => out.has(c))
+  }
   for (const id of zoneArr(state, player, 'battlefield')) {
     const def = getDef(state.objects[id]!.defName)
     if (kind === 'yourLands') {
@@ -2152,7 +2164,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         defIsLand(getDef(obj.defName)) &&
         grantedLandManaColors(state, actor).includes(msg.color) &&
         !manaAbilities.some((a) =>
-          (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces) : (a.produces ?? [])).includes(msg.color!),
+          (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces, obj.id) : (a.produces ?? [])).includes(msg.color!),
         )
       ) {
         if (obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
@@ -2168,7 +2180,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         msg.color &&
         !ability.filter &&
         !manaAbilities.some((a) =>
-          (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces) : (a.produces ?? [])).includes(msg.color!),
+          (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces, obj.id) : (a.produces ?? [])).includes(msg.color!),
         )
       )
         throw new RulesError('CHOOSE_COLOR', `${objName(state, obj.id)} can't make {${msg.color}}`)
@@ -2202,7 +2214,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // a dynamic source's colours come from the board (Reflecting Pool, Mox Amber)
       const produces = ability.dynamicProduces
-        ? dynamicManaColors(state, actor, ability.dynamicProduces)
+        ? dynamicManaColors(state, actor, ability.dynamicProduces, obj.id)
         : (ability.produces ?? [])
       if (ability.dynamicProduces && !produces.length) throw new RulesError('NO_MANA', 'It can produce no mana right now')
       // colour CHOICE (guildgate/dork/rock): validate the choice up front
@@ -3363,6 +3375,43 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // the next queued as-enters choice first (two shocklands can enter together), else resume:
       // the active player gets priority (CR 117.3c) and checkSBA runs (paying to 0 life loses)
       if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.handChoice': {
+      if (state.pending?.kind !== 'handChoice' || state.pending.player !== actor || !state.pendingHandChoice)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your hand choice')
+      const phc = state.pendingHandChoice
+      const ids = [...new Set(msg.objIds)]
+      if (ids.length > phc.count) throw new RulesError('BAD_CHOICE', `Choose at most ${phc.count}`)
+      if (!ids.length && !phc.optional) throw new RulesError('BAD_CHOICE', `Choose ${phc.count}`)
+      const hand = zoneArr(state, actor, 'hand')
+      for (const id of ids) {
+        if (!hand.includes(id)) throw new RulesError('BAD_CHOICE', 'That card is not in your hand')
+        if (!handCardMatches(state, id, phc.filter)) throw new RulesError('BAD_CHOICE', 'That card does not qualify')
+      }
+      state.pending = null
+      state.pendingHandChoice = null
+      for (const id of ids) {
+        // IMPRINT (CR 702.61): record the exiled card on the source before it moves
+        if (phc.imprint && phc.sourceId && state.objects[phc.sourceId]) {
+          state.objects[phc.sourceId]!.imprintedDefName = state.objects[id]!.defName
+        }
+        const what = objName(state, id)
+        moveTo(state, id, phc.dest)
+        logLine(
+          state,
+          phc.dest === 'battlefield'
+            ? `${name(state, actor)} puts ${what} onto the battlefield.`
+            : `${name(state, actor)} exiles ${what}${phc.imprint ? ' (imprint)' : ''}.`,
+        )
+        if (phc.dest === 'battlefield') {
+          fireEntersTriggers(state, id)
+          drainEntersChoices(state)
+        }
+      }
+      if (!ids.length) logLine(state, `${name(state, actor)} declines.`)
+      if (!state.pending) grantPriority(state, state.activePlayer)
       break
     }
 

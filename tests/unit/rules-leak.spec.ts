@@ -284,6 +284,14 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'handChoice') {
+      // "you may put a land from your hand onto the battlefield" / Chrome Mox's imprint: take a legal
+      // card about half the time, else decline — a hidden→public move either way when it is taken
+      const lg = computeLegal(state, p)
+      const take = lg.handChoiceIds.length && rnd() < 0.5 ? [pick(lg.handChoiceIds)] : []
+      applyRulesAction(state, p, { type: 'r.handChoice', objIds: take })
+      return true
+    }
     if (state.pending.kind === 'typeChoice') {
       // "As this permanent enters, choose a creature type" — pick from a small pool so some choices
       // match the deck's creatures and the restricted mana is actually spendable
@@ -961,6 +969,11 @@ const FUZZ_DECK = [
   // batch CARD46: a granted "when this creature dies, return it" ability — deaths are constant in a
   // fuzz game, so the granted trigger fires often and returns a card graveyard→battlefield (public →
   // public, but it puts a NEW object on the battlefield mid-combat, which the assertions watch).
+  // batch CARD47: Growth Spiral (a LAND moved hand→battlefield by a decision, i.e. hidden→public
+  // outside the land-drop path) and Chrome Mox (imprint: hand→exile, and its mana colours then depend
+  // on the exiled card).
+  ...Array(2).fill('Growth Spiral'),
+  ...Array(2).fill('Chrome Mox'),
   ...Array(3).fill('Feign Death'),
   ...Array(3).fill('Bala Ged Recovery'),
   ...Array(3).fill('Unclaimed Territory'),
@@ -1207,15 +1220,23 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       const exiled = state.zones.perPlayer[A]!.exile.filter((id) => state.objects[id]!.playableBy === A)
       expect(exiled.length).toBe(2)
       assertNoLeaks(state, '(after exiling the top two)', seen)
-      // play whichever of the two can be played right now (a land, else a castable card)
+      // play whichever of the two can be played right now. Float plenty of every colour first: which
+      // cards the seeded shuffle exiles changes whenever FUZZ_DECK changes, so this must not depend on
+      // the two cards' colours (an earlier version asserted a RED cast and broke on the next batch).
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) applyRulesAction(state, A, { type: 'r.mMana', color: c, delta: 6 })
       const legal = computeLegal(state, A)
+      expect(legal.playableExileLandIds.length + legal.castExileIds.length).toBeGreaterThan(0)
       if (legal.playableExileLandIds.length) {
         applyRulesAction(state, A, { type: 'r.playLand', objId: legal.playableExileLandIds[0]! })
         expect(state.objects[legal.playableExileLandIds[0]!]!.zone).toBe('battlefield')
       } else {
-        applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 3 })
-        const castable = computeLegal(state, A).castExileIds
-        expect(castable.length).toBeGreaterThan(0)
+        const id = legal.castExileIds[0]!
+        // only an untargeted card is cast here (a targeted one needs a legal target picked)
+        const def = getDef(state.objects[id]!.defName)
+        if (!def.spell?.targets?.length && !def.modes?.length) {
+          applyRulesAction(state, A, { type: 'r.cast', objId: id, targets: [] })
+          until(state, (x) => !x.zones.stack.length, 'the exiled card resolves')
+        }
       }
       assertNoLeaks(state, '(after playing from exile)', seen)
       // the window closes at the end of A's NEXT turn and the cards stay in exile

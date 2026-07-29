@@ -1417,6 +1417,43 @@ export const returnSelfTappedFromGraveyard = (opts?: { plusOneCounter?: boolean 
   )
 }
 
+/**
+ * Open a "choose a card from your hand" decision (Growth Spiral's land drop, Chrome Mox's imprint).
+ * The picks go to `dest`; `imprint` records the chosen card's def name on the source permanent
+ * (CR 702.61). Nothing is revealed to opponents until a card actually moves to a public zone.
+ */
+export const chooseFromHand = (opts: {
+  count?: number
+  filter: 'land' | 'nonartifactNonland' | 'any'
+  dest: 'battlefield' | 'exile'
+  optional?: boolean
+  imprint?: boolean
+}): Effect => (ctx) => {
+  const hand = ctx.state.zones.perPlayer[ctx.controllerId]!.hand
+  const eligible = hand.filter((id) => handCardMatches(ctx.state, id, opts.filter))
+  if (!eligible.length) {
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} has no eligible card in hand.`)
+    return
+  }
+  ctx.state.pending = { kind: 'handChoice', player: ctx.controllerId }
+  ctx.state.pendingHandChoice = {
+    player: ctx.controllerId,
+    count: opts.count ?? 1,
+    filter: opts.filter,
+    dest: opts.dest,
+    optional: opts.optional ?? true,
+    ...(opts.imprint ? { imprint: true, sourceId: ctx.sourceId } : {}),
+  }
+}
+
+/** Does a card in hand match a hand-choice filter? (shared with the engine's validation) */
+export function handCardMatches(state: EffectContext['state'], id: ObjId, filter: 'land' | 'nonartifactNonland' | 'any') {
+  const def = getDef(state.objects[id]!.defName)
+  if (filter === 'land') return def.types.includes('Land')
+  if (filter === 'nonartifactNonland') return !def.types.includes('Artifact') && !def.types.includes('Land')
+  return true
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {

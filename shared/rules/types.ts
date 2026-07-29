@@ -345,6 +345,21 @@ export interface RulesGameState {
    * remaining players (each-player discards). Distinguishes a forced discard from
    * the cleanup-step discard (which has pendingDiscard null and uses hand−7).
    */
+  /**
+   * "You may put a land card from your hand onto the battlefield" (Growth Spiral) / "you may exile a
+   * nonartifact, nonland card from your hand" (Chrome Mox's imprint): the player picks up to `count`
+   * cards from their OWN hand and they go to `dest`. Hidden→hidden or hidden→public depending on the
+   * destination; `sourceId` is the permanent to imprint onto, when there is one.
+   */
+  pendingHandChoice: {
+    player: PlayerId
+    count: number
+    filter: 'land' | 'nonartifactNonland' | 'any'
+    dest: 'battlefield' | 'exile'
+    optional: boolean
+    sourceId?: ObjId
+    imprint?: boolean
+  } | null
   pendingDiscard: {
     player: PlayerId
     count: number
@@ -498,7 +513,9 @@ export interface RulesClientCard {
   loyalty: number | null
   isCommander: boolean
   /** the creature type chosen as this permanent entered, if any (Cavern of Souls) */
-  chosenType?: string | null
+  chosenType?: string
+  /** IMPRINT (CR 702.61 — Chrome Mox): the def name of the card exiled by this permanent */
+  imprintedDefName?: string | null
   /** host this Aura/Equipment is attached to (null/absent = unattached) */
   attachedTo?: ObjId | null
   /** true = an assisted-table fallback (printed body known, rules player-run) */
@@ -583,6 +600,13 @@ export interface LegalActions {
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
   needsBlockers: boolean
+  /** a "choose a card from your hand" decision is waiting (r.handChoice) */
+  needsHandChoice: boolean
+  handChoiceCount: number
+  handChoiceOptional: boolean
+  /** the eligible cards in YOUR hand (already visible to you — no new information) */
+  handChoiceIds: ObjId[]
+  handChoiceLabel: string
   needsDiscard: boolean
   discardCount: number
   /** a forced sacrifice (edict) is waiting on you */

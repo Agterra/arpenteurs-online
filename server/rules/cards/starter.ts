@@ -18,6 +18,7 @@ import {
   addManaPerLandSubtype,
   addManaPerOpponentTappedLand,
   chaosWarpTarget,
+  chooseFromHand,
   counterTarget,
   counterTargetGrantingToken,
   counterTargetGrantingTreasures,
@@ -4264,5 +4265,36 @@ export const STARTER_SET: CardDefinition[] = [
       effect: grantDiesTriggerUntilEOT('malice'),
     },
     grantedAbilities: { malice: { effect: returnSelfTappedFromGraveyard({ plusOneCounter: true }) } },
+  },
+  // --- Coverage batch CARD47: "choose a card from your hand" decisions ---
+  {
+    name: 'Growth Spiral',
+    types: ['Instant'],
+    manaCost: '{G}{U}',
+    colors: ['G', 'U'],
+    // "Draw a card. You may put a land card from your hand onto the battlefield." (the land does NOT
+    //  use your land drop, and it enters through the normal path — taplands still enter tapped)
+    spell: {
+      effect: sequence(drawCards(1), chooseFromHand({ filter: 'land', dest: 'battlefield', optional: true })),
+    },
+  },
+  {
+    name: 'Chrome Mox',
+    types: ['Artifact'],
+    manaCost: '{0}',
+    // "Imprint — When this artifact enters, you may exile a nonartifact, nonland card from your hand.
+    //  / {T}: Add one mana of any of the exiled card's colors." (nothing imprinted → no mana at all)
+    enters: { effect: chooseFromHand({ filter: 'nonartifactNonland', dest: 'exile', optional: true, imprint: true }) },
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        chooseColor: true,
+        dynamicProduces: 'imprinted',
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        effect: addMana('W'),
+      },
+    ],
   },
 ]

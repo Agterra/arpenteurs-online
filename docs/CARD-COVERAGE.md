@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**565 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**567 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -102,6 +102,7 @@
 - Char
 - Choked Estuary
 - Chromatic Lantern
+- Chrome Mox
 - Cinder Glade
 - City of Brass
 - Clifftop Retreat
@@ -231,6 +232,7 @@
 - Gray Ogre
 - Great Furnace
 - Grizzly Bears
+- Growth Spiral
 - Gruul Guildgate
 - Gruul Signet
 - Gruul Turf

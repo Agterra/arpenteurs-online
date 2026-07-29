@@ -88,6 +88,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.ward'), pay: z.boolean() }),
   // as-enters choice (CR 614.12, shocklands): pay the life, or the permanent enters tapped
   z.object({ type: z.literal('r.entersChoice'), pay: z.boolean() }),
+  // "you may put a land card from your hand onto the battlefield" / Chrome Mox's imprint: the chosen
+  // cards from your OWN hand (empty = decline, when the choice is optional)
+  z.object({ type: z.literal('r.handChoice'), objIds: z.array(Id).max(4).default([]) }),
   // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
   // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
   z.object({ type: z.literal('r.chooseType'), creatureType: z.string().trim().min(2).max(30).regex(/^[A-Za-z][A-Za-z' -]*$/) }),

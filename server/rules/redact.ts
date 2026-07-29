@@ -21,6 +21,7 @@ import type {
 } from '#shared/rules/types'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { getDef } from './cards/registry'
+import { handCardMatches } from './cards/effects'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
@@ -246,6 +247,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayAffordable: false,
     needsTypeChoice: false,
     typeChoiceName: '',
+    needsHandChoice: false,
+    handChoiceCount: 0,
+    handChoiceOptional: false,
+    handChoiceIds: [],
+    handChoiceLabel: '',
     needsEntersChoice: false,
     entersChoiceLife: 0,
     entersChoiceName: '',
@@ -383,6 +389,25 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
       }
     }
+    if (state.pending.kind === 'handChoice' && state.pendingHandChoice) {
+      // your OWN hand, so listing the eligible ids reveals nothing new to you and nothing to anyone else
+      const phc = state.pendingHandChoice
+      return {
+        ...none,
+        needsHandChoice: true,
+        handChoiceCount: phc.count,
+        handChoiceOptional: phc.optional,
+        handChoiceIds: zoneArr(state, viewer, 'hand').filter((id) => handCardMatches(state, id, phc.filter)),
+        handChoiceLabel:
+          phc.filter === 'land'
+            ? phc.dest === 'battlefield'
+              ? 'put a land from your hand onto the battlefield'
+              : 'exile a land from your hand'
+            : phc.filter === 'nonartifactNonland'
+              ? 'exile a nonartifact, nonland card from your hand'
+              : 'choose a card from your hand',
+      }
+    }
     if (state.pending.kind === 'typeChoice' && state.pendingTypeChoice) {
       // "As this permanent enters, choose a creature type" — the board opens its type picker
       const obj = state.objects[state.pendingTypeChoice.objId]
@@ -451,7 +476,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         // a sacrifice cost needs a creature to pay it (the Altars)
         (!a.cost.sacrifice || battlefieldCreatures(state, viewer).length >= a.cost.sacrifice.count) &&
         // a dynamic source with nothing to copy produces nothing (Reflecting Pool with no lands)
-        (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces).length > 0),
+        (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces, obj.id).length > 0),
     )
     if (!manaAbilities.length) continue
     manaSourceIds.push(obj.id)
@@ -460,7 +485,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     // painful colours); a single ability prompts only when it is itself a colour choice
     // a dynamic source's choices come from the board (Reflecting Pool, Mox Amber)
     const colorsOf = (a: (typeof manaAbilities)[number]) =>
-      a.filter ? [] : a.dynamicProduces ? dynamicManaColors(state, viewer, a.dynamicProduces) : (a.produces ?? [])
+      a.filter ? [] : a.dynamicProduces ? dynamicManaColors(state, viewer, a.dynamicProduces, obj.id) : (a.produces ?? [])
     // colours granted to your lands (Chromatic Lantern) join that land's own choices
     const granted = defIsLand(getDef(obj.defName)) ? grantedLandManaColors(state, viewer) : []
     manaSourceColors[obj.id] =

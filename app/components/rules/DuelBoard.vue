@@ -554,6 +554,10 @@ function onHandClick(id: ObjId) {
     castExtraDiscardPick.value = next
     return
   }
+  if (l.needsHandChoice) {
+    toggleHandChoice(id)
+    return
+  }
   if (l.needsPutBack) {
     const i = selPutBack.value.indexOf(id)
     if (i >= 0) selPutBack.value = selPutBack.value.filter((x) => x !== id)
@@ -822,6 +826,20 @@ const gyAbility = ref<{ kind: 'activate' | 'channel'; objId: ObjId; abilityIndex
 // "As this permanent enters, choose a creature type": a suggested list plus free text, since the
 // printed card allows ANY creature type
 const typePick = ref('')
+// "choose a card from your hand" (Growth Spiral's land, Chrome Mox's imprint)
+const handChoicePick = ref<Set<ObjId>>(new Set())
+function toggleHandChoice(id: ObjId) {
+  const l = legal.value
+  if (!l?.needsHandChoice || !l.handChoiceIds.includes(id)) return
+  const next = new Set(handChoicePick.value)
+  if (next.has(id)) next.delete(id)
+  else if (next.size < l.handChoiceCount) next.add(id)
+  handChoicePick.value = next
+}
+function sendHandChoice(objIds: ObjId[]) {
+  send({ type: 'r.handChoice', objIds })
+  handChoicePick.value = new Set()
+}
 const TYPE_SUGGESTIONS = [
   'Human', 'Elf', 'Goblin', 'Zombie', 'Dragon', 'Angel', 'Wizard', 'Warrior', 'Soldier', 'Beast',
   'Merfolk', 'Vampire', 'Sliver', 'Elemental', 'Dinosaur', 'Cat', 'Spirit', 'Knight', 'Rogue', 'Cleric',
@@ -1258,7 +1276,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1776,8 +1794,8 @@ onBeforeUnmount(() => {
                 <RulesCard
                   :card="st.cards[id]!"
                   :display="display[st.cards[id]!.defName ?? '']"
-                  :glow="bottomingActive || (!!legal && (legal.needsDiscard || legal.needsPutBack))"
-                  :selected="selDiscard.has(id) || bottoming.has(id) || selPutBack.includes(id) || castExtraDiscardPick.has(id)"
+                  :glow="bottomingActive || (!!legal && (legal.needsDiscard || legal.needsPutBack || (legal.needsHandChoice && legal.handChoiceIds.includes(id))))"
+                  :selected="selDiscard.has(id) || bottoming.has(id) || selPutBack.includes(id) || castExtraDiscardPick.has(id) || handChoicePick.has(id)"
                   manual
                   @click="onHandClick(id)"
                   @menu="openMenu($event, id)"
@@ -2013,6 +2031,15 @@ onBeforeUnmount(() => {
               @click="confirmModes"
             >Confirm</UButton>
           </div>
+        </div>
+      </div>
+
+      <!-- "choose a card from your hand" (Growth Spiral, Chrome Mox) -->
+      <div v-if="legal?.needsHandChoice" class="fixed inset-x-0 bottom-24 z-40 flex justify-center">
+        <div class="flex items-center gap-2 rounded-lg border border-primary bg-default px-3 py-2 text-sm shadow-xl">
+          <span>You may {{ legal.handChoiceLabel }} ({{ handChoicePick.size }}/{{ legal.handChoiceCount }})</span>
+          <UButton size="xs" :disabled="handChoicePick.size === 0" @click="sendHandChoice([...handChoicePick])">Confirm</UButton>
+          <UButton v-if="legal.handChoiceOptional" size="xs" variant="ghost" color="neutral" @click="sendHandChoice([])">Decline</UButton>
         </div>
       </div>
 
