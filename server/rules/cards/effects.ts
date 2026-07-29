@@ -1762,9 +1762,14 @@ export const lookTopTakeIfChosenType = (): Effect => (ctx) => {
  * is passed explicitly because this runs from a DELAYED trigger, which has no source object to name
  * (the card is long gone from the stack by then).
  */
-export const mayDrawUpTo = (max: number, label: string): Effect => (ctx) => {
+export const mayDrawUpTo = (max: number, label: string, opts?: { exact?: boolean }): Effect => (ctx) => {
   ctx.state.pending = { kind: 'mayDraw', player: ctx.controllerId }
-  ctx.state.pendingMayDraw = { player: ctx.controllerId, max, sourceName: label }
+  ctx.state.pendingMayDraw = {
+    player: ctx.controllerId,
+    max,
+    sourceName: label,
+    ...(opts?.exact ? { exact: true } : {}),
+  }
 }
 
 /**

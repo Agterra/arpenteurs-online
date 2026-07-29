@@ -2110,15 +2110,18 @@ onBeforeUnmount(() => {
       <!-- "…may draw up to two cards" (Arcane Denial) -->
       <div v-if="legal?.needsMayDraw" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
         <div class="flex flex-col items-center gap-2 rounded-lg border border-primary bg-default p-4 shadow-xl">
-          <p class="text-sm font-semibold">{{ legal.mayDrawSourceName }} — you may draw up to {{ legal.mayDrawMax }} cards</p>
+          <p class="text-sm font-semibold">
+            {{ legal.mayDrawSourceName }} — you may draw {{ legal.mayDrawExact ? '' : 'up to ' }}{{ legal.mayDrawMax }} cards
+          </p>
           <div class="flex gap-2">
+            <!-- "up to N" offers every count; "you may draw N cards" is all-or-nothing -->
             <UButton
-              v-for="n in (legal.mayDrawMax + 1)"
+              v-for="n in (legal.mayDrawExact ? [0, legal.mayDrawMax] : [...Array(legal.mayDrawMax + 1).keys()])"
               :key="n"
               size="xs"
-              :variant="n - 1 === legal.mayDrawMax ? 'solid' : 'soft'"
-              @click="send({ type: 'r.mayDraw', count: n - 1 })"
-            >{{ n - 1 === 0 ? 'None' : `Draw ${n - 1}` }}</UButton>
+              :variant="n === legal.mayDrawMax ? 'solid' : 'soft'"
+              @click="send({ type: 'r.mayDraw', count: n })"
+            >{{ n === 0 ? 'None' : `Draw ${n}` }}</UButton>
           </div>
         </div>
       </div>

@@ -295,8 +295,10 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       return true
     }
     if (state.pending.kind === 'mayDraw' && state.pendingMayDraw) {
-      // "…may draw up to two cards" (Arcane Denial): a random legal count, 0 included
-      applyRulesAction(state, p, { type: 'r.mayDraw', count: Math.floor(rnd() * (state.pendingMayDraw.max + 1)) })
+      // "up to two" takes any count; "you may draw TWO cards" (Mystic Remora) is all-or-nothing
+      const pmd = state.pendingMayDraw
+      const count = pmd.exact ? (rnd() < 0.5 ? 0 : pmd.max) : Math.floor(rnd() * (pmd.max + 1))
+      applyRulesAction(state, p, { type: 'r.mayDraw', count })
       return true
     }
     if (state.pending.kind === 'revealTop') {
@@ -1038,6 +1040,10 @@ const FUZZ_DECK = [
   // fuzzer answers a may-draw decision on somebody else's turn (library→hand for a non-active player).
   // batch CARD60: Deflecting Swat — targets a SPELL OR ABILITY on the stack and opens the re-aim
   // decision. Fuzz games have no commanders, so it is cast for its {2}{R}; the fuzzer keeps the targets.
+  // batch CARD61: Mystic Remora — a cumulative-upkeep permanent (an age counter and a growing
+  // pay-or-sacrifice decision every one of its controller's upkeeps) whose all-or-nothing draw fires on
+  // every opponent noncreature spell, so both decisions are answered constantly.
+  ...Array(2).fill('Mystic Remora'),
   ...Array(2).fill('Deflecting Swat'),
   ...Array(2).fill('Arcane Denial'),
   ...Array(2).fill('Urborg, Tomb of Yawgmoth'),

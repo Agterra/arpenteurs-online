@@ -969,6 +969,7 @@ function beginStep(state: RulesGameState) {
     }
     case 'upkeep': {
       if (fireDelayedTriggers(state, 'nextUpkeep')) return // a pay-or-else decision is open
+      if (fireCumulativeUpkeep(state)) return // cumulative upkeep: pay-or-sacrifice comes first
       fireUpkeepTriggers(state) // "at the beginning of your upkeep" triggers onto the stack
       advanceSuspend(state) // CR 702.62c/d: remove a time counter from each suspended card; cast at 0
       // a targeted upkeep trigger sets pending → its controller chooses first
@@ -1981,6 +1982,43 @@ function blockRestriction(state: RulesGameState, blocker: GameObject, attacker: 
 }
 
 /** Fire "at the beginning of your upkeep" triggers for the active player's permanents. */
+/**
+ * CUMULATIVE UPKEEP (CR 702.24): as its controller's upkeep begins, put an age counter on the permanent
+ * and open the pay-or-sacrifice decision for the TOTAL (per-counter cost × counters). Declining
+ * sacrifices it. Returns true when a decision was opened (only the first such permanent is handled per
+ * upkeep — the same one-pending limitation the targeted upkeep triggers carry).
+ */
+function fireCumulativeUpkeep(state: RulesGameState): boolean {
+  const ap = state.activePlayer
+  for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
+    const obj = state.objects[id]
+    const per = obj && getDef(obj.defName).cumulativeUpkeep
+    if (!obj || !per) continue
+    putCounters(state, id, 'age', 1)
+    const n = obj.counters.age ?? 1
+    const cost = parseManaCost(per)
+    const total = `${cost.generic * n ? `{${cost.generic * n}}` : ''}${(['W', 'U', 'B', 'R', 'G', 'C'] as const)
+      .map((c) => `{${c}}`.repeat(cost.colored[c] * n))
+      .join('')}` || '{0}'
+    state.pending = { kind: 'optionalPay', player: ap }
+    state.pendingOptionalPay = {
+      player: ap,
+      beneficiary: ap,
+      cost: total,
+      defName: obj.defName,
+      sourceId: id,
+      trigger: 'upkeep',
+      cumulativeUpkeep: true,
+    }
+    logLine(
+      state,
+      `${getDef(obj.defName).name} gets an age counter (${n}) — ${name(state, ap)} must pay ${total} or sacrifice it.`,
+    )
+    return true
+  }
+  return false
+}
+
 function fireUpkeepTriggers(state: RulesGameState) {
   const ap = state.activePlayer
   for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
@@ -3557,13 +3595,19 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
               : d.castSpell
       if (paid) {
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
-        if (pop.effectOnPay) {
+        if (pop.cumulativeUpkeep) {
+          logLine(state, `${name(state, actor)} pays ${pop.cost} to keep ${getDef(pop.defName).name}.`)
+        } else if (pop.effectOnPay) {
           // "you may pay {4}. If you do, untap this artifact." — paying is what makes it happen
           logLine(state, `${name(state, actor)} pays ${pop.cost} for ${d.name}.`)
           body?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
         } else {
           logLine(state, `${name(state, actor)} pays ${pop.cost} — ${d.name}'s ability does nothing.`)
         }
+      } else if (pop.cumulativeUpkeep) {
+        // CR 702.24: not paying the cumulative upkeep sacrifices the permanent
+        logLine(state, `${name(state, actor)} declines — ${getDef(pop.defName).name} is sacrificed (cumulative upkeep).`)
+        if (state.objects[pop.sourceId]?.zone === 'battlefield') moveToGraveyard(state, pop.sourceId)
       } else {
         logLine(state, `${name(state, actor)} declines to pay ${pop.cost}.`)
         if (!pop.effectOnPay) body?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
@@ -3712,6 +3756,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('NOT_PENDING', 'Not waiting for your draw')
       const pmd = state.pendingMayDraw
       if (msg.count > pmd.max) throw new RulesError('BAD_CHOICE', `Draw at most ${pmd.max}`)
+      // "you may draw TWO cards" is all-or-nothing, unlike "up to two" (Mystic Remora vs Arcane Denial)
+      if (pmd.exact && msg.count !== 0 && msg.count !== pmd.max)
+        throw new RulesError('BAD_CHOICE', `Draw ${pmd.max} or none`)
       state.pending = null
       state.pendingMayDraw = null
       for (let i = 0; i < msg.count; i++) drawOne(state, actor)

@@ -259,6 +259,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     retargetSourceName: '',
     needsMayDraw: false,
     mayDrawMax: 0,
+    mayDrawExact: false,
     mayDrawSourceName: '',
     needsRevealTop: false,
     revealTopCardId: null,
@@ -441,7 +442,13 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     }
     if (state.pending.kind === 'mayDraw' && state.pendingMayDraw) {
       const pmd = state.pendingMayDraw
-      return { ...none, needsMayDraw: true, mayDrawMax: pmd.max, mayDrawSourceName: pmd.sourceName }
+      return {
+        ...none,
+        needsMayDraw: true,
+        mayDrawMax: pmd.max,
+        mayDrawExact: !!pmd.exact,
+        mayDrawSourceName: pmd.sourceName,
+      }
     }
     if (state.pending.kind === 'revealTop' && state.pendingRevealTop) {
       // an actor-only peek at ONE card (the sanctioned window of invariant #2, like a scry)

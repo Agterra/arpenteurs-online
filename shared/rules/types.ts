@@ -392,7 +392,7 @@ export interface RulesGameState {
    */
   pendingRevealTop: { player: PlayerId; cardId: ObjId; sourceName: string } | null
   /** "…may draw up to two cards" (Arcane Denial): a count between 0 and `max` (r.mayDraw) */
-  pendingMayDraw: { player: PlayerId; max: number; sourceName: string } | null
+  pendingMayDraw: { player: PlayerId; max: number; sourceName: string; exact?: boolean } | null
   /**
    * "You may choose new targets for target spell or ability" (Deflecting Swat) — `player` re-aims the
    * stack item `itemId`; the new targets must still be legal FOR THAT ITEM'S controller (CR 115.7b).
@@ -497,6 +497,8 @@ export interface RulesGameState {
     trigger: 'cast' | 'draw' | 'delayed' | 'upkeep'
     /** true when the effect happens ON PAYMENT ("you may pay {4}: if you do, untap") */
     effectOnPay?: boolean
+    /** CUMULATIVE UPKEEP: declining sacrifices `sourceId` (there is no ability body to run) */
+    cumulativeUpkeep?: boolean
     /** for a delayed trigger: which `CardDefinition.delayed` entry this is */
     delayedKey?: string
   } | null
@@ -665,6 +667,8 @@ export interface LegalActions {
   /** a "you may draw up to N cards" decision is waiting (r.mayDraw) */
   needsMayDraw: boolean
   mayDrawMax: number
+  /** true when the choice is all-or-nothing ("you may draw TWO cards", not "up to two") */
+  mayDrawExact: boolean
   mayDrawSourceName: string
   /** a "look at the top card, you may take it" decision is waiting (r.revealTop) */
   needsRevealTop: boolean

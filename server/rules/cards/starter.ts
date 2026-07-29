@@ -4846,4 +4846,17 @@ export const STARTER_SET: CardDefinition[] = [
       effect: chooseNewTargets(),
     },
   },
+  // --- Coverage batch CARD61: Mystic Remora (cumulative upkeep) ---
+  {
+    name: 'Mystic Remora',
+    types: ['Enchantment'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Cumulative upkeep {1} / Whenever an opponent casts a noncreature spell, you may draw two cards."
+    cumulativeUpkeep: '{1}',
+    castSpell: {
+      watch: { opponentsOnly: true, noncreatureOnly: true },
+      effect: mayDrawUpTo(2, 'Mystic Remora', { exact: true }),
+    },
+  },
 ]

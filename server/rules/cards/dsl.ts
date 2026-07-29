@@ -616,6 +616,13 @@ export interface CardDefinition {
    * controller's, gains that basic land type and with it that type's intrinsic mana ability.
    */
   grantsLandTypeToAll?: string
+  /**
+   * CUMULATIVE UPKEEP (CR 702.24 — Mystic Remora): "At the beginning of your upkeep, put an age counter
+   * on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it."
+   * Set to the PER-COUNTER cost ('{1}'); the engine adds the counter, totals the cost and opens the
+   * pay-or-sacrifice decision.
+   */
+  cumulativeUpkeep?: string
   /** "This permanent doesn't untap during your untap step." (Mana Vault, the Monoliths) */
   doesNotUntap?: boolean
   /**
