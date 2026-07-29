@@ -31,10 +31,16 @@ import {
   dynamicManaColors,
   grantedLandManaColors,
   hasAnyLegalTarget,
+  isImpulsePlayable,
   isLegalTarget,
   landDropAllowance,
   permanentCostReduction,
 } from './engine'
+
+/** does the exiled card have flash? (an impulse card with flash is castable outside your main phase) */
+function hasFlashInExile(state: RulesGameState, id: ObjId): boolean {
+  return getDef(state.objects[id]!.defName).keywords?.includes('flash') ?? false
+}
 
 function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean {
   const obj = state.objects[id]
@@ -237,6 +243,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     suspendable: [],
     adventurable: [],
     castExileIds: [],
+    playableExileLandIds: [],
     buybackable: [],
   }
   if (state.status !== 'active' || state.players[viewer]?.hasLost) return none
@@ -737,13 +744,25 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     }
   }
 
-  // exiled adventurer cards whose creature side you can cast from exile (sorcery speed)
+  // exiled adventurer cards whose creature side you can cast from exile (sorcery speed), plus the
+  // IMPULSE-DRAW cards ("you may play them this turn") — an instant among those is castable any time,
+  // everything else needs your main phase; a LAND goes to playableExileLandIds instead
   const castExileIds: ObjId[] = []
-  if (isMain) {
-    for (const id of zoneArr(state, viewer, 'exile')) {
-      const o = state.objects[id]!
-      if (o.adventured && o.ownerId === viewer && affordable(getDef(o.defName).manaCost)) castExileIds.push(id)
+  const playableExileLandIds: ObjId[] = []
+  for (const id of zoneArr(state, viewer, 'exile')) {
+    const o = state.objects[id]!
+    const def = getDef(o.defName)
+    if (isMain && o.adventured && o.ownerId === viewer && affordable(def.manaCost)) {
+      castExileIds.push(id)
+      continue
     }
+    if (!isImpulsePlayable(state, viewer, id)) continue
+    if (defIsLand(def)) {
+      if (isMain && landDropAllowance(state, viewer) > state.players[viewer]!.landsPlayedThisTurn) playableExileLandIds.push(id)
+      continue
+    }
+    if (!isMain && !def.types.includes('Instant') && !hasFlashInExile(state, id)) continue
+    if (affordable(def.manaCost)) castExileIds.push(id)
   }
 
   // castable cards with buyback → the client offers a "buyback" toggle (like kicker)
@@ -780,6 +799,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     suspendable,
     adventurable,
     castExileIds,
+    playableExileLandIds,
     buybackable,
   }
 }

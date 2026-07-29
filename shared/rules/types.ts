@@ -97,6 +97,16 @@ export interface GameObject {
   /** counters on the object (e.g. "+1/+1"); manual for unimplemented cards */
   counters: Record<string, number>
   isCommander: boolean
+  /**
+   * IMPULSE DRAW ("exile the top N cards of your library; … you may play those cards"): who may play
+   * this exiled card, and how long the window lasts — 'endOfTurn' (Jeska's Will: "you may play them
+   * this turn") or 'endOfYourNextTurn' (Reckless Impulse). `playableFromTurn` is the turn it was
+   * exiled on, so the longer window can tell "your next turn" from the current one. Cleared as the
+   * window closes; the card then simply stays in exile.
+   */
+  playableBy?: PlayerId
+  playableUntil?: 'endOfTurn' | 'endOfYourNextTurn'
+  playableFromTurn?: number
   /** host this Aura/Equipment is attached to (null = unattached); cleared on zone change */
   attachedTo?: ObjId | null
   /** current loyalty (planeswalkers); set from the definition on entering the battlefield */
@@ -634,6 +644,8 @@ export interface LegalActions {
   adventurable: { objId: ObjId; cost: string; name: string }[]
   /** exiled adventurer cards whose creature side you can cast from exile (CR 715) */
   castExileIds: ObjId[]
+  /** LANDS exiled by an impulse effect that you may play right now (they use your land drop) */
+  playableExileLandIds: ObjId[]
   /** castable cards with a buyback cost — the client offers a "buyback" toggle (CR 702.27) */
   buybackable: { objId: ObjId; cost: string }[]
 }

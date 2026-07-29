@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**546 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**550 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -109,6 +109,7 @@
 - Command Tower
 - Commander's Sphere
 - Commercial District
+- Commune with Lava
 - Concentrate
 - Consider
 - Counterspell
@@ -252,6 +253,7 @@
 - Jayemdae Tome
 - Jedit Ojanen
 - Jerrard of the Closed Fist
+- Jeska's Will
 - Jet Medallion
 - Jetmir's Garden
 - Jungle Shrine
@@ -377,6 +379,7 @@
 - Ravenous Chupacabra
 - Ravenous Rats
 - Reanimate
+- Reckless Impulse
 - Reclamation Sage
 - Reflecting Pool
 - Regrowth
@@ -548,6 +551,7 @@
 - Worldly Tutor
 - Worn Powerstone
 - Wrath of God
+- Wrenn's Resolve
 - Xander's Lounge
 - Yavimaya Coast
 - Young Wolf

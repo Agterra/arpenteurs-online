@@ -13,6 +13,7 @@ import {
   addLoyaltyToOtherPlaneswalkers,
   addMana,
   addManaEqualToX,
+  addManaPerCardInTargetHand,
   addManaPerColorAmongPermanents,
   addManaPerLandSubtype,
   addManaPerOpponentTappedLand,
@@ -66,6 +67,7 @@ import {
   grantKeywordsToTarget,
   grantProtection,
   grantProtectionToControlled,
+  impulseExile,
   lookAndReorder,
   lookTransformIfInstantSorcery,
   loseAllAbilities,
@@ -3939,5 +3941,48 @@ export const STARTER_SET: CardDefinition[] = [
         effect: pumpControlled(3, 3, { excludeSubtypes: ['Human'] }),
       },
     ],
+  },
+  // --- Coverage batch CARD42: IMPULSE DRAW ("exile the top N; you may play them") ---
+  {
+    name: "Jeska's Will",
+    types: ['Sorcery'],
+    manaCost: '{2}{R}',
+    colors: ['R'],
+    // "Choose one. If you control a commander as you cast this spell, you may choose both instead.
+    //  • Add {R} for each card in target opponent's hand.
+    //  • Exile the top three cards of your library. You may play them this turn."
+    modeRule: { bothIfCommander: true },
+    modes: [
+      {
+        label: "Add {R} for each card in target opponent's hand",
+        targets: [{ kind: 'player', count: 1, filter: { controller: 'opponent' } }],
+        effect: addManaPerCardInTargetHand('R'),
+      },
+      { label: 'Exile the top three cards of your library and play them this turn', effect: impulseExile(3, 'endOfTurn') },
+    ],
+  },
+  {
+    name: 'Reckless Impulse',
+    types: ['Sorcery'],
+    manaCost: '{1}{R}',
+    colors: ['R'],
+    // "Exile the top two cards of your library. Until the end of your next turn, you may play those cards."
+    spell: { effect: impulseExile(2, 'endOfYourNextTurn') },
+  },
+  {
+    name: "Wrenn's Resolve",
+    types: ['Sorcery'],
+    manaCost: '{1}{R}',
+    colors: ['R'],
+    // "Exile the top two cards of your library. Until the end of your next turn, you may play those cards."
+    spell: { effect: impulseExile(2, 'endOfYourNextTurn') },
+  },
+  {
+    name: 'Commune with Lava',
+    types: ['Instant'],
+    manaCost: '{X}{R}{R}',
+    colors: ['R'],
+    // "Exile the top X cards of your library. Until the end of your next turn, you may play those cards."
+    spell: { effect: impulseExile('x', 'endOfYourNextTurn') },
   },
 ]

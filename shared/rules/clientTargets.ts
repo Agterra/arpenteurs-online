@@ -101,6 +101,10 @@ export const MODAL_SPELLS: Record<string, { label: string; spec: TargetClass | n
     { label: 'Deal 3 damage to target creature', spec: 'creature' },
     { label: 'Destroy target artifact', spec: 'permanent' },
   ],
+  "jeska's will": [
+    { label: "Add {R} for each card in target opponent's hand", spec: 'player' },
+    { label: 'Exile the top three cards of your library and play them this turn', spec: null },
+  ],
   'boros charm': [
     { label: 'Deal 4 damage to target player or planeswalker', spec: 'player-or-pw' },
     { label: 'Permanents you control gain indestructible', spec: null },
@@ -145,6 +149,7 @@ export const MODAL_CHOOSE: Record<string, number | 'any' | 'bothIfCommander'> = 
   'austere command': 2,
   farewell: 'any',
   "akroma's will": 'bothIfCommander',
+  "jeska's will": 'bothIfCommander',
 }
 
 /** Multi-target spells (ordered slots) — fight spells: your creature, then theirs. */

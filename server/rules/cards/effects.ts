@@ -1329,6 +1329,46 @@ export const pumpControlled = (power: number, toughness: number, opts?: { exclud
   )
 }
 
+/**
+ * IMPULSE DRAW (Jeska's Will, Reckless Impulse, Commune with Lava): exile the top `n` cards of the
+ * controller's library face up and let them PLAY those cards for a while — lands included, which is
+ * why the marker lives on the object rather than in a cast-only list. `n: 'x'` takes the spell's X.
+ * Library → exile is hidden → public, so the cards become known to everyone, exactly as printed.
+ */
+export const impulseExile = (n: number | 'x', until: 'endOfTurn' | 'endOfYourNextTurn'): Effect => (ctx) => {
+  const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
+  const count = Math.min(n === 'x' ? (ctx.x ?? 0) : n, lib.length)
+  const names: string[] = []
+  for (let i = 0; i < count; i++) {
+    const id = lib[0]!
+    names.push(getDef(ctx.state.objects[id]!.defName).name)
+    moveTo(ctx.state, id, 'exile')
+    const obj = ctx.state.objects[id]!
+    obj.playableBy = ctx.controllerId
+    obj.playableUntil = until
+    obj.playableFromTurn = ctx.state.turnNumber
+  }
+  logLine(
+    ctx.state,
+    count
+      ? `${ctx.state.players[ctx.controllerId]!.name} exiles ${names.join(', ')} and may play ${count === 1 ? 'it' : 'them'} ${until === 'endOfTurn' ? 'this turn' : 'until the end of their next turn'}.`
+      : `${ctx.state.players[ctx.controllerId]!.name} has no cards left to exile.`,
+  )
+}
+
+/** Jeska's Will's first mode: add {R} for each card in TARGET opponent's hand. */
+export const addManaPerCardInTargetHand = (color: ManaColor): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    const n = ctx.state.zones.perPlayer[t]!.hand.length
+    ctx.state.players[ctx.controllerId]!.manaPool[color] += n
+    logLine(
+      ctx.state,
+      `${ctx.state.players[ctx.controllerId]!.name} adds ${n} {${color}} (one per card in ${ctx.state.players[t]!.name}'s hand).`,
+    )
+  }
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {

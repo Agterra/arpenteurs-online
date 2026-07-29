@@ -68,6 +68,7 @@ function assertNoLeaks(state: RulesGameState, context: string, seen: Map<PlayerI
 let pwLoyaltyFired = 0
 let pwAttacked = 0
 let pwBurned = 0 // a spell/ability aimed its damage at a planeswalker ("any target" — CR 115.4)
+let impulsePlayed = 0 // a card exiled by an impulse effect was played straight out of exile (fuzz-only telemetry)
 
 /** One random-but-legal action for whoever must act; returns false when stuck. */
 function randomAction(state: RulesGameState, rnd: () => number): boolean {
@@ -423,6 +424,37 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
   }
 
+  // IMPULSE DRAW: play a card exiled by Jeska's Will / Reckless Impulse straight out of exile — a
+  // land uses the land drop, anything else is cast for its printed cost from a PUBLIC zone
+  if ((legal.playableExileLandIds.length || legal.castExileIds.length) && rnd() < 0.6) {
+    if (legal.playableExileLandIds.length && rnd() < 0.5) {
+      const land = pick(legal.playableExileLandIds)
+      try {
+        applyRulesAction(state, actor, { type: 'r.playLand', objId: land })
+        impulsePlayed++ // coverage guard
+        return true
+      } catch { /* land drop already spent */ }
+    } else if (legal.castExileIds.length) {
+      const id = pick(legal.castExileIds)
+      const def = getDef(state.objects[id]!.defName)
+      const need = (def.manaCost?.replace(/\{X\}/g, '').match(/\{/g) ?? []).length
+      for (const src of legal.manaSourceIds) {
+        if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= need) break
+        tapSource(src, legal)
+      }
+      // only untargeted cards are attempted here: a targeted one needs the same picker the hand
+      // path uses, and an illegal guess would just be rejected
+      const specs = def.modes?.length ? (def.modes[0]!.targets ?? []) : (def.spell?.targets ?? [])
+      if (!specs.length && !def.modeRule) {
+        try {
+          applyRulesAction(state, actor, { type: 'r.cast', objId: id, targets: [], mode: def.modes?.length ? 0 : undefined })
+          impulsePlayed++ // coverage guard
+          return true
+        } catch { /* can't pay / wrong timing */ }
+      }
+    }
+  }
+
   // occasionally use an activated ability (exercises r.activate incl. sacrifice costs)
   if (legal.activations.length && rnd() < 0.3) {
     const a = pick(legal.activations)
@@ -590,7 +622,11 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
         // this new target class is reached, and a fuzz game's planeswalkers are attacked to death
         // early, so an unbiased pick left the pwBurned coverage guard asserting nothing
         const pwCands = planeswalkers.filter((id) => cands.includes(id))
-        const chosenTarget = spec.kind === 'anyTarget' && pwCands.length && rnd() < 0.5 ? pick(pwCands) : pick(cands)
+        // the FIRST legal chance always takes the planeswalker, then it is a coin flip: fuzz games
+        // attack their walkers to death early, so leaving this to chance made the pwBurned coverage
+        // guard depend on the deck's shuffle (it silently dropped to zero twice while tuning it)
+        const chosenTarget =
+          spec.kind === 'anyTarget' && pwCands.length && (pwBurned === 0 || rnd() < 0.5) ? pick(pwCands) : pick(cands)
         if (spec.kind === 'anyTarget' && planeswalkers.includes(chosenTarget as ObjId)) pwBurned++ // coverage guard
         targets.push(chosenTarget)
       }
@@ -895,6 +931,11 @@ const FUZZ_DECK = [
   // batch CARD41: Boros Charm (its first mode targets a PLAYER OR PLANESWALKER — an any-target whose
   // permanent side excludes creatures, so the fuzzer's target picker must respect the filter) and
   // Return of the Wildspeaker (a mass pump / greatest-power draw, no targets).
+  // batch CARD42: impulse draw — Reckless Impulse and Jeska's Will exile the top of the library
+  // (hidden → PUBLIC) and let their controller play those cards from exile, so the fuzzer casts and
+  // plays lands out of exile while the history-aware assertion watches the ids.
+  ...Array(3).fill('Reckless Impulse'),
+  ...Array(2).fill("Jeska's Will"),
   ...Array(2).fill('Boros Charm'),
   ...Array(2).fill('Return of the Wildspeaker'),
   ...Array(6).fill('Shock'),
@@ -913,6 +954,7 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     pwLoyaltyFired = 0
     pwAttacked = 0
     pwBurned = 0
+    impulsePlayed = 0
     try {
       for (const [nPlayers, seed] of cases) {
         const rnd = mulberry32(seed)
@@ -1076,6 +1118,49 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       expect(state.zones.perPlayer[A]!.graveyard.includes(moor)).toBe(true)
       expect(state.zones.perPlayer[A]!.library.length).toBe(libBefore - 1)
       assertNoLeaks(state, '(after cycle)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // IMPULSE DRAW (CARD42): the top of a HIDDEN library becomes PUBLIC in exile and its controller
+  // then plays it from there. The fuzz loop exercises this too, but whether an impulse spell is drawn
+  // and affordable is shuffle luck, so the path is pinned deterministically here.
+  it('impulse draw: library → exile → played, with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(4242))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const impulse = putCard(state, A, 'Reckless Impulse', 'hand')
+      assertNoLeaks(state, '(impulse setup)', seen)
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'C', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.cast', objId: impulse, targets: [] })
+      until(state, (s) => !s.zones.stack.length && s.priorityPlayer === A, 'the impulse resolves')
+      const exiled = state.zones.perPlayer[A]!.exile.filter((id) => state.objects[id]!.playableBy === A)
+      expect(exiled.length).toBe(2)
+      assertNoLeaks(state, '(after exiling the top two)', seen)
+      // play whichever of the two can be played right now (a land, else a castable card)
+      const legal = computeLegal(state, A)
+      if (legal.playableExileLandIds.length) {
+        applyRulesAction(state, A, { type: 'r.playLand', objId: legal.playableExileLandIds[0]! })
+        expect(state.objects[legal.playableExileLandIds[0]!]!.zone).toBe('battlefield')
+      } else {
+        applyRulesAction(state, A, { type: 'r.mMana', color: 'R', delta: 3 })
+        const castable = computeLegal(state, A).castExileIds
+        expect(castable.length).toBeGreaterThan(0)
+      }
+      assertNoLeaks(state, '(after playing from exile)', seen)
+      // the window closes at the end of A's NEXT turn and the cards stay in exile
+      const turn = state.turnNumber
+      until(state, (s) => s.activePlayer === A && s.turnNumber > turn && s.step === 'main1', "A's next turn")
+      until(state, (s) => exiled.every((id) => !s.objects[id]!.playableUntil) || s.turnNumber > turn + 2, 'the window closing')
+      for (const id of exiled) {
+        if (state.objects[id]!.zone === 'exile') expect(state.objects[id]!.playableUntil).toBeUndefined()
+      }
+      assertNoLeaks(state, '(after the window closed)', seen)
     } finally {
       __setDeterministicRng(null)
     }

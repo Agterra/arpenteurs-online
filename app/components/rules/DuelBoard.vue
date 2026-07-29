@@ -137,6 +137,9 @@ const casting = ref<{
 const modalPick = ref<{
   card: RulesClientCard
   modes: { label: string; spec: TargetClass | null }[]
+  /** set when the card is being cast from somewhere other than your hand (impulse exile) */
+  alt?: AltKind
+  altCost?: string
   /** absent = "choose one" (pick and go); otherwise how many modes this spell takes */
   choose?: number | 'any' | 'bothIfCommander'
   selected: number[]
@@ -144,9 +147,9 @@ const modalPick = ref<{
 // planeswalker loyalty-ability picker
 const loyaltyPick = ref<{ objId: ObjId; options: { abilityIndex: number; cost: number }[] } | null>(null)
 // multi-target casting (fight): collect ordered targets, then pay
-const multiTargeting = ref<{ objId: ObjId; slots: FightSlot[]; collected: ObjId[] } | null>(null)
+const multiTargeting = ref<{ objId: ObjId; slots: FightSlot[]; collected: ObjId[]; alt?: AltKind; altCost?: string } | null>(null)
 // graveyard recursion (Raise Dead / Regrowth): pick a card from your graveyard, then pay
-const graveyardTargeting = ref<{ objId: ObjId; creatureOnly: boolean } | null>(null)
+const graveyardTargeting = ref<{ objId: ObjId; creatureOnly: boolean; alt?: AltKind; altCost?: string } | null>(null)
 
 watch(
   () => st.value?.seq,
@@ -344,12 +347,15 @@ const ALT_TARGET_CLASS: Record<string, TargetClass> = {
   'nyxborn rollicker': 'creature', // bestow → enchant a creature
 }
 function altTargetClass(kind: AltKind, name: string): TargetClass | null {
-  if (kind === 'evoke' || kind === 'exile' || kind === 'suspend' || kind === 'escape') return null // no target
+  if (kind === 'evoke' || kind === 'suspend' || kind === 'escape') return null // no target
   return ALT_TARGET_CLASS[name.toLowerCase()] ?? null
 }
 /** begin an alternative cast (flashback / retrace / evoke / bestow / adventure / cast-from-exile /
  *  suspend): collect a target first if the face needs one, else open the payment panel directly. */
 function beginAltCast(card: RulesClientCard, kind: AltKind, cost: string, escapeCount?: number) {
+  // casting from exile keeps the card's printed rules (modes, targets, graveyard picks): an
+  // impulse-drawn card can be anything, so it goes through the normal cast dispatcher
+  if (kind === 'exile') return startCast(card, { alt: kind, cost })
   modalPick.value = null
   multiTargeting.value = null
   graveyardTargeting.value = null
@@ -384,6 +390,8 @@ const gyAltIds = computed<ObjId[]>(() => {
 })
 /** exiled adventurer cards whose creature side you can cast from exile right now. */
 const exileAltIds = computed<ObjId[]>(() => legal.value?.castExileIds ?? [])
+/** lands you may play straight out of exile right now (impulse draw) */
+const exileLandIds = computed<ObjId[]>(() => legal.value?.playableExileLandIds ?? [])
 function cancelCast() {
   casting.value = null
 }
@@ -398,18 +406,20 @@ const cancelMultiTarget = () => {
   multiTargeting.value = null
 }
 
-function startCast(card: RulesClientCard) {
+function startCast(card: RulesClientCard, from?: { alt: AltKind; cost: string }) {
   const name = card.defName ?? ''
+  const alt = from?.alt
+  const altCost = from?.cost
   const modes = MODAL_SPELLS[name]
   // "choose one" picks and goes; a multi-mode spell collects its picks, then confirms
-  if (modes) return void (modalPick.value = { card, modes, choose: MODAL_CHOOSE[name], selected: [] })
+  if (modes) return void (modalPick.value = { card, modes, choose: MODAL_CHOOSE[name], selected: [], alt, altCost })
   const slots = MULTI_TARGET_SPELLS[name]
-  if (slots) return void (multiTargeting.value = { objId: card.id, slots, collected: [] }) // fight: 2 targets
+  if (slots) return void (multiTargeting.value = { objId: card.id, slots, collected: [], alt, altCost }) // fight: 2 targets
   const gy = GRAVEYARD_SPELLS[name]
-  if (gy) return void (graveyardTargeting.value = { objId: card.id, creatureOnly: gy === 'creature' }) // pick a card from your graveyard
+  if (gy) return void (graveyardTargeting.value = { objId: card.id, creatureOnly: gy === 'creature', alt, altCost }) // pick a card from your graveyard
   const spec = TARGETED_SPELLS[name]
-  if (spec) targeting.value = { objId: card.id, spec }
-  else if (!beginCastExtraCost(card, [])) beginPayment(card, [])
+  if (spec) targeting.value = { objId: card.id, spec, alt, altCost }
+  else if (alt || !beginCastExtraCost(card, [])) beginPayment(card, [], null, alt, altCost)
 }
 /** cards in your own graveyard eligible for the active recursion spell. */
 const graveyardTargets = computed<ObjId[]>(() => {
@@ -425,7 +435,7 @@ function pickGraveyardTarget(id: ObjId) {
   if (!gt) return
   const card = cardOf(gt.objId)
   graveyardTargeting.value = null
-  if (card) beginPayment(card, [id])
+  if (card) beginPayment(card, [id], null, gt.alt, gt.altCost)
 }
 const cancelGraveyardTarget = () => {
   graveyardTargeting.value = null
@@ -454,8 +464,8 @@ function pickMode(i: number) {
   const m = mp.modes[i]
   const card = mp.card
   modalPick.value = null
-  if (m?.spec) targeting.value = { objId: card.id, spec: m.spec, mode: i }
-  else beginPayment(card, [], i)
+  if (m?.spec) targeting.value = { objId: card.id, spec: m.spec, mode: i, alt: mp.alt, altCost: mp.altCost }
+  else beginPayment(card, [], i, mp.alt, mp.altCost)
 }
 /** do you control a commander right now? (Akroma's Will's "you may choose both instead") */
 const controlsCommander = computed(() =>
@@ -480,7 +490,7 @@ function confirmModes() {
   const card = mp.card
   const picks = [...mp.selected].sort((a, b) => a - b)
   modalPick.value = null
-  beginPayment(card, [], null, undefined, undefined, picks)
+  beginPayment(card, [], null, mp.alt, mp.altCost, picks)
 }
 
 // planeswalker loyalty abilities (the current pool has only non-targeted ones)
@@ -566,7 +576,7 @@ function onBattlefieldClick(id: ObjId) {
     if (isFightTarget(id) && !mt.collected.includes(id)) {
       mt.collected.push(id)
       if (mt.collected.length === mt.slots.length) {
-        beginPayment(cardOf(mt.objId)!, [...mt.collected])
+        beginPayment(cardOf(mt.objId)!, [...mt.collected], null, mt.alt, mt.altCost)
         multiTargeting.value = null
       }
     }
@@ -1666,7 +1676,7 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- casts available from your graveyard / exile (flashback, retrace, adventure creature) -->
-            <div v-if="gyAltIds.length || exileAltIds.length" class="mt-2 flex flex-wrap items-end gap-2">
+            <div v-if="gyAltIds.length || exileAltIds.length || exileLandIds.length" class="mt-2 flex flex-wrap items-end gap-2">
               <span class="self-center text-[10px] uppercase tracking-wide text-dimmed">From graveyard / exile</span>
               <div v-for="id in gyAltIds" :key="`gy${id}`" class="flex flex-col items-center gap-1">
                 <RulesCard :card="st.cards[id]!" :display="display[st.cards[id]!.defName ?? '']" size="sm" @preview="hoverDisplay = $event" />
@@ -1692,6 +1702,15 @@ onBeforeUnmount(() => {
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   @click.stop="beginAltCast(cardOf(id)!, 'exile', display[cardOf(id)?.defName ?? '']?.manaCost ?? '')"
                 >Cast {{ display[cardOf(id)?.defName ?? '']?.manaCost }}</UButton>
+              </div>
+              <!-- a LAND exiled by an impulse effect: played from exile, using your land drop -->
+              <div v-for="id in exileLandIds" :key="`exl${id}`" class="flex flex-col items-center gap-1">
+                <RulesCard :card="st.cards[id]!" :display="display[st.cards[id]!.defName ?? '']" size="sm" @preview="hoverDisplay = $event" />
+                <UButton
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-mountain"
+                  @click.stop="send({ type: 'r.playLand', objId: id })"
+                >Play land</UButton>
               </div>
             </div>
 

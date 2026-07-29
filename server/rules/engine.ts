@@ -128,6 +128,36 @@ export function abilityLifeCost(state: RulesGameState, actor: PlayerId, cost: Co
 }
 
 /**
+ * IMPULSE DRAW: may `actor` play this exiled card right now? The window is 'endOfTurn' (the turn it
+ * was exiled on) or 'endOfYourNextTurn' (still open on any later turn up to and including the actor's
+ * next one — `expireImpulseWindows` closes it at that turn's cleanup, so a live marker means open).
+ */
+export function isImpulsePlayable(state: RulesGameState, actor: PlayerId, id: ObjId): boolean {
+  const obj = state.objects[id]
+  if (!obj || obj.zone !== 'exile' || obj.playableBy !== actor || !obj.playableUntil) return false
+  if (obj.playableUntil === 'endOfTurn') return state.turnNumber === (obj.playableFromTurn ?? state.turnNumber)
+  return true
+}
+
+/**
+ * Close the impulse windows that end with this turn (called at cleanup): every 'endOfTurn' marker,
+ * and an 'endOfYourNextTurn' marker whose owner is the active player on a LATER turn than the one it
+ * was made on. The card stays in exile — only the permission expires.
+ */
+function expireImpulseWindows(state: RulesGameState) {
+  for (const obj of Object.values(state.objects)) {
+    if (!obj.playableUntil) continue
+    const ownTurn = obj.playableBy === state.activePlayer
+    const later = state.turnNumber > (obj.playableFromTurn ?? state.turnNumber)
+    if (obj.playableUntil === 'endOfTurn' || (ownTurn && later)) {
+      delete obj.playableBy
+      delete obj.playableUntil
+      delete obj.playableFromTurn
+    }
+  }
+}
+
+/**
  * Schedule a DELAYED trigger (CR 603.7). It fires at the given step of a LATER turn than the one it
  * was created on, then is removed.
  */
@@ -839,6 +869,7 @@ function finishCleanup(state: RulesGameState) {
   state.protectionGrants = []
   state.keywordGrants = []
   state.unblockable = []
+  expireImpulseWindows(state) // "you may play them this turn" / "…until the end of your next turn"
   state.pending = null
   if (state.status === 'ended') return
   nextTurn(state)
@@ -1918,7 +1949,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const p = state.players[actor]!
       if (p.landsPlayedThisTurn >= landDropAllowance(state, actor))
         throw new RulesError('LAND_LIMIT', 'Already played a land this turn')
-      const obj = requireInHand(state, actor, msg.objId)
+      // a land exiled by an impulse effect is PLAYED from exile (it still uses the land drop)
+      const impulseLand = isImpulsePlayable(state, actor, msg.objId) ? state.objects[msg.objId]! : null
+      const obj = impulseLand ?? requireInHand(state, actor, msg.objId)
       if (!defIsLand(getDef(obj.defName))) throw new RulesError('NOT_A_LAND', 'That is not a land')
       moveTo(state, obj.id, 'battlefield')
       // (entersTapped is applied by moveTo for every entry path)
@@ -2185,7 +2218,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const fromForetell =
         !castingAdventure && !!candidate && candidate.zone === 'exile' && candidate.faceDown === true && candidate.ownerId === actor &&
         !!getDef(candidate.defName).foretellCost && (candidate.foretoldTurn ?? state.turnNumber) < state.turnNumber
-      const obj = fromCommand || fromExileAdv || fromFlashback || fromRetrace || fromEscape || fromForetell ? candidate! : requireInHand(state, actor, msg.objId)
+      // IMPULSE DRAW: a card exiled by Jeska's Will / Reckless Impulse is cast from exile for its
+      // normal cost while its window is open (a LAND from the same window is played with r.playLand)
+      const fromExileImpulse =
+        !castingAdventure && !!candidate && isImpulsePlayable(state, actor, msg.objId) && !defIsLand(getDef(candidate.defName))
+      const obj =
+        fromCommand || fromExileAdv || fromFlashback || fromRetrace || fromEscape || fromForetell || fromExileImpulse
+          ? candidate!
+          : requireInHand(state, actor, msg.objId)
       const def = getDef(obj.defName)
       if (castingAdventure && !def.adventure) throw new RulesError('NO_ADVENTURE', 'That card has no adventure')
       const adv = castingAdventure ? def.adventure! : null
