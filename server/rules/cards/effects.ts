@@ -970,6 +970,31 @@ export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) =
   )
 }
 
+/**
+ * Boseiju: destroy the target, then ITS controller may search their library for a land with a basic
+ * land type and put it onto the battlefield (a search opened for that player — they may take nothing).
+ */
+export const destroyTargetControllerFetchesLand = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'battlefield') continue
+    const owner = obj.controllerId
+    const nm = getDef(obj.defName).name
+    if (isIndestructible(ctx, t)) {
+      logLine(ctx.state, `${nm} is indestructible.`)
+      continue
+    }
+    logLine(ctx.state, `${nm} is destroyed.`)
+    moveToGraveyard(ctx.state, t)
+    // the affected player searches for a land with a basic land type (untapped, per the card)
+    searchLibrary({ filter: { landSubtypes: ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] }, dest: 'battlefield', count: 1 })({
+      ...ctx,
+      controllerId: owner,
+    })
+  }
+}
+
 /** Nature's Claim: destroy each target permanent, then ITS controller gains `life`. */
 export const destroyPermanentControllerGains = (life: number): Effect => (ctx) => {
   for (const t of ctx.targets) {

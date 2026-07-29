@@ -75,6 +75,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.sacrifice'), objIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.equip'), equipmentId: Id, creatureId: Id }),
   z.object({ type: z.literal('r.cycle'), objId: Id }),
+  // channel (the Kamigawa legendary lands): use the ability from your hand, discarding the card
+  z.object({ type: z.literal('r.channel'), objId: Id, targets: z.array(Id).max(8).default([]) }),
   z.object({ type: z.literal('r.suspend'), objId: Id }), // suspend a card from hand (CR 702.62)
   z.object({ type: z.literal('r.madness'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }), // CR 702.35
   z.object({ type: z.literal('r.foretell'), objId: Id }), // foretell a card from hand (CR 702.143)

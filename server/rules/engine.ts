@@ -98,6 +98,19 @@ export function landDropAllowance(state: RulesGameState, player: PlayerId): numb
   return 1 + extra
 }
 
+/** A channel ability's cost, reduced by your legendary creatures when the card says so. */
+export function channelCost(state: RulesGameState, actor: PlayerId, def: CardDefinition) {
+  const cost = parseManaCost(def.channel!.cost)
+  if (def.channel!.reducedByLegendaries) {
+    const legends = zoneArr(state, actor, 'battlefield').filter((id) => {
+      const d = getDef(state.objects[id]!.defName)
+      return defIsCreature(d) && (d.supertypes?.includes('Legendary') ?? false)
+    }).length
+    cost.generic = Math.max(0, cost.generic - legends)
+  }
+  return cost
+}
+
 /**
  * Schedule a DELAYED trigger (CR 603.7). It fires at the given step of a LATER turn than the one it
  * was created on, then is removed.
@@ -1007,6 +1020,25 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
     checkSBA(state)
     return
   }
+  // a CHANNEL ability (the card was discarded as its cost): run its effect, honouring targets
+  if (item.channel) {
+    const cd = getDef(item.defName).channel
+    if (cd) {
+      const specs = flattenSpecs(cd.targets)
+      let targets = item.targets
+      if (specs.length) {
+        targets = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
+        if (!targets.length) {
+          logLine(state, `${getDef(item.defName).name}'s channel ability fizzles (targets are gone).`)
+          checkSBA(state)
+          return
+        }
+      }
+      cd.effect({ state, controllerId: item.controllerId, sourceId: item.sourceId, targets })
+    }
+    checkSBA(state)
+    return
+  }
   // ward's ability (CR 702.21): if the triggering spell/ability is still on the stack, the
   // payer must pay the ward cost or it's countered — open a pay-or-counter decision.
   if (item.ward) {
@@ -1666,6 +1698,8 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
   if (filter.controller === 'opponent' && obj.controllerId === byController) return false
   if (filter.minManaValue != null && defManaValue(def) < filter.minManaValue) return false
   if (filter.maxManaValue != null && defManaValue(def) > filter.maxManaValue) return false
+  if (filter.excludeBasic && (def.supertypes?.includes('Basic') ?? false)) return false
+  if (filter.attackingOrBlocking && !obj.attackingDefender && !obj.blockingAttackerId) return false
   return true
 }
 
@@ -2757,6 +2791,44 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       state.passed = [] // an action restarts the pass chain (CR 116.4)
       logLine(state, `${name(state, actor)} equips ${objName(state, equip.id)} to ${objName(state, creature.id)}.`)
       checkSBA(state)
+      break
+    }
+
+    case 'r.channel': {
+      requirePriority(state, actor)
+      const obj = requireInHand(state, actor, msg.objId)
+      const def = getDef(obj.defName)
+      if (!def.channel) throw new RulesError('NO_CHANNEL', 'That card has no channel ability')
+      // validate targets + mana BEFORE anything is spent (the discard is part of the cost)
+      const specs = flattenSpecs(def.channel.targets)
+      const allOptional = specs.length > 0 && specs.every((sp) => sp.optional)
+      if (msg.targets.length !== specs.length && !(allOptional && msg.targets.length === 0))
+        throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
+      msg.targets.forEach((t, i) => {
+        if (!isLegalTarget(state, specs[i]!, t, actor, def.colors ?? [])) throw new RulesError('BAD_TARGETS', 'Illegal target')
+      })
+      const cost = channelCost(state, actor, def)
+      const pool = state.players[actor]!.manaPool
+      const payment = planPayment(cost, pool)
+      if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
+      for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+      // discard the card as the rest of the cost: hand → graveyard is hidden → PUBLIC, so no re-mint
+      const channelId = obj.id
+      moveToGraveyard(state, channelId)
+      const abilityId = mintCardId()
+      state.zones.stack.push({
+        id: abilityId,
+        kind: 'ability',
+        channel: true,
+        controllerId: actor,
+        defName: obj.defName,
+        sourceId: channelId,
+        abilityIndex: null,
+        targets: [...msg.targets],
+      })
+      logLine(state, `${name(state, actor)} channels ${def.name}.`)
+      queueWardTriggers(state, abilityId, msg.targets, actor)
+      grantPriority(state, actor)
       break
     }
 

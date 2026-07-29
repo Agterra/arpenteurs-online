@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**530 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**534 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -75,6 +75,7 @@
 - Boros Garrison
 - Boros Guildgate
 - Boros Signet
+- Boseiju, Who Endures
 - Bountiful Promenade
 - Brainstorm
 - Breeding Pool
@@ -142,6 +143,7 @@
 - Dreamroot Cascade
 - Drowned Catacomb
 - Earthquake
+- Eiganjo, Seat of the Empire
 - Elegant Parlor
 - Elvish Lookout
 - Elvish Mystic
@@ -317,6 +319,7 @@
 - Orzhov Basilica
 - Orzhov Guildgate
 - Orzhov Signet
+- Otawara, Soaring City
 - Overgrown Farmland
 - Overgrown Tomb
 - Ovinize
@@ -417,6 +420,7 @@
 - Skyshroud Claim
 - Smoldering Marsh
 - Smothering Tithe
+- Sokenzan, Crucible of Defiance
 - Sol Ring
 - Solemn Simulacrum
 - Soltari Foot Soldier

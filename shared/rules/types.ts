@@ -156,6 +156,8 @@ export interface StackItem {
   loyaltyIndex?: number
   /** cycling's ability on the stack: on resolution its controller draws a card (CR 702.29) */
   cycling?: boolean
+  /** a CHANNEL ability on the stack (the card was already discarded as its cost) */
+  channel?: boolean
   /** ward's triggered ability on the stack (CR 702.21): on resolution, counter `triggeringId`
    *  unless its controller (`payer`) pays `cost`. */
   ward?: { triggeringId: ObjId; cost: string; payer: PlayerId }
@@ -549,6 +551,8 @@ export interface LegalActions {
   loyaltyActivations: { objId: ObjId; abilityIndex: number; cost: number }[]
   /** hand cards you can cycle right now (instant speed, cost affordable) — CR 702.29 */
   cyclable: { objId: ObjId; cost: string }[]
+  /** hand cards whose CHANNEL ability you can use right now (cost already reduced) */
+  channelable: { objId: ObjId; cost: string; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | null }[]
   /** castable cards that have a kicker — the client offers a "kick" toggle (cost = kicker's mana) — CR 702.33 */
   kickable: { objId: ObjId; cost: string }[]
   /** hand cards castable for their OVERLOAD cost right now (untargeted "each" body) — CR 702.96 */

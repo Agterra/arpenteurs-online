@@ -352,6 +352,29 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
   }
 
+  // occasionally CHANNEL a card from hand (Kamigawa lands): the card is discarded as part of the cost
+  // (hand → graveyard, hidden → public) and the ability goes on the stack. Commit-then-return, since
+  // tapping for the cost makes `legal` stale.
+  if (legal.channelable.length && rnd() < 0.3) {
+    const ch = pick(legal.channelable)
+    const need = (ch.cost.match(/\{/g) ?? []).length
+    for (const src of legal.manaSourceIds) {
+      if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= need) break
+      tapSource(src, legal)
+    }
+    const targets: ObjId[] = []
+    if (ch.targetKind) {
+      const cands = Object.values(state.objects)
+        .filter((o) => o.zone === 'battlefield' && (ch.targetKind === 'permanent' || getDef(o.defName).types.includes('Creature')))
+        .map((o) => o.id)
+      if (cands.length) targets.push(pick(cands))
+    }
+    try {
+      applyRulesAction(state, actor, { type: 'r.channel', objId: ch.objId, targets })
+    } catch { /* pool short after random taps, or the target became illegal */ }
+    return true
+  }
+
   // occasionally OVERLOAD a spell (CR 702.96) — overloaded Cyclonic Rift bounces every nonland
   // permanent its caster doesn't control, a many-objects public→hidden move whose re-mints the
   // history-aware assertion then checks. Same commit-then-always-return discipline as above
@@ -793,6 +816,10 @@ const FUZZ_DECK = [
   // and Pact of Negation (a delayed pay-or-lose, so the fuzzer's optionalPay branch can end a game).
   ...Array(2).fill('Mana Drain'),
   ...Array(2).fill('Pact of Negation'),
+  // batch CARD37: two CHANNEL lands — used from hand, discarding the card as part of the cost, so the
+  // fuzzer exercises a hand→graveyard cost plus an ability on the stack from a card that is now gone.
+  ...Array(2).fill('Otawara, Soaring City'),
+  ...Array(2).fill('Sokenzan, Crucible of Defiance'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

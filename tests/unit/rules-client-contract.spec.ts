@@ -130,6 +130,23 @@ describe('every implemented mana ability uses a cost the client can pay', () => 
 })
 
 /**
+ * A CHANNEL ability is used from the hand and, when it targets, the board resolves the click with the
+ * same coarse kinds as a spell target. redact only publishes creature/permanent/player/anyTarget, so a
+ * channel ability with any other target kind would be unusable in the UI.
+ */
+describe('every implemented channel ability targets a client-selectable kind', () => {
+  const offenders: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented || !def.channel) continue
+    for (const spec of def.channel.targets ?? [])
+      if (!['creature', 'permanent', 'player', 'anyTarget'].includes(spec.kind)) offenders.push(`${def.name}: ${spec.kind}`)
+  }
+  it('no channel ability targets an unsupported kind', () => {
+    expect(offenders).toEqual([])
+  })
+})
+
+/**
  * A spell whose X is paid in LIFE has no {X} in its mana cost, so the client shows its X stepper
  * only for the names listed in LIFE_X_SPELLS. Missing there = the cast is sent with no x and the
  * server rejects it (NEEDS_X) — uncastable in the UI while engine tests, which pass x directly,

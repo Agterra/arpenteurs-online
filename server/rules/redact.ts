@@ -24,6 +24,7 @@ import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from '.
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
 import {
+  channelCost,
   controlledArtifacts,
   controlledLands,
   dynamicManaColors,
@@ -205,6 +206,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     equippableIds: [],
     loyaltyActivations: [],
     cyclable: [],
+    channelable: [],
     kickable: [],
     overloadable: [],
     freeCastable: [],
@@ -618,6 +620,27 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   // so this is not gated on isMain; affordability from the pre-tap potential pool (the
   // server re-checks against the actual pool). Only implemented cards carry cyclingCost,
   // so fallbacks are never auto-offered (assisted table).
+  // channel (the Kamigawa lands): instant speed from hand, cost already reduced by your legends
+  const channelable: LegalActions['channelable'] = []
+  for (const id of zoneArr(state, viewer, 'hand')) {
+    const def = getDef(state.objects[id]!.defName)
+    if (!def.channel) continue
+    const cost = channelCost(state, viewer, def)
+    if (!planPayment(cost, potential).covered) continue
+    const spec = def.channel.targets?.[0]
+    if (spec && !hasAnyLegalTarget(state, spec, viewer, def.colors ?? [])) continue
+    const generic = cost.generic ? `{${cost.generic}}` : ''
+    const pips = (['W', 'U', 'B', 'R', 'G', 'C'] as const).map((c) => `{${c}}`.repeat(cost.colored[c])).join('')
+    channelable.push({
+      objId: id,
+      cost: `${generic}${pips}` || '{0}',
+      targetKind:
+        spec?.kind === 'creature' || spec?.kind === 'permanent' || spec?.kind === 'player' || spec?.kind === 'anyTarget'
+          ? spec.kind
+          : null,
+    })
+  }
+
   const cyclable: LegalActions['cyclable'] = []
   for (const id of zoneArr(state, viewer, 'hand')) {
     const def = getDef(state.objects[id]!.defName)
@@ -712,6 +735,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     equippableIds,
     loyaltyActivations,
     cyclable,
+    channelable,
     kickable,
     overloadable,
     freeCastable,

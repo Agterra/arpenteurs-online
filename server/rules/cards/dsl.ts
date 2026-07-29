@@ -33,6 +33,10 @@ export interface TargetFilter {
   minManaValue?: number
   /** target's mana value must be at most this (Sun Titan: "mana value 3 or less") */
   maxManaValue?: number
+  /** exclude BASIC lands (Boseiju: "nonbasic land") */
+  excludeBasic?: boolean
+  /** only a creature currently attacking or blocking (Eiganjo) */
+  attackingOrBlocking?: boolean
 }
 
 export interface TargetSpec {
@@ -268,6 +272,14 @@ export interface CardDefinition {
    * decision (Pact of Negation: pay {3}{U}{U} or `effect` happens, which is losing the game).
    */
   delayed?: Record<string, { at: 'nextUpkeep' | 'nextMainPhase'; unlessPay?: string; effect: Effect }>
+  /**
+   * CHANNEL (CR 702.140-style ability word on the Kamigawa legendary lands): "Channel — [cost],
+   * Discard this card: [effect]." An activated ability used from the HAND at instant speed: the mana
+   * is paid, the card is discarded as part of the cost, and the ability goes on the stack (so it can
+   * be responded to). `reducedByLegendaries` implements "costs {1} less to activate for each
+   * legendary creature you control" against the GENERIC portion.
+   */
+  channel?: { cost: string; reducedByLegendaries?: boolean; targets?: TargetSpec[]; effect: Effect }
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
   /**

@@ -36,6 +36,7 @@ import {
   destroyPermanentControllerGains,
   discardAtRandom,
   destroyTarget,
+  destroyTargetControllerFetchesLand,
   drainEachOpponentByDevotion,
   drainEachOpponentX,
   drainTargetPlayer,
@@ -3558,6 +3559,63 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Draw two cards, then discard two cards. Untap up to three lands."
     spell: { effect: drawThenDiscardThenUntap(2, 2, 3) },
+  },
+
+  // --- Coverage batch CARD37: CHANNEL (the Kamigawa legendary lands) ---
+  {
+    name: 'Boseiju, Who Endures',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "{T}: Add {G}." / "Channel — {1}{G}, Discard this card: Destroy target artifact, enchantment, or
+    //  nonbasic land an opponent controls. That player may search their library for a land card with a
+    //  basic land type… This ability costs {1} less to activate for each legendary creature you control."
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') }],
+    channel: {
+      cost: '{1}{G}',
+      reducedByLegendaries: true,
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Enchantment', 'Land'], excludeBasic: true, controller: 'opponent' } }],
+      effect: destroyTargetControllerFetchesLand(),
+    },
+  },
+  {
+    name: 'Otawara, Soaring City',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "Channel — {3}{U}, Discard this card: Return target artifact, creature, enchantment, or
+    //  planeswalker to its owner's hand." (reduced by your legendary creatures)
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['U'], effect: addMana('U') }],
+    channel: {
+      cost: '{3}{U}',
+      reducedByLegendaries: true,
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Creature', 'Enchantment', 'Planeswalker'] } }],
+      effect: returnToHand(),
+    },
+  },
+  {
+    name: 'Eiganjo, Seat of the Empire',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "Channel — {2}{W}, Discard this card: It deals 4 damage to target attacking or blocking creature."
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W'], effect: addMana('W') }],
+    channel: {
+      cost: '{2}{W}',
+      reducedByLegendaries: true,
+      targets: [{ kind: 'creature', count: 1, filter: { attackingOrBlocking: true } }],
+      effect: dealDamage(4),
+    },
+  },
+  {
+    name: 'Sokenzan, Crucible of Defiance',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "Channel — {3}{R}, Discard this card: Create two 1/1 colorless Spirit creature tokens. They gain
+    //  haste until end of turn." (the tokens are made WITH haste — the same end state)
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['R'], effect: addMana('R') }],
+    channel: {
+      cost: '{3}{R}',
+      reducedByLegendaries: true,
+      effect: createToken({ name: 'Spirit', power: 1, toughness: 1, subtypes: ['Spirit'], keywords: ['haste'] }, 2),
+    },
   },
 
   // --- Coverage batch CARD36: delayed triggers (CR 603.7) ---

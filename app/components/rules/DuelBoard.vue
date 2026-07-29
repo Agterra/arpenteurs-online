@@ -291,6 +291,33 @@ function beginCyclePayment(objId: ObjId, cost: string) {
 }
 /** the cycling cost for a hand card if it can be cycled right now, else null. */
 const cycleCost = (id: ObjId): string | null => legal.value?.cyclable.find((c) => c.objId === id)?.cost ?? null
+// channel (Kamigawa lands): use the ability from hand — pick a target first when it has one
+const channelOf = (id: ObjId) => legal.value?.channelable.find((c) => c.objId === id) ?? null
+const channeling = ref<{ objId: ObjId; cost: string; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' } | null>(null)
+function startChannel(id: ObjId) {
+  const ch = channelOf(id)
+  if (!ch) return
+  if (ch.targetKind) {
+    channeling.value = { objId: id, cost: ch.cost, targetKind: ch.targetKind }
+    return
+  }
+  send({ type: 'r.channel', objId: id, targets: [] })
+}
+function sendChannel(target?: ObjId | PlayerId) {
+  const ch = channeling.value
+  if (!ch) return
+  send({ type: 'r.channel', objId: ch.objId, targets: target ? [target as string] : [] })
+  channeling.value = null
+}
+/** while channeling, is `id` a legal click? (mirrors isValidTarget's coarse checks) */
+function isChannelTargetCard(id: ObjId): boolean {
+  const ch = channeling.value
+  if (!ch) return false
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield') return false
+  if (ch.targetKind === 'permanent') return true
+  return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
+}
 
 // alternative-cast target class per card (the redacted client doesn't carry DSL target specs,
 // so — like TARGETED_SPELLS — the alt-cast targets are curated by card name)
@@ -476,6 +503,11 @@ function onBattlefieldClick(id: ObjId) {
   const l = legal.value
   if (!card || !l || !st.value) return
 
+  // a channel ability waiting for its target takes precedence
+  if (channeling.value) {
+    if (isChannelTargetCard(id)) sendChannel(id)
+    return
+  }
   // collecting a cast-time sacrifice (Village Rites / Deadly Dispute) takes precedence
   if (castExtra.value?.sacrifice) return void toggleCastExtraSac(id)
   // …as does a mana ability's sacrifice cost (Ashnod's Altar)
@@ -1100,7 +1132,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1599,6 +1631,12 @@ onBeforeUnmount(() => {
                   @menu="openMenu($event, id)"
                   @preview="hoverDisplay = $event"
                 />
+                <UButton
+                  v-if="channelOf(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-sparkles"
+                  @click.stop="startChannel(id)"
+                >Channel {{ channelOf(id)!.cost }}</UButton>
                 <UButton
                   v-if="cycleCost(id)"
                   size="xs"
