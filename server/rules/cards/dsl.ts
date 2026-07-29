@@ -571,6 +571,11 @@ export interface CardDefinition {
    * Lives, Anointed Procession). Applied in `spawnTokens`; several stack multiplicatively.
    */
   tokenReplacement?: 'double'
+  /**
+   * "This land enters tapped unless you control three or more other Islands." (the Eldraine land
+   * cycle) — like `entersTappedUnlessOtherLandsAtLeast`, but counting only lands with that SUBTYPE.
+   */
+  entersTappedUnlessOtherSubtypeAtLeast?: { subtype: string; count: number }
   /** "This permanent doesn't untap during your untap step." (Mana Vault, the Monoliths) */
   doesNotUntap?: boolean
   /**

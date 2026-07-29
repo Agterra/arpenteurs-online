@@ -62,6 +62,7 @@ import {
   exileTargetControllerFetchesLand,
   extraLandDrop,
   fight,
+  FOOD,
   gainAndDrawEqualToLands,
   gainLife,
   gainLifeEqualToPowerForController,
@@ -73,6 +74,7 @@ import {
   grantKeywordsToTarget,
   grantProtection,
   grantProtectionToControlled,
+  graveyardCardOnTopOfLibrary,
   impulseExile,
   lookAndReorder,
   lookTransformIfInstantSorcery,
@@ -4523,5 +4525,72 @@ export const STARTER_SET: CardDefinition[] = [
     //  except the token isn't legendary. That token gains haste. / Equip {5}"
     equipCost: '{5}',
     beginCombat: { effect: createCopyOfAttached() },
+  },
+  // --- Coverage batch CARD53: the Eldraine "enters untapped" land cycle ---
+  // Each enters tapped unless you already control three or more other lands of its basic type, and
+  // its ETB fires only when it entered UNTAPPED (an intervening "if" on the source itself).
+  {
+    name: 'Mystic Sanctuary',
+    types: ['Land'],
+    subtypes: ['Island'],
+    entersTappedUnlessOtherSubtypeAtLeast: { subtype: 'Island', count: 3 },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['U'], effect: addMana('U') }],
+    // "When this land enters untapped, you may put target instant or sorcery card from your graveyard
+    //  on top of your library."
+    enters: {
+      condition: (state, _c, sourceId) => !state.objects[sourceId]?.tapped,
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { types: ['Instant', 'Sorcery'], controller: 'you' }, optional: true }],
+      effect: graveyardCardOnTopOfLibrary(),
+    },
+  },
+  {
+    name: "Witch's Cottage",
+    types: ['Land'],
+    subtypes: ['Swamp'],
+    entersTappedUnlessOtherSubtypeAtLeast: { subtype: 'Swamp', count: 3 },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['B'], effect: addMana('B') }],
+    // "…you may put target creature card from your graveyard on top of your library."
+    enters: {
+      condition: (state, _c, sourceId) => !state.objects[sourceId]?.tapped,
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { types: ['Creature'], controller: 'you' }, optional: true }],
+      effect: graveyardCardOnTopOfLibrary(),
+    },
+  },
+  {
+    name: 'Dwarven Mine',
+    types: ['Land'],
+    subtypes: ['Mountain'],
+    entersTappedUnlessOtherSubtypeAtLeast: { subtype: 'Mountain', count: 3 },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['R'], effect: addMana('R') }],
+    // "…create a 1/1 red Dwarf creature token."
+    enters: {
+      condition: (state, _c, sourceId) => !state.objects[sourceId]?.tapped,
+      effect: createToken({ name: 'Dwarf', types: ['Creature'], subtypes: ['Dwarf'], power: 1, toughness: 1 }),
+    },
+  },
+  {
+    name: 'Idyllic Grange',
+    types: ['Land'],
+    subtypes: ['Plains'],
+    entersTappedUnlessOtherSubtypeAtLeast: { subtype: 'Plains', count: 3 },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W'], effect: addMana('W') }],
+    // "…put a +1/+1 counter on target creature you control."
+    enters: {
+      condition: (state, _c, sourceId) => !state.objects[sourceId]?.tapped,
+      targets: [{ kind: 'creature', count: 1, filter: { controller: 'you' } }],
+      effect: addCounters('+1/+1', 1),
+    },
+  },
+  {
+    name: 'Gingerbread Cabin',
+    types: ['Land'],
+    subtypes: ['Forest'],
+    entersTappedUnlessOtherSubtypeAtLeast: { subtype: 'Forest', count: 3 },
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') }],
+    // "…create a Food token." (an artifact with "{2}, {T}, Sacrifice this token: You gain 3 life.")
+    enters: {
+      condition: (state, _c, sourceId) => !state.objects[sourceId]?.tapped,
+      effect: createToken(FOOD),
+    },
   },
 ]

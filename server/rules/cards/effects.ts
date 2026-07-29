@@ -732,6 +732,21 @@ export interface TokenSpec {
  * token: Add one mana of any color." The sacrifice is part of a MANA ability's cost, so it never
  * uses the stack (see r.tapMana) — the colour is chosen on tap, as for any any-colour source.
  */
+/** A Food token: "{2}, {T}, Sacrifice this token: You gain 3 life." (Gingerbread Cabin) */
+export const FOOD: TokenSpec = {
+  name: 'Food',
+  types: ['Artifact'],
+  subtypes: ['Food'],
+  abilities: [
+    {
+      kind: 'activated',
+      cost: { mana: '{2}', tap: true, sacrificeSelf: true },
+      // wrapped so `gainLife`, declared later in this module, resolves at call time
+      effect: (ctx) => gainLife(3)(ctx),
+    },
+  ],
+}
+
 export const TREASURE: TokenSpec = {
   name: 'Treasure',
   types: ['Artifact'],
@@ -1614,6 +1629,23 @@ export const sacrificeFormerHost = (): Effect => (ctx) => {
   if (!host || host.zone !== 'battlefield') return
   logLine(ctx.state, `${getDef(host.defName).name} is sacrificed (${getDef(aura!.defName).name} left the battlefield).`)
   moveToGraveyard(ctx.state, host.id)
+}
+
+/**
+ * The Eldraine cycle (Mystic Sanctuary, Witch's Cottage): put a TARGET card from your graveyard on top
+ * of your library. Graveyard → library is PUBLIC → HIDDEN, so the id is re-minted (invariant #3) —
+ * otherwise an opponent who noted the graveyard id could follow it into the library.
+ */
+export const graveyardCardOnTopOfLibrary = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'graveyard') continue
+    const label = getDef(obj.defName).name
+    moveTo(ctx.state, t, 'library', { top: true })
+    remintForHiddenEntry(ctx.state, t, true)
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} puts ${label} on top of their library.`)
+  }
 }
 
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */

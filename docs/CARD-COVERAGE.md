@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**585 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**590 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -160,6 +160,7 @@
 - Dragonskull Summit
 - Dreamroot Cascade
 - Drowned Catacomb
+- Dwarven Mine
 - Earthquake
 - Eiganjo, Seat of the Empire
 - Elegant Parlor
@@ -221,6 +222,7 @@
 - Ghostly Prison
 - Giant Growth
 - Giant Spider
+- Gingerbread Cabin
 - Gird for Battle
 - Glacial Fortress
 - Gladecover Scout
@@ -261,6 +263,7 @@
 - Holy Strength
 - Horizon Canopy
 - Idol of Oblivion
+- Idyllic Grange
 - Impact Tremors
 - Indatha Triome
 - Infernal Grasp
@@ -333,6 +336,7 @@
 - Murderous Rider
 - Mystic Gate
 - Mystic Monastery
+- Mystic Sanctuary
 - Mystical Tutor
 - Naturalize
 - Nature's Claim
@@ -578,6 +582,7 @@
 - Windfall
 - Windswept Heath
 - Witch Enchanter
+- Witch's Cottage
 - Withering Torment
 - Woe Strider
 - Wooded Bastion

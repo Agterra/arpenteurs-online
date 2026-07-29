@@ -152,6 +152,17 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
       const foes = state.turnOrder.filter((pid) => pid !== obj.controllerId && !state.players[pid]!.hasLost).length
       if (foes < needFoes) obj.tapped = true
     }
+    // the Eldraine cycle: "unless you control three or more OTHER Islands/Plains/…"
+    const needSub = def.entersTappedUnlessOtherSubtypeAtLeast
+    if (needSub) {
+      const n = zoneArr(state, obj.controllerId, 'battlefield').filter((id) => {
+        const other = state.objects[id]
+        if (!other || other.id === obj.id) return false
+        const d = getDef(other.defName)
+        return d.types.includes('Land') && (d.subtypes ?? []).includes(needSub.subtype)
+      }).length
+      if (n < needSub.count) obj.tapped = true
+    }
     // slow lands: "unless you control two or more OTHER lands"
     const needLands = def.entersTappedUnlessOtherLandsAtLeast
     if (needLands) {

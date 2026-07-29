@@ -995,6 +995,11 @@ const FUZZ_DECK = [
   // batch CARD52: Animate Dead (a graveyard→battlefield reanimating AURA whose leaves-the-battlefield
   // trigger then sacrifices what it animated — two new trigger timings, both firing often once fuzz
   // graveyards fill up) and The Ozolith, whose combat trigger collects counters from anything leaving.
+  // batch CARD53: two of the Eldraine cycle — Witch's Cottage moves a card graveyard→LIBRARY TOP (the
+  // leak-critical public→hidden re-mint) when it enters untapped, and Dwarven Mine's untapped ETB makes
+  // a token; both also exercise the subtype-counting enters-tapped condition on every entry path.
+  ...Array(3).fill("Witch's Cottage"),
+  ...Array(2).fill('Dwarven Mine'),
   ...Array(2).fill('Animate Dead'),
   ...Array(2).fill('The Ozolith'),
   ...Array(2).fill('Evolution Sage'),
