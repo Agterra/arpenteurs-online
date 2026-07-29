@@ -2573,4 +2573,71 @@ export const STARTER_SET: CardDefinition[] = [
     freeIfCommander: true,
     spell: { targets: [{ kind: 'creature', count: 1 }], effect: exileTarget() },
   },
+
+  // --- Coverage batch CARD22: the tutors (search → on TOP of your library) + two sac artifacts ---
+  {
+    name: 'Vampiric Tutor',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Search your library for a card, then shuffle and put that card on top. You lose 2 life."
+    //  (no reveal — only its owner knows what is on top)
+    spell: { effect: sequence(searchLibrary({ filter: 'any', dest: 'libraryTop', count: 1 }), loseLife(2)) },
+  },
+  {
+    name: 'Enlightened Tutor',
+    types: ['Instant'],
+    manaCost: '{W}',
+    colors: ['W'],
+    // "Search your library for an artifact or enchantment card, reveal it, then shuffle and put
+    //  that card on top."
+    spell: { effect: searchLibrary({ filter: { types: ['Artifact', 'Enchantment'] }, dest: 'libraryTop', count: 1, reveal: true }) },
+  },
+  {
+    name: 'Mystical Tutor',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Search your library for an instant or sorcery card, reveal it, then shuffle and put that
+    //  card on top."
+    spell: { effect: searchLibrary({ filter: { types: ['Instant', 'Sorcery'] }, dest: 'libraryTop', count: 1, reveal: true }) },
+  },
+  {
+    name: 'Worldly Tutor',
+    types: ['Instant'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "Search your library for a creature card, reveal it, then shuffle and put the card on top."
+    spell: { effect: searchLibrary({ filter: { types: ['Creature'] }, dest: 'libraryTop', count: 1, reveal: true }) },
+  },
+  {
+    name: 'Lotus Petal',
+    types: ['Artifact'],
+    manaCost: '{0}',
+    // "{T}, Sacrifice this artifact: Add one mana of any color." (a one-shot Treasure, in effect)
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true, sacrificeSelf: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: "Wayfarer's Bauble",
+    types: ['Artifact'],
+    manaCost: '{1}',
+    // "{2}, {T}, Sacrifice this artifact: Search your library for a basic land card, put that card
+    //  onto the battlefield tapped, then shuffle."
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true, sacrificeSelf: true },
+        effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1 }),
+      },
+    ],
+  },
 ]

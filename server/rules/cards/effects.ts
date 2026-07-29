@@ -390,9 +390,11 @@ export const drawCards = (n: number): Effect => (ctx) => {
 export const searchLibrary = (opts: {
   // 'basicLand' = any Basic land; 'any' = any card; { landSubtypes } = a land with one of these
   // subtypes (e.g. Farseek → Plains/Island/Swamp/Mountain, Nature's Lore → Forest — basic OR not).
-  filter: 'basicLand' | 'any' | { landSubtypes: string[] }
-  dest: 'battlefield' | 'hand'
+  filter: 'basicLand' | 'any' | { landSubtypes: string[] } | { types: CardType[] }
+  dest: 'battlefield' | 'hand' | 'libraryTop'
   tapped?: boolean
+  /** the tutors: reveal the chosen card (log its name) as it goes on top */
+  reveal?: boolean
   count?: number
   /** Fabled Passage: untap the fetched land if its controller then controls ≥ N lands */
   untapIfLandsAtLeast?: number
@@ -406,6 +408,9 @@ export const searchLibrary = (opts: {
   const matchIds = lib.filter((id) => {
     if (opts.filter === 'any') return true
     const def = getDef(ctx.state.objects[id]!.defName)
+    // a card-TYPE filter (the tutors: "an artifact or enchantment card") is not land-specific
+    if (typeof opts.filter === 'object' && 'types' in opts.filter)
+      return opts.filter.types.some((t) => def.types.includes(t))
     if (!def.types.includes('Land')) return false
     if (typeof opts.filter === 'object') return (def.subtypes ?? []).some((st) => opts.filter.landSubtypes.includes(st))
     return def.supertypes?.includes('Basic') ?? false // 'basicLand'
@@ -423,6 +428,7 @@ export const searchLibrary = (opts: {
     tapped: opts.tapped ?? false,
     count: opts.count ?? 1,
     ...(opts.untapIfLandsAtLeast != null ? { untapIfLandsAtLeast: opts.untapIfLandsAtLeast } : {}),
+    ...(opts.reveal ? { reveal: true } : {}),
     ...(opts.split ? { split: opts.split } : {}),
   }
   logLine(ctx.state, `${who} searches their library.`)

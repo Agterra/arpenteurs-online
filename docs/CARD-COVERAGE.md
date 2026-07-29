@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**350 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**356 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -108,6 +108,7 @@
 - Elvish Lookout
 - Elvish Mystic
 - Elvish Visionary
+- Enlightened Tutor
 - Errant Ephemeron
 - Esper Sentinel
 - Evolving Wilds
@@ -184,6 +185,7 @@
 - Llanowar Elves
 - Llanowar Wastes
 - Lonely Sandbar
+- Lotus Petal
 - Loxodon Warhammer
 - Mahamoti Djinn
 - Man-o'-War
@@ -207,6 +209,7 @@
 - Mulldrifter
 - Murder
 - Murderous Rider
+- Mystical Tutor
 - Naturalize
 - Nature's Lore
 - Negate
@@ -335,6 +338,7 @@
 - Utter End
 - Vampire Cutthroat
 - Vampire Nighthawk
+- Vampiric Tutor
 - Vandalblast
 - Verdant Catacombs
 - Vicious Conquistador
@@ -347,12 +351,14 @@
 - Wall of Wood
 - Waterfall Aerialist
 - Watery Grave
+- Wayfarer's Bauble
 - White Knight
 - Wind Drake
 - Windswept Heath
 - Woe Strider
 - Wooded Foothills
 - Woodland Cemetery
+- Worldly Tutor
 - Worn Powerstone
 - Wrath of God
 - Yavimaya Coast

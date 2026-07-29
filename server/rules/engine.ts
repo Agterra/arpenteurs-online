@@ -2239,13 +2239,20 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const chosen = [...new Set(msg.cardIds)]
       if (chosen.length > ps.count) throw new RulesError('BAD_SEARCH', `Choose at most ${ps.count}`)
       for (const id of chosen) if (!ps.matchIds.includes(id)) throw new RulesError('BAD_SEARCH', 'Not among the matches')
+      // 'libraryTop' picks (the tutors) stay in the library: they are shuffled with everything
+      // else, re-minted, and only THEN moved to the top — otherwise the searcher, who legitimately
+      // saw the peeked id, could keep following that id inside the hidden library (invariant #3).
+      const topPicks: GameObject[] = []
       for (let i = 0; i < chosen.length; i++) {
         const id = chosen[i]!
         const obj = state.objects[id]
         if (!obj) continue
         // split (Cultivate/Kodama's Reach): first pick → `first`, the rest → `rest`
         const route = ps.split ? (i === 0 ? ps.split.first : ps.split.rest) : { dest: ps.dest, tapped: ps.tapped }
-        if (route.dest === 'battlefield') {
+        if (route.dest === 'libraryTop') {
+          topPicks.push(obj)
+          if (ps.reveal) logLine(state, `${name(state, actor)} reveals ${getDef(obj.defName).name}.`)
+        } else if (route.dest === 'battlefield') {
           obj.controllerId = actor
           obj.summoningSick = defIsCreature(getDef(obj.defName))
           moveTo(state, id, 'battlefield')
@@ -2270,6 +2277,16 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // shuffle + re-mint the whole library so the peeked ids can't be tracked
       shuffleInPlace(zoneArr(state, actor, 'library'))
       remintLibrary(state, actor)
+      // now put the tutored cards on top, in pick order (their ids were re-minted in place above,
+      // so reading obj.id here gives the fresh id)
+      if (topPicks.length) {
+        const lib = zoneArr(state, actor, 'library')
+        for (const obj of [...topPicks].reverse()) {
+          const at = lib.indexOf(obj.id)
+          if (at >= 0) lib.splice(at, 1)
+          lib.unshift(obj.id)
+        }
+      }
       state.pendingSearch = null
       // a fetched permanent's targeted ETB may have set its own pending — don't clobber it
       if (state.pending?.kind === 'search') {

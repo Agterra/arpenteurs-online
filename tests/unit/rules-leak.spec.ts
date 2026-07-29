@@ -588,6 +588,11 @@ const FUZZ_DECK = [
   ...Array(2).fill('Talisman of Indulgence'),
   ...Array(2).fill('Smoldering Marsh'),
   ...Array(2).fill('Sakura-Tribe Elder'),
+  // batch CARD22: a tutor whose pick goes on TOP of the library — the searcher legitimately peeked
+  // at those ids, so the shuffle + re-mint + re-order path must leave nothing trackable, which the
+  // history-aware assertion checks; plus Lotus Petal (a sac-self mana source).
+  ...Array(3).fill('Vampiric Tutor'),
+  ...Array(2).fill('Lotus Petal'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

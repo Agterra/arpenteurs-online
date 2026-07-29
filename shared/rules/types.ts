@@ -241,9 +241,11 @@ export interface RulesGameState {
   pendingSearch: {
     player: PlayerId
     matchIds: ObjId[]
-    dest: 'battlefield' | 'hand'
+    dest: 'battlefield' | 'hand' | 'libraryTop'
     tapped: boolean
     count: number
+    /** the tutors: the chosen card is REVEALED (its name is logged) as it goes on top */
+    reveal?: boolean
     /**
      * Split destination (e.g. Cultivate / Kodama's Reach: "put one onto the battlefield
      * tapped and the other into your hand"): the FIRST chosen card is routed via `first`,
@@ -256,8 +258,8 @@ export interface RulesGameState {
      */
     untapIfLandsAtLeast?: number
     split?: {
-      first: { dest: 'battlefield' | 'hand'; tapped: boolean }
-      rest: { dest: 'battlefield' | 'hand'; tapped: boolean }
+      first: { dest: 'battlefield' | 'hand' | 'libraryTop'; tapped: boolean }
+      rest: { dest: 'battlefield' | 'hand' | 'libraryTop'; tapped: boolean }
     }
   } | null
   /**
