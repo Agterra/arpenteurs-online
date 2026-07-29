@@ -1794,6 +1794,20 @@ export const chooseNewTargets = (): Effect => (ctx) => {
   }
 }
 
+/**
+ * Victimize: "Sacrifice a creature. If you do, return the chosen cards to the battlefield tapped." The
+ * targets are the graveyard cards; the sacrifice is a decision, so the return rides along on it and only
+ * happens if a creature was actually sacrificed (no creature to sacrifice → nothing returns).
+ */
+export const sacrificeThenReturnTargetsTapped = (): Effect => (ctx) => {
+  const cards = ctx.targets.filter((t): t is ObjId => !isPlayerId(ctx, t) && ctx.state.objects[t]?.zone === 'graveyard')
+  if (!battlefieldCreatures(ctx.state, ctx.controllerId).length) {
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} controls no creature to sacrifice.`)
+    return
+  }
+  openSacrifice(ctx.state, [ctx.controllerId], 1, { thenReturnTapped: cards })
+}
+
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */
 export const noop = (): Effect => () => {}
 

@@ -1053,6 +1053,9 @@ const FUZZ_DECK = [
   // every opponent noncreature spell, so both decisions are answered constantly.
   // batch CARD62: Black Market Connections — a MODAL TRIGGER at every one of its controller's first main
   // phases, so the fuzzer answers a mode choice each turn cycle and pays life for it (it can lose a game).
+  // batch CARD63: Victimize — TWO graveyard targets (the fuzzer's cast branch must pick two distinct
+  // creature cards from its own graveyard) whose sacrifice DECISION carries the reanimation follow-up.
+  ...Array(2).fill('Victimize'),
   ...Array(2).fill('Black Market Connections'),
   ...Array(2).fill('Mystic Remora'),
   ...Array(2).fill('Deflecting Swat'),

@@ -111,6 +111,7 @@ import {
   returnSelfTappedFromGraveyard,
   returnToHand,
   sacrificeFormerHost,
+  sacrificeThenReturnTargetsTapped,
   scheduleDelayedTrigger,
   scry,
   searchLibrary,
@@ -4891,6 +4892,19 @@ export const STARTER_SET: CardDefinition[] = [
         },
       ],
       effect: noop(), // the modes carry the whole ability
+    },
+  },
+  // --- Coverage batch CARD63: Victimize (two graveyard targets + a sacrifice with a follow-up) ---
+  {
+    name: 'Victimize',
+    types: ['Sorcery'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    // "Choose two target creature cards in your graveyard. Sacrifice a creature. If you do, return the
+    //  chosen cards to the battlefield tapped."
+    spell: {
+      targets: [{ kind: 'graveyardCard', count: 2, filter: { types: ['Creature'], controller: 'you' } }],
+      effect: sacrificeThenReturnTargetsTapped(),
     },
   },
 ]

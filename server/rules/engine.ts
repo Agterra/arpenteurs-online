@@ -569,26 +569,50 @@ function drainEntersChoices(state: RulesGameState): boolean {
  * effects at resolution — leaves `state.pending` set so resolveTop won't grant
  * priority until the sacrifice is made.
  */
-export function openSacrifice(state: RulesGameState, players: PlayerId[], count: number) {
+export function openSacrifice(
+  state: RulesGameState,
+  players: PlayerId[],
+  count: number,
+  opts?: { thenReturnTapped?: ObjId[] },
+) {
   const queue = players.filter((pid) => !state.players[pid]!.hasLost && battlefieldCreatures(state, pid).length > 0)
   if (!queue.length) return
-  promptSacrifice(state, queue[0]!, queue.slice(1), count)
+  promptSacrifice(state, queue[0]!, queue.slice(1), count, opts)
 }
 
-function promptSacrifice(state: RulesGameState, player: PlayerId, queue: PlayerId[], count: number) {
+function promptSacrifice(
+  state: RulesGameState,
+  player: PlayerId,
+  queue: PlayerId[],
+  count: number,
+  opts?: { thenReturnTapped?: ObjId[] },
+) {
   const candidates = battlefieldCreatures(state, player).map((c) => c.id)
   // store the ORIGINAL requested count; each player sacrifices min(count, their
   // creatures) — clamped at validation/display, so the queue threads count intact
   state.pending = { kind: 'sacrifice', player }
-  state.pendingSacrifice = { player, candidateIds: candidates, count, queue }
+  state.pendingSacrifice = {
+    player,
+    candidateIds: candidates,
+    count,
+    queue,
+    ...(opts?.thenReturnTapped ? { thenReturnTapped: [...opts.thenReturnTapped] } : {}),
+  }
 }
 
 /** After a sacrifice resolves, prompt the next queued player, else hand priority back. */
 function advanceSacrificeQueue(state: RulesGameState) {
   const rawQueue = state.pendingSacrifice?.queue ?? []
   const count = state.pendingSacrifice?.count ?? 1
+  // a dies trigger from THIS sacrifice may already have opened its own decision (Blood Artist wants a
+  // target): clearing `pending` blindly used to swallow it, so only the sacrifice's own pending is cleared
+  const otherPending = state.pending && state.pending.kind !== 'sacrifice' ? state.pending : null
   state.pending = null
   state.pendingSacrifice = null
+  if (otherPending) {
+    state.pending = otherPending
+    return
+  }
   // next queued player who is still in the game and still controls a creature
   const idx = rawQueue.findIndex((pid) => !state.players[pid]!.hasLost && battlefieldCreatures(state, pid).length > 0)
   if (idx >= 0) {
@@ -2215,18 +2239,22 @@ export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byCon
   if (spec.kind === 'player')
     return spec.filter?.controller === 'opponent' ? opponentsOf(state, byController).length > 0 : alivePlayers(state).length > 0
   if (spec.kind === 'anyTarget') return alivePlayers(state).length > 0
+  // a spec asking for SEVERAL targets needs that many distinct legal ones (Victimize chooses two
+  // creature cards; with one in the graveyard it is not castable at all — CR 601.2c)
+  const need = Math.max(1, spec.count ?? 1)
+  let found = 0
   if (spec.kind === 'graveyardCard') {
     // a card in a graveyard (recursion). "your graveyard" = owned by the caster.
     const owners = spec.filter?.controller === 'you' ? [byController] : state.turnOrder
     for (const pid of owners)
       for (const id of state.zones.perPlayer[pid]!.graveyard)
-        if (graveyardCardMatches(state, id, spec.filter)) return true
+        if (graveyardCardMatches(state, id, spec.filter) && ++found >= need) return true
     return false
   }
-  // creature / permanent (possibly filtered): scan battlefield for a legal target
+  // creature / permanent (possibly filtered): scan battlefield for legal targets
   for (const pid of state.turnOrder)
     for (const id of state.zones.perPlayer[pid]!.battlefield)
-      if (isLegalTarget(state, spec, id, byController, srcColors)) return true
+      if (isLegalTarget(state, spec, id, byController, srcColors) && ++found >= need) return true
   return false
 }
 
@@ -3380,9 +3408,23 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('BAD_SACRIFICE', `Sacrifice exactly ${need} creature${need === 1 ? '' : 's'}`)
       for (const id of chosen)
         if (!valid.includes(id)) throw new RulesError('BAD_SACRIFICE', 'Not among your creatures')
+      const thenReturn = ps.thenReturnTapped ?? []
       for (const id of chosen) {
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)}.`)
         moveToGraveyard(state, id) // fires dies triggers
+      }
+      // Victimize: "…if you do, return the chosen cards to the battlefield tapped" — the sacrifice HAS
+      // happened at this point, so the continuation runs (a creature that left the graveyard meanwhile is
+      // simply skipped)
+      for (const id of thenReturn) {
+        const card = state.objects[id]
+        if (!card || card.zone !== 'graveyard') continue
+        card.controllerId = actor
+        moveTo(state, id, 'battlefield')
+        card.tapped = true
+        card.summoningSick = true
+        logLine(state, `${objName(state, id)} returns to the battlefield tapped.`)
+        fireEntersTriggers(state, id)
       }
       advanceSacrificeQueue(state)
       break

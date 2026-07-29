@@ -359,6 +359,12 @@ export interface RulesGameState {
     candidateIds: ObjId[]
     count: number
     queue: PlayerId[]
+    /**
+     * Victimize: "Sacrifice a creature. IF YOU DO, return the chosen cards to the battlefield tapped."
+     * The continuation waits for the sacrifice to be answered and only happens if it actually took
+     * place — the same "then …" pattern as pendingScry.thenDraw.
+     */
+    thenReturnTapped?: ObjId[]
   } | null
   /**
    * A FORCED discard (Mind Rot / "each player discards"): the current chooser

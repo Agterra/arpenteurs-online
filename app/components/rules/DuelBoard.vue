@@ -12,6 +12,7 @@ import type { ManaColor, ObjId, PlayerId, RulesClientCard } from '#shared/rules/
 import { shouldAutoPassPriority } from '#shared/rules/autopass'
 // which picker resolves each targeted spell — shared so a unit test can assert full coverage
 import {
+  GRAVEYARD_COUNT,
   GRAVEYARD_SPELLS,
   MODAL_CHOOSE,
   MODAL_SPELLS,
@@ -149,7 +150,15 @@ const loyaltyPick = ref<{ objId: ObjId; options: { abilityIndex: number; cost: n
 // multi-target casting (fight): collect ordered targets, then pay
 const multiTargeting = ref<{ objId: ObjId; slots: FightSlot[]; collected: ObjId[]; alt?: AltKind; altCost?: string } | null>(null)
 // graveyard recursion (Raise Dead / Regrowth): pick a card from your graveyard, then pay
-const graveyardTargeting = ref<{ objId: ObjId; creatureOnly: boolean; alt?: AltKind; altCost?: string } | null>(null)
+const graveyardTargeting = ref<{
+  objId: ObjId
+  creatureOnly: boolean
+  /** how many cards to collect (Victimize takes two) */
+  count?: number
+  picked?: ObjId[]
+  alt?: AltKind
+  altCost?: string
+} | null>(null)
 
 watch(
   () => st.value?.seq,
@@ -439,7 +448,15 @@ function startCast(card: RulesClientCard, from?: { alt: AltKind; cost: string })
   const slots = MULTI_TARGET_SPELLS[name]
   if (slots) return void (multiTargeting.value = { objId: card.id, slots, collected: [], alt, altCost }) // fight: 2 targets
   const gy = GRAVEYARD_SPELLS[name]
-  if (gy) return void (graveyardTargeting.value = { objId: card.id, creatureOnly: gy === 'creature', alt, altCost }) // pick a card from your graveyard
+  if (gy)
+    return void (graveyardTargeting.value = {
+      objId: card.id,
+      creatureOnly: gy === 'creature',
+      count: GRAVEYARD_COUNT[name] ?? 1,
+      picked: [],
+      alt,
+      altCost,
+    }) // pick card(s) from your graveyard
   const spec = TARGETED_SPELLS[name]
   if (spec) targeting.value = { objId: card.id, spec, alt, altCost }
   else if (alt || !beginCastExtraCost(card, [])) beginPayment(card, [], null, alt, altCost)
@@ -456,9 +473,16 @@ const graveyardTargets = computed<ObjId[]>(() => {
 function pickGraveyardTarget(id: ObjId) {
   const gt = graveyardTargeting.value
   if (!gt) return
+  const need = gt.count ?? 1
+  const picked = [...(gt.picked ?? []), id]
+  if (picked.length < need) {
+    // still collecting (Victimize needs two) — keep the picker open
+    graveyardTargeting.value = { ...gt, picked }
+    return
+  }
   const card = cardOf(gt.objId)
   graveyardTargeting.value = null
-  if (card) beginPayment(card, [id], null, gt.alt, gt.altCost)
+  if (card) beginPayment(card, picked, null, gt.alt, gt.altCost)
 }
 const cancelGraveyardTarget = () => {
   graveyardTargeting.value = null

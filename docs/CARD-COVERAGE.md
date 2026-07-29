@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**607 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**608 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -576,6 +576,7 @@
 - Vault of Whispers
 - Verdant Catacombs
 - Vicious Conquistador
+- Victimize
 - Village Rites
 - Vindicate
 - Vineglimmer Snarl
