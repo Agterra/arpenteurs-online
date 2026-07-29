@@ -22,6 +22,9 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'fiery temper': 'any', // also castable for its madness cost (CR 702.35)
   firebolt: 'any', // and again from the graveyard via flashback
   "raven's crime": 'player', // and again via retrace
+  'malakir rebirth': 'creature', // its back face is a land you play instead
+  'feign death': 'creature',
+  'undying malice': 'creature',
   murder: 'creature',
   terminate: 'creature',
   'go for the throat': 'creature',

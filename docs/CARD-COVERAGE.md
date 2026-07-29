@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**562 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**565 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -175,6 +175,7 @@
 - Farewell
 - Farseek
 - Feed the Swarm
+- Feign Death
 - Fell the Profane
 - Fellwar Stone
 - Fencing Ace
@@ -284,6 +285,7 @@
 - Lush Portico
 - Luxury Suite
 - Mahamoti Djinn
+- Malakir Rebirth
 - Man-o'-War
 - Mana Confluence
 - Mana Drain
@@ -521,6 +523,7 @@
 - Underground River
 - Underground Sea
 - Undergrowth Stadium
+- Undying Malice
 - Unexpected Windfall
 - Unholy Strength
 - Unsummon

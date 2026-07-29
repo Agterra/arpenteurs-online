@@ -1376,6 +1376,47 @@ export const untapAllOwnLands = (): Effect => (ctx) => {
   untapOwnLands(ctx.state, ctx.controllerId, Number.MAX_SAFE_INTEGER)
 }
 
+/**
+ * 'Until end of turn, target creature gains "When this creature dies, …"' (Malakir Rebirth, Feign
+ * Death, Undying Malice). `key` names the granted body inside the GRANTING card's `grantedAbilities`,
+ * so the state stores only names — see RulesGameState.grantedTriggers.
+ */
+export const grantDiesTriggerUntilEOT = (key: string): Effect => (ctx) => {
+  const granterName = getDef(ctx.state.objects[ctx.sourceId]?.defName ?? '').name
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
+    ;(ctx.state.grantedTriggers ??= []).push({
+      objId: t,
+      defName: ctx.state.objects[ctx.sourceId]!.defName,
+      key,
+      trigger: 'dies',
+    })
+    logLine(
+      ctx.state,
+      `${getDef(ctx.state.objects[t]!.defName).name} gains ${granterName}'s dies ability until end of turn.`,
+    )
+  }
+}
+
+/**
+ * The body of that granted ability: return the creature that died to the battlefield TAPPED under its
+ * OWNER's control, optionally with a +1/+1 counter (Feign Death / Undying Malice). It resolves while
+ * the card sits in the graveyard, so it moves it from there.
+ */
+export const returnSelfTappedFromGraveyard = (opts?: { plusOneCounter?: boolean }): Effect => (ctx) => {
+  const obj = ctx.state.objects[ctx.sourceId]
+  if (!obj || obj.zone !== 'graveyard') return
+  obj.controllerId = obj.ownerId
+  moveTo(ctx.state, ctx.sourceId, 'battlefield')
+  obj.tapped = true
+  obj.summoningSick = true // it returns as a new object
+  if (opts?.plusOneCounter) obj.counters['+1/+1'] = (obj.counters['+1/+1'] ?? 0) + 1
+  logLine(
+    ctx.state,
+    `${getDef(obj.defName).name} returns to the battlefield tapped${opts?.plusOneCounter ? ' with a +1/+1 counter' : ''}.`,
+  )
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {

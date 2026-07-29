@@ -312,6 +312,13 @@ export interface CardDefinition {
    */
   delayed?: Record<string, { at: 'nextUpkeep' | 'nextMainPhase'; unlessPay?: string; effect: Effect }>
   /**
+   * Triggered abilities this card GRANTS to another permanent until end of turn — 'that creature
+   * gains "When this creature dies, return it to the battlefield tapped…"' (Malakir Rebirth, Feign
+   * Death). Keyed like `delayed`: the state only stores this card's name + the key, never a function.
+   * The granted ability's source is the creature that gained it, so its effect reads ctx.sourceId.
+   */
+  grantedAbilities?: Record<string, TriggeredAbility>
+  /**
    * CHANNEL (CR 702.140-style ability word on the Kamigawa legendary lands): "Channel — [cost],
    * Discard this card: [effect]." An activated ability used from the HAND at instant speed: the mana
    * is paid, the card is discarded as part of the cost, and the ability goes on the stack (so it can

@@ -195,6 +195,8 @@ export interface StackItem {
   /** Saga chapter ability on the stack (CR 714): the 1-based chapter number resolving (its
    *  effect is `def.saga.chapters[sagaChapter - 1]`). */
   sagaChapter?: number
+  /** a GRANTED triggered ability resolving: its body is `getDef(defName).grantedAbilities[grantedKey]` */
+  grantedKey?: string
   /** Adventure (CR 715): this spell is the adventure half — on resolution it exiles the card
    *  (adventured) instead of going to the graveyard, rather than resolving as the creature. */
   adventure?: boolean
@@ -402,6 +404,14 @@ export interface RulesGameState {
    * `x` carries any value captured when it was scheduled (Mana Drain's mana value). It fires at the
    * matching step of a LATER turn than the one it was created on.
    */
+  /**
+   * Triggered abilities GRANTED to a permanent until end of turn (Malakir Rebirth / Feign Death:
+   * 'that creature gains "When this creature dies, …"'). The body lives in the GRANTING card's
+   * `grantedAbilities` record and is referenced by `defName` + `key` (the same trick as
+   * `delayedTriggers`), so nothing here holds a function. Cleared at cleanup with the other
+   * until-end-of-turn effects.
+   */
+  grantedTriggers?: { objId: ObjId; defName: string; key: string; trigger: 'dies' }[]
   delayedTriggers: {
     at: 'nextUpkeep' | 'nextMainPhase'
     player: PlayerId

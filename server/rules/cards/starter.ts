@@ -63,6 +63,7 @@ import {
   gainLifePerBigCreature,
   gainLifePerSpellThisTurn,
   gainLifeX,
+  grantDiesTriggerUntilEOT,
   grantKeywordsToControlled,
   grantKeywordsToTarget,
   grantProtection,
@@ -88,6 +89,7 @@ import {
   returnAllNonlandYouDontControlToHand,
   returnFromGraveyard,
   returnFromGraveyardToBattlefield,
+  returnSelfTappedFromGraveyard,
   returnToHand,
   scheduleDelayedTrigger,
   scry,
@@ -4215,5 +4217,52 @@ export const STARTER_SET: CardDefinition[] = [
       entersTappedUnlessPayLife: 3,
       abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W'], effect: addMana('W') }],
     },
+  },
+  // --- Coverage batch CARD46: triggered abilities GRANTED until end of turn ---
+  {
+    name: 'Malakir Rebirth',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Choose target creature. You lose 2 life. Until end of turn, that creature gains 'When this
+    //  creature dies, return it to the battlefield tapped under its owner's control.'"
+    //  // back: "Malakir Mire — This land enters tapped. / {T}: Add {B}."
+    spell: {
+      targets: [{ kind: 'creature', count: 1 }],
+      effect: sequence(loseLife(2), grantDiesTriggerUntilEOT('rebirth')),
+    },
+    grantedAbilities: { rebirth: { effect: returnSelfTappedFromGraveyard() } },
+    modalBack: {
+      name: 'Malakir Mire',
+      types: ['Land'],
+      entersTapped: true,
+      abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['B'], effect: addMana('B') }],
+    },
+  },
+  {
+    name: 'Feign Death',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Until end of turn, target creature gains 'When this creature dies, return it to the
+    //  battlefield tapped under its owner's control with a +1/+1 counter on it.'"
+    spell: {
+      targets: [{ kind: 'creature', count: 1 }],
+      effect: grantDiesTriggerUntilEOT('feign'),
+    },
+    grantedAbilities: { feign: { effect: returnSelfTappedFromGraveyard({ plusOneCounter: true }) } },
+  },
+  {
+    name: 'Undying Malice',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Until end of turn, target creature gains 'When this creature dies, return it to the
+    //  battlefield tapped under its owner's control with a +1/+1 counter on it.'"
+    spell: {
+      targets: [{ kind: 'creature', count: 1 }],
+      effect: grantDiesTriggerUntilEOT('malice'),
+    },
+    grantedAbilities: { malice: { effect: returnSelfTappedFromGraveyard({ plusOneCounter: true }) } },
   },
 ]

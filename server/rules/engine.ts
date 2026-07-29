@@ -926,6 +926,7 @@ function finishCleanup(state: RulesGameState) {
   state.protectionGrants = []
   state.keywordGrants = []
   state.unblockable = []
+  state.grantedTriggers = [] // granted "until end of turn" triggered abilities wear off
   expireImpulseWindows(state) // "you may play them this turn" / "…until the end of your next turn"
   state.pending = null
   if (state.status === 'ended') return
@@ -1205,6 +1206,14 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
   // cascade's ability (CR 702.85): dig the library and open the may-cast-free decision
   if (item.cascade) {
     resolveCascade(state, item)
+    return
+  }
+  // a GRANTED triggered ability (Malakir Rebirth's "when this creature dies, …"): the body comes from
+  // the granting card, the source is the permanent that gained it
+  if (item.grantedKey) {
+    const ability = getDef(item.defName).grantedAbilities?.[item.grantedKey]
+    if (ability) ability.effect({ state, controllerId: item.controllerId, sourceId: item.sourceId, targets: item.targets })
+    checkSBA(state)
     return
   }
   // Saga chapter ability (CR 714): resolve def.saga.chapters[n-1]; the SBA sacrifice (after the
@@ -1530,6 +1539,32 @@ export function queueTriggeredAbility(
   state.pending = { kind: 'trigger', player: controllerId }
   state.pendingTrigger = { sourceId, defName: obj.defName, controllerId, trigger: kind }
   logLine(state, `${def.name}'s ${label} ability triggers — ${name(state, controllerId)} chooses a target.`)
+}
+
+/**
+ * Put a GRANTED triggered ability on the stack — one a permanent gained until end of turn (Malakir
+ * Rebirth: 'that creature gains "When this creature dies, …"'). The body lives in the granting card's
+ * `grantedAbilities`, but the ability's SOURCE is the permanent that gained it (its effect reads
+ * ctx.sourceId), and its controller is that permanent's controller.
+ */
+export function queueGrantedTrigger(state: RulesGameState, objId: ObjId, defName: string, key: string) {
+  const obj = state.objects[objId]
+  if (!obj) return
+  const ability = getDef(defName).grantedAbilities?.[key]
+  if (!ability) return
+  const controllerId = obj.controllerId
+  state.zones.stack.push({
+    id: mintCardId(),
+    kind: 'ability',
+    trigger: 'dies',
+    controllerId,
+    defName,
+    sourceId: objId,
+    abilityIndex: null,
+    grantedKey: key,
+    targets: [],
+  })
+  logLine(state, `${getDef(obj.defName).name}'s granted dies ability triggers.`)
 }
 
 /**

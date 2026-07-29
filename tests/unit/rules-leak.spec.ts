@@ -958,6 +958,10 @@ const FUZZ_DECK = [
   // engine keeps it out of the open pool entirely).
   // batch CARD45: a modal DFC — the fuzzer plays its land back face about as often as it casts the
   // front, so the hidden-hand → public-battlefield move happens under BOTH faces.
+  // batch CARD46: a granted "when this creature dies, return it" ability — deaths are constant in a
+  // fuzz game, so the granted trigger fires often and returns a card graveyard→battlefield (public →
+  // public, but it puts a NEW object on the battlefield mid-combat, which the assertions watch).
+  ...Array(3).fill('Feign Death'),
   ...Array(3).fill('Bala Ged Recovery'),
   ...Array(3).fill('Unclaimed Territory'),
   ...Array(2).fill('Sword of Feast and Famine'),
