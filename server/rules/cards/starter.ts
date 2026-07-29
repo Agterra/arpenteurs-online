@@ -23,6 +23,7 @@ import {
   counterTarget,
   counterTargetGrantingToken,
   counterTargetGrantingTreasures,
+  createCopyOfAttached,
   createToken,
   createTreasures,
   damageAllCreatures,
@@ -82,6 +83,9 @@ import {
   mill,
   millSelf,
   monstrosity,
+  moveAllCountersToTarget,
+  moveLastCountersToSelf,
+  noop,
   playersDiscard,
   playersSacrifice,
   proliferate,
@@ -96,6 +100,7 @@ import {
   returnFromGraveyardToBattlefield,
   returnSelfTappedFromGraveyard,
   returnToHand,
+  sacrificeFormerHost,
   scheduleDelayedTrigger,
   scry,
   searchLibrary,
@@ -4472,5 +4477,51 @@ export const STARTER_SET: CardDefinition[] = [
       effect: countersOnEachCreatureOfTarget('-1/-1', 1),
     },
     abilities: [{ kind: 'activated', cost: { mana: '{4}', tap: true }, effect: proliferate(2) }],
+  },
+  // --- Coverage batch CARD52: leaves-the-battlefield and beginning-of-combat triggers ---
+  {
+    name: 'Animate Dead',
+    types: ['Enchantment'],
+    subtypes: ['Aura'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "Enchant creature card in a graveyard / When this Aura enters … Return enchanted creature card to
+    //  the battlefield under your control and attach this Aura to it. / When this Aura leaves the
+    //  battlefield, that creature's controller sacrifices it. / Enchanted creature gets -1/-0."
+    //  The "loses enchant creature card in a graveyard, gains enchant creature…" text is bookkeeping
+    //  for the same outcome: the Aura ends up attached to the creature it reanimated.
+    reanimatingAura: true,
+    spell: { targets: [{ kind: 'graveyardCard', count: 1, filter: { types: ['Creature'] } }], effect: noop() },
+    grantsToHost: { power: -1, toughness: 0 },
+    leavesBattlefield: { effect: sacrificeFormerHost() },
+  },
+  {
+    name: 'The Ozolith',
+    types: ['Artifact'],
+    supertypes: ['Legendary'],
+    manaCost: '{1}',
+    // "Whenever a creature you control leaves the battlefield, if it had counters on it, put those
+    //  counters on The Ozolith. / At the beginning of combat on your turn, if The Ozolith has counters
+    //  on it, you may move all counters from The Ozolith onto target creature."
+    leavesBattlefield: {
+      watch: { scope: 'anyCreature', controllerOnly: true, excludeSelf: true },
+      effect: moveLastCountersToSelf(),
+    },
+    beginCombat: {
+      condition: (state, _controllerId, sourceId) =>
+        Object.values(state.objects[sourceId]?.counters ?? {}).some((n) => n > 0),
+      targets: [{ kind: 'creature', count: 1, optional: true }],
+      effect: moveAllCountersToTarget(),
+    },
+  },
+  {
+    name: 'Helm of the Host',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{4}',
+    // "At the beginning of combat on your turn, create a token that's a copy of equipped creature,
+    //  except the token isn't legendary. That token gains haste. / Equip {5}"
+    equipCost: '{5}',
+    beginCombat: { effect: createCopyOfAttached() },
   },
 ]

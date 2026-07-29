@@ -169,6 +169,7 @@ export const MULTI_TARGET_SPELLS: Record<string, FightSlot[]> = {
  * offered as your-graveyard-only; the server accepts any graveyard.
  */
 export const GRAVEYARD_SPELLS: Record<string, 'creature' | 'any'> = {
+  'animate dead': 'creature', // an Aura on a creature CARD in a graveyard: it reanimates it
   'bala ged recovery': 'any', // any card from your graveyard; its back face is a land you play
   'raise dead': 'creature',
   regrowth: 'any',

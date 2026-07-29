@@ -158,7 +158,9 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
+  trigger?:
+    | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
+    | 'beginCombat' | 'leavesBattlefield'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -525,7 +527,15 @@ export interface RulesClientCard {
   /** the creature type chosen as this permanent entered, if any (Cavern of Souls) */
   chosenType?: string
   /** IMPRINT (CR 702.61 — Chrome Mox): the def name of the card exiled by this permanent */
-  imprintedDefName?: string | null
+  imprintedDefName?: string
+  /**
+   * The counters this object had as it LEFT the battlefield — last known information for a
+   * leaves-the-battlefield trigger that needs them (The Ozolith). Set by moveTo before counters are
+   * cleared, so it is only meaningful right after such a move.
+   */
+  lastCounters?: Record<string, number>
+  /** the host this Aura/Equipment was attached to as it left the battlefield (Animate Dead) */
+  lastAttachedTo?: ObjId | null
   /** host this Aura/Equipment is attached to (null/absent = unattached) */
   attachedTo?: ObjId | null
   /** true = an assisted-table fallback (printed body known, rules player-run) */

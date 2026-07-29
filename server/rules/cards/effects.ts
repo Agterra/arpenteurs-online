@@ -7,7 +7,7 @@ import type { Ability, EffectContext, Effect } from './dsl'
 import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { parseManaCost } from '#shared/utils/manaCost'
 import { putCounters, apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
-import { getDef, defKey, registerImplementedToken } from './registry'
+import { getDef, defKey, registerCopyToken, registerImplementedToken } from './registry'
 import { mintCardId, randomIndex } from '../../game/rng'
 // currentPower is safe to import: characteristics is already in this module's
 // transitive graph via engine (effects→engine→characteristics); called at runtime only.
@@ -1528,6 +1528,96 @@ export const countersOnEachCreatureOfTarget = (kind: '+1/+1' | '-1/-1', n: numbe
     logLine(ctx.state, `Each creature ${ctx.state.players[t]!.name} controls gets ${n} ${kind} counter${n === 1 ? '' : 's'}.`)
   }
 }
+
+/**
+ * Helm of the Host: "create a token that's a copy of equipped creature, except the token isn't
+ * legendary. That token gains haste." The copy is a full definition copy (registerCopyToken), so the
+ * token has the original's abilities and triggers, not just its P/T.
+ */
+export const createCopyOfAttached = (): Effect => (ctx) => {
+  const equipment = ctx.state.objects[ctx.sourceId]
+  const hostId = equipment?.attachedTo
+  const host = hostId ? ctx.state.objects[hostId] : undefined
+  if (!host || host.zone !== 'battlefield') return
+  const defName = registerCopyToken(getDef(host.defName), { dropLegendary: true, addKeywords: ['haste'] })
+  const id = mintCardId()
+  ctx.state.objects[id] = {
+    id,
+    defName,
+    ownerId: ctx.controllerId,
+    controllerId: ctx.controllerId,
+    zone: 'battlefield',
+    tapped: false,
+    summoningSick: false, // it has haste
+    damageMarked: 0,
+    counters: {},
+    isCommander: false,
+    attackingDefender: null,
+    blockingAttackerId: null,
+  }
+  ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.push(id)
+  ctx.state.players[ctx.controllerId]!.createdTokenThisTurn = true
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} creates a token copy of ${getDef(host.defName).name} (with haste).`)
+  fireEntersTriggers(ctx.state, id)
+}
+
+/**
+ * The Ozolith: "Whenever a creature you control leaves the battlefield, if it had counters on it, put
+ * those counters on The Ozolith." The leaving creature arrives as the trigger's implicit target and its
+ * counters are read from `lastCounters` (last known information — moveTo has already cleared them).
+ */
+export const moveLastCountersToSelf = (): Effect => (ctx) => {
+  const src = ctx.state.objects[ctx.sourceId]
+  if (!src || src.zone !== 'battlefield') return
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const gone = ctx.state.objects[t]
+    const had = gone?.lastCounters ?? {}
+    let moved = 0
+    for (const [kind, n] of Object.entries(had)) {
+      if (n > 0) {
+        putCounters(ctx.state, ctx.sourceId, kind, n)
+        moved += n
+      }
+    }
+    if (moved) logLine(ctx.state, `${getDef(src.defName).name} gains ${moved} counter${moved === 1 ? '' : 's'} from ${getDef(gone!.defName).name}.`)
+  }
+}
+
+/** The Ozolith's combat trigger: move ALL counters from this permanent onto a target creature. */
+export const moveAllCountersToTarget = (): Effect => (ctx) => {
+  const src = ctx.state.objects[ctx.sourceId]
+  if (!src || src.zone !== 'battlefield') return
+  const target = ctx.targets.find((t) => !isPlayerId(ctx, t) && isCreatureOnBattlefield(ctx.state, t))
+  if (target == null) return
+  const counters = { ...src.counters }
+  src.counters = {}
+  let moved = 0
+  for (const [kind, n] of Object.entries(counters)) {
+    if (n > 0) {
+      putCounters(ctx.state, target as ObjId, kind, n)
+      moved += n
+    }
+  }
+  if (moved)
+    logLine(
+      ctx.state,
+      `${moved} counter${moved === 1 ? '' : 's'} move from ${getDef(src.defName).name} onto ${getDef(ctx.state.objects[target as ObjId]!.defName).name}.`,
+    )
+}
+
+/** Animate Dead: "that creature's controller sacrifices it" as the Aura leaves the battlefield. */
+export const sacrificeFormerHost = (): Effect => (ctx) => {
+  const aura = ctx.state.objects[ctx.sourceId]
+  const hostId = aura?.attachedTo ?? aura?.lastAttachedTo
+  const host = hostId ? ctx.state.objects[hostId] : undefined
+  if (!host || host.zone !== 'battlefield') return
+  logLine(ctx.state, `${getDef(host.defName).name} is sacrificed (${getDef(aura!.defName).name} left the battlefield).`)
+  moveToGraveyard(ctx.state, host.id)
+}
+
+/** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */
+export const noop = (): Effect => () => {}
 
 /** Everything that can be proliferated right now: permanents with any counter, players with poison. */
 export function proliferateTargets(state: EffectContext['state']) {

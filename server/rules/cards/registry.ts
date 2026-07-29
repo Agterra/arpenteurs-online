@@ -125,6 +125,29 @@ export function registerToken(spec: {
   return key
 }
 
+/**
+ * Register a token that is a COPY of an existing card definition (Helm of the Host). The copy keeps
+ * everything — abilities, triggers, statics — so it behaves like the original; `dropLegendary` strips
+ * the supertype ("except the token isn't legendary") and `addKeywords` grants the extras (haste).
+ * A copy of a double-faced card copies the FACE, so the back-face links are dropped.
+ */
+export function registerCopyToken(
+  def: CardDefinition,
+  opts: { dropLegendary?: boolean; addKeywords?: import('#shared/rules/types').Keyword[] } = {},
+): string {
+  const kws = [...new Set([...(def.keywords ?? []), ...(opts.addKeywords ?? [])])]
+  const key = `itok:copy:${norm(def.name)}:${opts.dropLegendary ? 'nl' : ''}:${kws.join('.')}`
+  if (!registry.has(key)) {
+    const { back: _back, modalBack: _modalBack, transformsTo: _t, isBackFace: _b, ...rest } = def
+    registry.set(key, {
+      ...rest,
+      supertypes: opts.dropLegendary ? (def.supertypes ?? []).filter((st) => st !== 'Legendary') : def.supertypes,
+      keywords: kws,
+    })
+  }
+  return key
+}
+
 /** Is `defName` a token def key? Tokens (manual `tok:` or engine `itok:`) exist only on
  *  the battlefield — CR 704.5d removes one as an SBA once it reaches any other zone. */
 export function isTokenDefName(defName: string): boolean {

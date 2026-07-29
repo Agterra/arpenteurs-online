@@ -208,7 +208,9 @@ export interface TriggeredAbility {
   oncePerTurn?: boolean
 }
 /** The trigger events the engine emits. */
-export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
+export type TriggerKind =
+  | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
+  | 'beginCombat' | 'leavesBattlefield'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -541,6 +543,12 @@ export interface CardDefinition {
    * leaves the battlefield reverts to its front face (CR 712.13) through the same code path.
    */
   modalBack?: CardDefinition
+  /**
+   * Animate Dead: an Aura cast on a creature CARD IN A GRAVEYARD. On resolution the card is put onto
+   * the battlefield under the Aura's controller and the Aura attaches to it (CR 303.4h + the card's own
+   * text), rather than the usual "attach to the targeted battlefield permanent".
+   */
+  reanimatingAura?: boolean
   /** engine-set: the OTHER face's registered name (both faces get one). */
   transformsTo?: string
   /** engine-set on the back face — used to revert to the front when leaving the battlefield. */
@@ -570,6 +578,14 @@ export interface CardDefinition {
    * the draw. Mana Vault's self-damage lives here (its pay-to-untap is an upkeep trigger).
    */
   drawStep?: TriggeredAbility
+  /** "At the beginning of combat on your turn, …" (Helm of the Host, The Ozolith) — CR 506.1 */
+  beginCombat?: TriggeredAbility
+  /**
+   * "When this permanent leaves the battlefield, …" / "Whenever a creature you control leaves the
+   * battlefield, …" (Animate Dead, The Ozolith) — CR 603.6d, fired for ANY battlefield exit (dying,
+   * exile, a bounce), unlike `dies`. The leaving object's counters are readable as `lastCounters`.
+   */
+  leavesBattlefield?: TriggeredAbility
   /** replacement effect: this permanent enters the battlefield tapped (e.g. Guildgates) */
   entersTapped?: boolean
   /**

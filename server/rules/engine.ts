@@ -838,6 +838,16 @@ function beginStep(state: RulesGameState) {
       grantPriority(state, ap)
       return
     }
+    case 'begin_combat': {
+      // "At the beginning of combat on your turn, …" (CR 506.1) — Helm of the Host, The Ozolith
+      for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
+        if (!getDef(state.objects[id]?.defName ?? '').beginCombat) continue
+        queueTriggeredAbility(state, id, 'beginCombat')
+        if (state.pending) break // a targeted one waits for its choice (the rest are dropped)
+      }
+      grantPriority(state, ap)
+      return
+    }
     case 'declare_attackers': {
       state.attackersDeclaredThisCombat = false
       state.blockersDone = []
@@ -1169,6 +1179,8 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'landfall' ? def.landEnters
     : kind === 'combatDamage' ? def.combatDamage
     : kind === 'drawStep' ? def.drawStep
+    : kind === 'beginCombat' ? def.beginCombat
+    : kind === 'leavesBattlefield' ? def.leavesBattlefield
     : def.enters
 }
 
@@ -1182,6 +1194,8 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   landfall: 'landfall',
   combatDamage: 'combat damage',
   drawStep: 'draw step',
+  beginCombat: 'beginning of combat',
+  leavesBattlefield: 'leaves-the-battlefield',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1402,6 +1416,21 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     }
     chosen?.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: stillLegal, x: item.x, kicked: item.kicked })
     if (defIsAura(def)) auraTarget = stillLegal[0] as ObjId // an Aura enters attached to its target
+    // Animate Dead: the Aura's target is a creature CARD IN A GRAVEYARD — put it onto the battlefield
+    // under the Aura's controller first, then attach to it (the object keeps its id: graveyard and
+    // battlefield are both public, so no re-mint is due)
+    if (def.reanimatingAura) {
+      const cardId = stillLegal[0] as ObjId
+      const card = state.objects[cardId]
+      if (card && card.zone === 'graveyard') {
+        card.controllerId = item.controllerId
+        moveTo(state, cardId, 'battlefield')
+        card.summoningSick = true
+        logLine(state, `${objName(state, cardId)} returns to the battlefield under ${name(state, item.controllerId)}'s control.`)
+        fireEntersTriggers(state, cardId)
+      }
+      auraTarget = cardId
+    }
   } else {
     chosen?.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: [], x: item.x, kicked: item.kicked })
   }

@@ -992,6 +992,11 @@ const FUZZ_DECK = [
   // batch CARD51: proliferate — Evolution Sage fires on every land drop (constant in a fuzz game) and
   // Karn's Bastion offers it as an activated ability, so the new multi-select decision is answered
   // often, and its counters run through the CARD50 replacement funnel.
+  // batch CARD52: Animate Dead (a graveyard→battlefield reanimating AURA whose leaves-the-battlefield
+  // trigger then sacrifices what it animated — two new trigger timings, both firing often once fuzz
+  // graveyards fill up) and The Ozolith, whose combat trigger collects counters from anything leaving.
+  ...Array(2).fill('Animate Dead'),
+  ...Array(2).fill('The Ozolith'),
   ...Array(2).fill('Evolution Sage'),
   ...Array(2).fill("Karn's Bastion"),
   ...Array(2).fill('Hardened Scales'),
@@ -1268,9 +1273,11 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       // the window closes at the end of A's NEXT turn and the cards stay in exile
       const turn = state.turnNumber
       until(state, (s) => s.activePlayer === A && s.turnNumber > turn && s.step === 'main1', "A's next turn")
-      until(state, (s) => exiled.every((id) => !s.objects[id]!.playableUntil) || s.turnNumber > turn + 2, 'the window closing')
+      // an id can VANISH here: a card played out of exile and later returned to a hidden zone is
+      // re-minted (invariant #3), so `objects[id]` is gone — that is a pass, not a failure
+      until(state, (s) => exiled.every((id) => !s.objects[id]?.playableUntil) || s.turnNumber > turn + 2, 'the window closing')
       for (const id of exiled) {
-        if (state.objects[id]!.zone === 'exile') expect(state.objects[id]!.playableUntil).toBeUndefined()
+        if (state.objects[id]?.zone === 'exile') expect(state.objects[id]!.playableUntil).toBeUndefined()
       }
       assertNoLeaks(state, '(after the window closed)', seen)
     } finally {

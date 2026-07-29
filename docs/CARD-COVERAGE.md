@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**582 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**585 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -28,6 +28,7 @@
 - Angel of Mercy
 - Angelic Gift
 - Anguished Unmaking
+- Animate Dead
 - Anointed Procession
 - Arcane Sanctum
 - Arcane Signet
@@ -252,6 +253,7 @@
 - Harrow
 - Haunted Ridge
 - Hedge Maze
+- Helm of the Host
 - Hero's Downfall
 - Heroic Intervention
 - Hill Giant
@@ -516,6 +518,7 @@
 - Temple of Triumph
 - Terminate
 - Terramorphic Expanse
+- The Ozolith
 - Thought Scour
 - Thought Vessel
 - Thran Dynamo

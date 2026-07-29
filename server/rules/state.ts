@@ -42,12 +42,38 @@ function zoneHolder(state: RulesGameState, obj: GameObject): PlayerId {
 export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opts: { top?: boolean } = {}) {
   const obj = state.objects[objId]
   if (!obj) return
+  const wasBattlefield = obj.zone === 'battlefield'
   pullFromCurrentZone(state, obj)
   obj.zone = zone
   // a transforming DFC reverts to its FRONT face when it leaves the battlefield (CR 712.13)
   if (zone !== 'battlefield') {
     const d = getDef(obj.defName)
     if (d.isBackFace && d.transformsTo) obj.defName = defKey(d.transformsTo)
+  }
+  // leaves-the-battlefield triggers (CR 603.6d): collected BEFORE the counters are cleared, and fired
+  // after the move so the object is already gone (Animate Dead's sacrifice, The Ozolith's counters)
+  const leftBattlefield = wasBattlefield && zone !== 'battlefield'
+  const ltbFire: ObjId[] = []
+  if (leftBattlefield) {
+    obj.lastCounters = { ...obj.counters } // last known information for a trigger that reads them
+    if (obj.attachedTo) obj.lastAttachedTo = obj.attachedTo // Animate Dead: whom it was enchanting
+    const leavingIsCreature = defIsCreature(getDef(obj.defName))
+    // its OWN "when this permanent leaves the battlefield" trigger (Animate Dead): it has already been
+    // pulled out of the battlefield zone array, so the watcher scan below would never see it
+    if (getDef(obj.defName).leavesBattlefield && !getDef(obj.defName).leavesBattlefield!.watch) ltbFire.push(obj.id)
+    for (const pid of state.turnOrder) {
+      for (const id of state.zones.perPlayer[pid]!.battlefield) {
+        const p = state.objects[id]
+        const ab = p && getDef(p.defName).leavesBattlefield
+        if (!p || !ab) continue
+        const isSelf = p.id === objId
+        const w = ab.watch
+        const fires = !w
+          ? isSelf
+          : leavingIsCreature && !(w.excludeSelf && isSelf) && !(w.controllerOnly && obj.controllerId !== p.controllerId)
+        if (fires) ltbFire.push(p.id)
+      }
+    }
   }
   clearCombatState(state, obj)
   obj.tapped = false
@@ -140,6 +166,9 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
   const arr = zoneArr(state, holder, zone)
   if (opts.top) arr.unshift(obj.id)
   else arr.push(obj.id)
+  // …now that the move is complete, the leaves-the-battlefield triggers go on the stack. The leaving
+  // object is passed as their implicit target so an effect can read it (its `lastCounters` included).
+  for (const src of ltbFire) queueTriggeredAbility(state, src, 'leavesBattlefield', [objId])
 }
 
 /**
