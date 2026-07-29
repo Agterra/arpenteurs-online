@@ -30,6 +30,7 @@ import {
   dealToEachPlayer,
   destroyAllArtifactsYouDontControl,
   destroyAllCreatures,
+  destroyAllOfType,
   destroyLoseLifeEqualToMV,
   destroyPermanent,
   destroyPermanentControllerGains,
@@ -47,6 +48,8 @@ import {
   eachOfYouAndTargetDraws,
   eachOpponentLoses,
   earthquakeX,
+  exileAllGraveyards,
+  exileAllOfType,
   exileGraveyard,
   exileTarget,
   exileTargetControllerFetchesLand,
@@ -60,6 +63,7 @@ import {
   gainLifeX,
   grantKeywordsToControlled,
   grantProtection,
+  grantProtectionToControlled,
   lookAndReorder,
   lookTransformIfInstantSorcery,
   loseAllAbilities,
@@ -3834,6 +3838,61 @@ export const STARTER_SET: CardDefinition[] = [
     abilities: [
       { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
       { kind: 'activated', cost: { mana: '{3}', tap: true, lifeFromCommanderColors: true }, effect: drawCards(1) },
+    ],
+  },
+  // --- Coverage batch CARD40: MULTI-mode spells (choose two / one or more / both with a commander) ---
+  {
+    name: 'Austere Command',
+    types: ['Sorcery'],
+    manaCost: '{4}{W}{W}',
+    colors: ['W'],
+    // "Choose two — • Destroy all artifacts. • Destroy all enchantments. • Destroy all creatures with
+    //  mana value 3 or less. • Destroy all creatures with mana value 4 or greater."
+    modeRule: { count: 2 },
+    modes: [
+      { label: 'Destroy all artifacts', effect: destroyAllOfType(['Artifact']) },
+      { label: 'Destroy all enchantments', effect: destroyAllOfType(['Enchantment']) },
+      { label: 'Destroy all creatures with mana value 3 or less', effect: destroyAllOfType(['Creature'], { maxManaValue: 3 }) },
+      { label: 'Destroy all creatures with mana value 4 or greater', effect: destroyAllOfType(['Creature'], { minManaValue: 4 }) },
+    ],
+  },
+  {
+    name: 'Farewell',
+    types: ['Sorcery'],
+    manaCost: '{4}{W}{W}',
+    colors: ['W'],
+    // "Choose one or more — • Exile all artifacts. • Exile all creatures. • Exile all enchantments.
+    //  • Exile all graveyards."
+    modeRule: { oneOrMore: true },
+    modes: [
+      { label: 'Exile all artifacts', effect: exileAllOfType(['Artifact']) },
+      { label: 'Exile all creatures', effect: exileAllOfType(['Creature']) },
+      { label: 'Exile all enchantments', effect: exileAllOfType(['Enchantment']) },
+      { label: 'Exile all graveyards', effect: exileAllGraveyards() },
+    ],
+  },
+  {
+    name: "Akroma's Will",
+    types: ['Instant'],
+    manaCost: '{3}{W}',
+    colors: ['W'],
+    // "Choose one. If you control a commander as you cast this spell, you may choose both instead.
+    //  • Creatures you control gain flying, vigilance and double strike until end of turn.
+    //  • Creatures you control gain lifelink, protection from all colors and indestructible until
+    //    end of turn."
+    modeRule: { bothIfCommander: true },
+    modes: [
+      {
+        label: 'Flying, vigilance and double strike',
+        effect: grantKeywordsToControlled(['flying', 'vigilance', 'double strike'], { creaturesOnly: true }),
+      },
+      {
+        label: 'Lifelink, protection from all colors and indestructible',
+        effect: sequence(
+          grantKeywordsToControlled(['lifelink', 'indestructible'], { creaturesOnly: true }),
+          grantProtectionToControlled(['W', 'U', 'B', 'R', 'G']),
+        ),
+      },
     ],
   },
 ]

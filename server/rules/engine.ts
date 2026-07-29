@@ -1180,6 +1180,29 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     checkSBA(state)
     return
   }
+  // MULTI-mode (CR 700.2 / 608.2c): each chosen mode resolves in printed order, taking its own
+  // slice of the target list. A mode whose targets have all become illegal is skipped (only that
+  // mode "fizzles"); the spell itself still resolves, so it always goes to the graveyard below.
+  if (item.modes?.length && def.modes?.length) {
+    let at = 0
+    for (const i of item.modes) {
+      const mode = def.modes[i]
+      if (!mode) continue
+      const specs = flattenSpecs(mode.targets)
+      const slice = item.targets.slice(at, at + specs.length)
+      at += specs.length
+      const stillLegal = slice.filter((t, k) => specs[k] && isLegalTarget(state, specs[k]!, t, item.controllerId, def.colors ?? []))
+      if (specs.length && !stillLegal.length) {
+        logLine(state, `${def.name}'s "${mode.label}" does nothing (no legal target).`)
+        continue
+      }
+      logLine(state, `${def.name} — ${mode.label}.`)
+      mode.effect({ state, controllerId: item.controllerId, sourceId: item.id, targets: stillLegal, x: item.x, kicked: item.kicked })
+    }
+    spellToRest(state, obj.id, item)
+    checkSBA(state)
+    return
+  }
   // overload (CR 702.96): the untargeted "each" body replaces the printed, targeted one
   const chosen = item.overloaded && def.overload ? { targets: undefined, effect: def.overload.effect } : activeSpell(def, item.mode)
   const specs = flattenSpecs(chosen?.targets)
@@ -1659,6 +1682,33 @@ function activeSpell(def: CardDefinition, mode: number | null | undefined) {
   if (def.split) return mode === 1 ? def.split.right : def.split.left
   return def.modes?.length ? def.modes[mode ?? 0] : def.spell
 }
+/**
+ * Validate the chosen modes of a MULTI-mode spell ("choose two" / "choose one or more" / "choose
+ * both if you control a commander") and return them in PRINTED order (CR 601.2b). Returns null for
+ * a card that isn't multi-mode. Duplicates are rejected (CR 700.2d: each mode is chosen at most once).
+ */
+export function chosenModes(
+  state: RulesGameState,
+  actor: PlayerId,
+  def: CardDefinition,
+  picked: number[] | undefined,
+): number[] | null {
+  const rule = def.modeRule
+  if (!rule || !def.modes?.length) return null
+  const ids = [...new Set(picked ?? [])]
+  if (ids.length !== (picked ?? []).length) throw new RulesError('BAD_MODE', 'Each mode may be chosen only once')
+  if (ids.some((i) => i < 0 || i >= def.modes!.length)) throw new RulesError('BAD_MODE', 'Choose a valid mode')
+  const hasCommander = zoneArr(state, actor, 'battlefield').some((id) => state.objects[id]!.isCommander)
+  const max = rule.count ?? (rule.oneOrMore ? def.modes.length : hasCommander ? 2 : 1)
+  const min = rule.count ?? 1
+  if (ids.length < min || ids.length > max)
+    throw new RulesError(
+      'BAD_MODE',
+      min === max ? `Choose exactly ${min} mode${min === 1 ? '' : 's'}` : `Choose ${min} to ${max} modes`,
+    )
+  return ids.sort((x, y) => x - y)
+}
+
 /** How many {X} symbols the mana cost has (X spells multiply the chosen X by this). */
 function xCountOf(def: CardDefinition): number {
   return (def.manaCost?.match(/\{X\}/g) ?? []).length
@@ -2157,8 +2207,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (!instantSpeed && (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length))
         throw new RulesError('TIMING', 'That can only be cast in your main phase with an empty stack')
 
+      // MULTI-mode ("choose two" / "one or more" / "both with a commander"): the picks come in on
+      // msg.modes and every chosen mode's targets are collected, in printed order
+      const multiModes = !adv && !castingBestow && !def.split ? chosenModes(state, actor, def, msg.modes) : null
       // modal "choose one": validate the chosen mode; targets come from that mode (main face only)
-      if (!adv && !castingBestow && !def.split && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
+      if (!adv && !castingBestow && !def.split && !multiModes && def.modes?.length && (msg.mode == null || msg.mode < 0 || msg.mode >= def.modes.length))
         throw new RulesError('BAD_MODE', 'Choose a valid mode')
       // bestow forces a single "target creature" (the host); otherwise use the chosen face's targets
       const chosen = adv ? { targets: adv.targets, effect: adv.effect } : activeSpell(def, msg.mode)
@@ -2166,7 +2219,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         ? [] // overloaded: "target" became "each", so nothing is targeted
         : castingBestow
           ? flattenSpecs([{ kind: 'creature', count: 1 }])
-          : flattenSpecs(chosen?.targets)
+          : multiModes
+            ? multiModes.flatMap((i) => flattenSpecs(def.modes![i]!.targets))
+            : flattenSpecs(chosen?.targets)
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
       // "you MAY … target X" / "up to one target X" (CR 601.2c): declining is legal, so an all-optional
       // spec list accepts zero targets and the ability simply does nothing on resolution
@@ -2335,7 +2390,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         targets: msg.targets,
         // {X} in the mana cost OR an X paid in life (Toxic Deluge) — the effect reads ctx.x
         x: xCount > 0 ? x : lifeX ? lifeX : undefined,
-        mode: !adv && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
+        mode: !adv && !multiModes && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
+        modes: multiModes ?? undefined,
         faceDown: castingFaceDown || undefined,
         kicked: kicked || undefined,
         adventure: castingAdventure || undefined,

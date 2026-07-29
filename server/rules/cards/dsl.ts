@@ -254,6 +254,16 @@ export interface CardDefinition {
   /** modal ("choose one") spell: the caster picks one mode at cast time */
   modes?: SpellMode[]
   /**
+   * How MANY of `modes` are chosen, when it isn't one (CR 700.2). Exactly one of:
+   *   `count: 2`          — "Choose two —" (Austere Command). Duplicates are illegal (CR 700.2d).
+   *   `oneOrMore: true`   — "Choose one or more —" (Farewell).
+   *   `bothIfCommander`   — "Choose one. If you control a commander as you cast this spell, you may
+   *                          choose both instead." (Akroma's Will) — 2 modes only with a commander
+   *                          ON THE BATTLEFIELD, the same check the free-cast spells use.
+   * The chosen modes always resolve in PRINTED order, whatever order they were picked in (CR 601.2b).
+   */
+  modeRule?: { count?: number; oneOrMore?: boolean; bothIfCommander?: boolean }
+  /**
    * Split card (CR 709): two instant/sorcery halves on one card, each with its own name / types /
    * mana cost / effect. The caster picks a half at cast time via `mode` (0 = left, 1 = right); the
    * card goes to the graveyard on resolution like any instant/sorcery. (Fuse is not supported.)

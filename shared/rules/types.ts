@@ -152,6 +152,12 @@ export interface StackItem {
   x?: number
   /** chosen mode index for a modal ("choose one") spell */
   mode?: number
+  /**
+   * Chosen modes for a MULTI-mode spell ("choose two" / "choose one or more" / "choose both"),
+   * in printed order. `mode` stays the single-mode field (and the split-card half), so a card is
+   * resolved either through `mode` or through `modes`, never both.
+   */
+  modes?: number[]
   /** which loyalty ability is resolving (index into def.loyaltyAbilities) */
   loyaltyIndex?: number
   /** cycling's ability on the stack: on resolution its controller draws a card (CR 702.29) */

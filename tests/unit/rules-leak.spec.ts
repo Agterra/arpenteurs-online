@@ -506,8 +506,23 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     const objId = pick(legal.castableIds)
     const def = getDef(state.objects[objId]!.defName)
     // modal ("choose one"): pick a random mode — its targets/effect drive this cast
-    const modeIdx = def.modes?.length ? Math.floor(rnd() * def.modes.length) : undefined
-    const specs = def.modes?.length ? (def.modes[modeIdx!]!.targets ?? []) : (def.spell?.targets ?? [])
+    const modeIdx = def.modes?.length && !def.modeRule ? Math.floor(rnd() * def.modes.length) : undefined
+    // MULTI-mode ("choose two" / "one or more"): pick a legal SET of modes (fuzz games have no
+    // commander, so a bothIfCommander card takes exactly one), and collect every chosen mode's targets
+    let modeSet: number[] | undefined
+    if (def.modeRule && def.modes?.length) {
+      const n = def.modes.length
+      const count = def.modeRule.count ?? (def.modeRule.oneOrMore ? 1 + Math.floor(rnd() * n) : 1)
+      const bag = [...Array(n).keys()]
+      modeSet = []
+      while (modeSet.length < count && bag.length) modeSet.push(...bag.splice(Math.floor(rnd() * bag.length), 1))
+      modeSet.sort((p1, p2) => p1 - p2)
+    }
+    const specs = modeSet
+      ? modeSet.flatMap((i) => def.modes![i]!.targets ?? [])
+      : def.modes?.length
+        ? (def.modes[modeIdx!]!.targets ?? [])
+        : (def.spell?.targets ?? [])
     // X spell: pick a small affordable X (0..2); mana needed = base pips + x·(#{X})
     const xCount = (def.manaCost?.match(/\{X\}/g) ?? []).length
     const x = xCount > 0 ? Math.floor(rnd() * 3) : undefined
@@ -585,7 +600,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
     }
     try {
-      applyRulesAction(state, actor, { type: 'r.cast', objId, targets, x, mode: modeIdx, sacrifices, discards })
+      applyRulesAction(state, actor, { type: 'r.cast', objId, targets, x, mode: modeIdx, modes: modeSet, sacrifices, discards })
     } catch {
       return tryPass() // e.g. pool short after random taps, or illegal modal target — passing is always legal
     }
@@ -853,6 +868,13 @@ const FUZZ_DECK = [
   ...Array(2).fill("Assassin's Trophy"),
   ...Array(2).fill('Ash Barrens'),
   ...Array(2).fill('War Room'),
+  // batch CARD40: Farewell — a MULTI-mode spell ("choose one or more"), so the fuzzer sends a SET of
+  // modes and a single resolution sweeps several categories at once (battlefield → exile for many
+  // objects, plus every graveyard). The few Plains are only there to make {4}{W}{W} reachable; Austere
+  // Command is deliberately left out — same code path with a fixed count, and a second white sweeper
+  // would distort this otherwise B/R/G deck.
+  ...Array(4).fill('Plains'),
+  ...Array(2).fill('Farewell'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

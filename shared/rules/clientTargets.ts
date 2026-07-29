@@ -101,6 +101,22 @@ export const MODAL_SPELLS: Record<string, { label: string; spec: TargetClass | n
     { label: 'Deal 3 damage to target creature', spec: 'creature' },
     { label: 'Destroy target artifact', spec: 'permanent' },
   ],
+  'austere command': [
+    { label: 'Destroy all artifacts', spec: null },
+    { label: 'Destroy all enchantments', spec: null },
+    { label: 'Destroy all creatures with mana value 3 or less', spec: null },
+    { label: 'Destroy all creatures with mana value 4 or greater', spec: null },
+  ],
+  farewell: [
+    { label: 'Exile all artifacts', spec: null },
+    { label: 'Exile all creatures', spec: null },
+    { label: 'Exile all enchantments', spec: null },
+    { label: 'Exile all graveyards', spec: null },
+  ],
+  "akroma's will": [
+    { label: 'Flying, vigilance and double strike', spec: null },
+    { label: 'Lifelink, protection from all colors and indestructible', spec: null },
+  ],
   'gods willing': [
     { label: 'Protection from white', spec: 'creature' },
     { label: 'Protection from blue', spec: 'creature' },
@@ -108,6 +124,18 @@ export const MODAL_SPELLS: Record<string, { label: string; spec: TargetClass | n
     { label: 'Protection from red', spec: 'creature' },
     { label: 'Protection from green', spec: 'creature' },
   ],
+}
+
+/**
+ * MULTI-mode spells: how many of the card's modes are chosen. A name absent here is an ordinary
+ * "choose one". `'any'` = "choose one or more"; `'bothIfCommander'` = "choose one, or both if you
+ * control a commander" — the board checks for the commander itself, and the server re-validates.
+ * `tests/unit/rules-client-contract.spec.ts` asserts this matches every definition's `modeRule`.
+ */
+export const MODAL_CHOOSE: Record<string, number | 'any' | 'bothIfCommander'> = {
+  'austere command': 2,
+  farewell: 'any',
+  "akroma's will": 'bothIfCommander',
 }
 
 /** Multi-target spells (ordered slots) — fight spells: your creature, then theirs. */

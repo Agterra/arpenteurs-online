@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**541 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**544 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -18,6 +18,7 @@
 - Aetherize
 - Air Elemental
 - Ajani, the Greathearted
+- Akroma's Will
 - Ambition's Cost
 - Ambush Viper
 - An Offer You Can't Refuse
@@ -37,6 +38,7 @@
 - Assault // Battery
 - Audacious Thief
 - Augury Raven
+- Austere Command
 - Avacyn's Pilgrim
 - Azorius Chancery
 - Azorius Guildgate
@@ -165,6 +167,7 @@
 - Fabled Passage
 - Faithful Watchdog
 - Faithless Looting
+- Farewell
 - Farseek
 - Feed the Swarm
 - Fellwar Stone

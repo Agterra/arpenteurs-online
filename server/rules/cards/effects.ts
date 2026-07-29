@@ -1184,6 +1184,88 @@ export const windfall = (): Effect => (ctx) => {
   logLine(ctx.state, `Each player draws ${greatest} card${greatest === 1 ? '' : 's'}.`)
 }
 
+/**
+ * Mass destroy by card TYPE, optionally narrowed by mana value (Austere Command's four modes:
+ * "Destroy all artifacts" / "all enchantments" / "all creatures with mana value 3 or less" /
+ * "…4 or greater"). Indestructible permanents survive, and — assisted table — a fallback
+ * (unimplemented) card is never auto-destroyed; the count of survivors is logged either way.
+ */
+export const destroyAllOfType = (
+  types: CardType[],
+  opts?: { maxManaValue?: number; minManaValue?: number },
+): Effect => (ctx) => {
+  const matches = Object.values(ctx.state.objects).filter((o) => {
+    if (o.zone !== 'battlefield') return false
+    const def = getDef(o.defName)
+    if (!types.some((t) => def.types.includes(t))) return false
+    const mv = manaValueOf(def)
+    if (opts?.maxManaValue != null && mv > opts.maxManaValue) return false
+    if (opts?.minManaValue != null && mv < opts.minManaValue) return false
+    return true
+  })
+  const doomed = matches.filter((o) => !getDef(o.defName).unimplemented && !isIndestructible(ctx, o.id))
+  for (const o of doomed) {
+    logLine(ctx.state, `${getDef(o.defName).name} is destroyed.`)
+    moveToGraveyard(ctx.state, o.id)
+  }
+  const skipped = matches.length - doomed.length
+  logLine(
+    ctx.state,
+    `All ${describeSweep(types, opts)} are destroyed${skipped ? ` — ${skipped} indestructible/unimplemented survive` : ''}.`,
+  )
+}
+
+/**
+ * Mass EXILE by card type (Farewell). Exile ignores indestructible, but the assisted-table rule
+ * still holds: a fallback card is hand-run, so it is left alone rather than silently removed.
+ */
+export const exileAllOfType = (types: CardType[]): Effect => (ctx) => {
+  const matches = Object.values(ctx.state.objects).filter(
+    (o) => o.zone === 'battlefield' && types.some((t) => getDef(o.defName).types.includes(t)),
+  )
+  const doomed = matches.filter((o) => !getDef(o.defName).unimplemented)
+  for (const o of doomed) {
+    logLine(ctx.state, `${getDef(o.defName).name} is exiled.`)
+    moveTo(ctx.state, o.id, 'exile')
+  }
+  const skipped = matches.length - doomed.length
+  logLine(
+    ctx.state,
+    `All ${describeSweep(types)} are exiled${skipped ? ` — ${skipped} unimplemented card(s) stay` : ''}.`,
+  )
+}
+
+/** "Exile all graveyards" (Farewell's fourth mode) — every player's, not a targeted one. */
+export const exileAllGraveyards = (): Effect => (ctx) => {
+  let n = 0
+  for (const pid of ctx.state.turnOrder) {
+    const gy = ctx.state.zones.perPlayer[pid]!.graveyard
+    n += gy.length
+    while (gy.length) moveTo(ctx.state, gy[0]!, 'exile')
+  }
+  logLine(ctx.state, `All graveyards are exiled (${n} card${n === 1 ? '' : 's'}).`)
+}
+
+/** Every creature you control gains protection from `colors` until end of turn (Akroma's Will). */
+export const grantProtectionToControlled = (colors: ManaColor[]): Effect => (ctx) => {
+  const ids = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.filter((id) =>
+    isCreatureDef(getDef(ctx.state.objects[id]!.defName)),
+  )
+  for (const id of ids) for (const color of colors) ctx.state.protectionGrants.push({ objId: id, color })
+  logLine(
+    ctx.state,
+    `${ctx.state.players[ctx.controllerId]!.name}'s creatures gain protection from ${colors.length === 5 ? 'all colors' : colors.join('/')} until end of turn.`,
+  )
+}
+
+/** Log wording for a sweep: "artifacts", "creatures with mana value 3 or less", … */
+const describeSweep = (types: CardType[], opts?: { maxManaValue?: number; minManaValue?: number }) => {
+  const what = types.map((t) => `${t.toLowerCase()}s`).join(' and ')
+  if (opts?.maxManaValue != null) return `${what} with mana value ${opts.maxManaValue} or less`
+  if (opts?.minManaValue != null) return `${what} with mana value ${opts.minManaValue} or greater`
+  return what
+}
+
 /** Gamble: discard a card at random from the controller's hand. */
 export const discardAtRandom = (n: number): Effect => (ctx) => {
   for (let i = 0; i < n; i++) {

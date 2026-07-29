@@ -17,6 +17,7 @@ import { allDefs } from '../../server/rules/cards/registry.ts'
 import {
   GRAVEYARD_SPELLS,
   LIFE_X_SPELLS,
+  MODAL_CHOOSE,
   MODAL_SPELLS,
   MULTI_TARGET_SPELLS,
   TARGETED_SPELLS,
@@ -108,6 +109,33 @@ describe('every implemented targeted spell has a client target picker', () => {
   }
   it('no targeted spell is missing from clientTargets.ts', () => {
     expect(missing).toEqual([])
+  })
+})
+
+/**
+ * MULTI-mode spells ("choose two" / "choose one or more" / "choose both with a commander") need the
+ * board's multi-select picker: it is driven by MODAL_CHOOSE, while the server validates against the
+ * definition's `modeRule`. If the two disagree the client either sends too few modes (the cast is
+ * rejected as BAD_MODE) or offers a single pick for a card that needs two — so lock them together,
+ * and require the mode LABELS the picker shows to match the definitions' own labels.
+ */
+describe('every multi-mode spell is offered with the right number of picks', () => {
+  const problems: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented || def.isBackFace) continue
+    const key = def.name.toLowerCase()
+    const client = MODAL_CHOOSE[key]
+    const rule = def.modeRule
+    if (!rule && client != null) problems.push(`${def.name}: MODAL_CHOOSE says ${client} but the card has no modeRule`)
+    if (!rule) continue
+    const expected = rule.count ?? (rule.oneOrMore ? 'any' : rule.bothIfCommander ? 'bothIfCommander' : 1)
+    if (client !== expected) problems.push(`${def.name}: MODAL_CHOOSE says ${client}, modeRule implies ${expected}`)
+    const labels = MODAL_SPELLS[key]?.map((m) => m.label) ?? []
+    const own = def.modes?.map((m) => m.label) ?? []
+    if (labels.join('|') !== own.join('|')) problems.push(`${def.name}: picker labels ${labels.join('|')} ≠ card labels ${own.join('|')}`)
+  }
+  it('MODAL_CHOOSE and the cards\' modeRule agree', () => {
+    expect(problems).toEqual([])
   })
 })
 

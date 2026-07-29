@@ -39,6 +39,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
     targets: z.array(Id).max(8).default([]),
     x: z.number().int().min(0).max(99).optional(), // chosen X for an {X} spell
     mode: z.number().int().min(0).max(9).optional(), // chosen mode for a modal spell
+    // chosen modes for a MULTI-mode spell ("choose two" / "one or more"); the server re-validates
+    // the count against the card's modeRule and rejects duplicates
+    modes: z.array(z.number().int().min(0).max(9)).max(4).optional(),
     kicked: z.boolean().optional(), // whether the optional kicker cost was paid
     adventure: z.boolean().optional(), // cast the Adventure half (CR 715) rather than the creature
     convoke: z.array(Id).max(20).optional(), // creatures tapped to help pay via convoke (CR 702.51)

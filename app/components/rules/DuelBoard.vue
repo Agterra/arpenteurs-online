@@ -13,6 +13,7 @@ import { shouldAutoPassPriority } from '#shared/rules/autopass'
 // which picker resolves each targeted spell — shared so a unit test can assert full coverage
 import {
   GRAVEYARD_SPELLS,
+  MODAL_CHOOSE,
   MODAL_SPELLS,
   LIFE_X_SPELLS,
   MULTI_TARGET_SPELLS,
@@ -120,6 +121,7 @@ const casting = ref<{
   x: number // chosen X (0 when the card has no {X})
   xCount: number // number of {X} pips in the cost
   mode: number | null // chosen mode for a modal spell
+  modes?: number[] // chosen modes for a MULTI-mode spell ("choose two" / "one or more")
   cycling?: boolean // paying a cycling cost (→ r.cycle) rather than casting
   kickerCost?: string // the spell's kicker cost, if it has one (enables the kick toggle)
   kicked?: boolean // whether the player chose to pay the kicker
@@ -132,7 +134,13 @@ const casting = ref<{
   buyback?: boolean // whether the player chose to pay buyback
 } | null>(null)
 // modal "choose one": pick a mode before targeting/payment
-const modalPick = ref<{ card: RulesClientCard; modes: { label: string; spec: TargetClass | null }[] } | null>(null)
+const modalPick = ref<{
+  card: RulesClientCard
+  modes: { label: string; spec: TargetClass | null }[]
+  /** absent = "choose one" (pick and go); otherwise how many modes this spell takes */
+  choose?: number | 'any' | 'bothIfCommander'
+  selected: number[]
+} | null>(null)
 // planeswalker loyalty-ability picker
 const loyaltyPick = ref<{ objId: ObjId; options: { abilityIndex: number; cost: number }[] } | null>(null)
 // multi-target casting (fight): collect ordered targets, then pay
@@ -213,7 +221,7 @@ const castCovered = computed(
   () => !!castCost.value && !!me.value && planPayment(castCost.value, me.value.manaPool).covered,
 )
 
-function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode: number | null = null, alt?: AltKind, altCost?: string) {
+function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode: number | null = null, alt?: AltKind, altCost?: string, modes?: number[]) {
   targeting.value = null
   // alt-cast pays its own cost (flashback/evoke/bestow/suspend/adventure/retrace); else the printed cost
   const costStr = altCost ?? display.value[card.defName ?? '']?.manaCost ?? ''
@@ -229,6 +237,7 @@ function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode
     xCount: alt ? 0 : (costStr.match(/\{X\}/g) ?? []).length,
     lifeX: !alt && (card.defName ?? '') in LIFE_X_SPELLS,
     mode,
+    modes,
     // kicker/buyback toggles are only for a normal cast (not alt-casts)
     kickerCost: alt ? undefined : legal.value?.kickable.find((k) => k.objId === card.id)?.cost,
     kicked: false,
@@ -257,6 +266,7 @@ function confirmCast() {
       targets: c.targets as string[],
       x: c.xCount > 0 || c.lifeX ? c.x : undefined,
       mode: c.mode ?? undefined,
+      modes: c.modes?.length ? c.modes : undefined,
       kicked: c.kicked || undefined,
       buyback: c.buyback || undefined,
       // alt-cast flags the server reads (flashback/retrace/exile are auto-detected by zone,
@@ -391,7 +401,8 @@ const cancelMultiTarget = () => {
 function startCast(card: RulesClientCard) {
   const name = card.defName ?? ''
   const modes = MODAL_SPELLS[name]
-  if (modes) return void (modalPick.value = { card, modes }) // pick a mode first
+  // "choose one" picks and goes; a multi-mode spell collects its picks, then confirms
+  if (modes) return void (modalPick.value = { card, modes, choose: MODAL_CHOOSE[name], selected: [] })
   const slots = MULTI_TARGET_SPELLS[name]
   if (slots) return void (multiTargeting.value = { objId: card.id, slots, collected: [] }) // fight: 2 targets
   const gy = GRAVEYARD_SPELLS[name]
@@ -433,11 +444,43 @@ const isFightTarget = (id: ObjId) =>
 function pickMode(i: number) {
   const mp = modalPick.value
   if (!mp) return
+  // multi-mode: toggle this mode in the running selection (capped at the allowed maximum)
+  if (mp.choose != null) {
+    const at = mp.selected.indexOf(i)
+    if (at >= 0) mp.selected.splice(at, 1)
+    else if (mp.selected.length < modalMax.value) mp.selected.push(i)
+    return
+  }
   const m = mp.modes[i]
   const card = mp.card
   modalPick.value = null
   if (m?.spec) targeting.value = { objId: card.id, spec: m.spec, mode: i }
   else beginPayment(card, [], i)
+}
+/** do you control a commander right now? (Akroma's Will's "you may choose both instead") */
+const controlsCommander = computed(() =>
+  (st.value?.zones.perPlayer[you.value]?.battlefield ?? []).some((id) => cardOf(id)?.isCommander),
+)
+/** how many modes the open multi-mode picker takes, at most / at least */
+const modalMax = computed(() => {
+  const mp = modalPick.value
+  if (!mp || mp.choose == null) return 1
+  if (mp.choose === 'any') return mp.modes.length
+  if (mp.choose === 'bothIfCommander') return controlsCommander.value ? 2 : 1
+  return mp.choose
+})
+const modalMin = computed(() => {
+  const mp = modalPick.value
+  return typeof mp?.choose === 'number' ? mp.choose : 1
+})
+/** the picks are complete → move on to paying for the spell (modes resolve in printed order). */
+function confirmModes() {
+  const mp = modalPick.value
+  if (!mp || mp.selected.length < modalMin.value) return
+  const card = mp.card
+  const picks = [...mp.selected].sort((a, b) => a - b)
+  modalPick.value = null
+  beginPayment(card, [], null, undefined, undefined, picks)
 }
 
 // planeswalker loyalty abilities (the current pool has only non-targeted ones)
@@ -1849,21 +1892,33 @@ onBeforeUnmount(() => {
       <!-- modal "choose one": pick a mode before targeting/payment -->
       <div v-if="modalPick" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click="cancelModal">
         <div class="rounded-lg border border-primary bg-default p-4 shadow-xl" @click.stop>
-          <p class="mb-2 text-sm font-semibold">{{ nameOf(modalPick.card.id) }} — choose one</p>
+          <p class="mb-2 text-sm font-semibold">
+            {{ nameOf(modalPick.card.id) }} —
+            <template v-if="modalPick.choose == null">choose one</template>
+            <template v-else-if="modalPick.choose === 'any'">choose one or more ({{ modalPick.selected.length }} chosen)</template>
+            <template v-else>choose {{ modalMax }} ({{ modalPick.selected.length }}/{{ modalMax }})</template>
+          </p>
           <div class="flex flex-col gap-2">
             <UButton
               v-for="(m, i) in modalPick.modes"
               :key="i"
               size="sm"
-              variant="soft"
+              :variant="modalPick.selected.includes(i) ? 'solid' : 'soft'"
               class="justify-start"
+              :icon="modalPick.choose == null ? undefined : modalPick.selected.includes(i) ? 'i-lucide-check-square' : 'i-lucide-square'"
               @click="pickMode(i)"
             >
               {{ m.label }}
             </UButton>
           </div>
-          <div class="mt-3 flex justify-end">
+          <div class="mt-3 flex justify-end gap-2">
             <UButton size="xs" variant="ghost" color="neutral" @click="cancelModal">Cancel</UButton>
+            <UButton
+              v-if="modalPick.choose != null"
+              size="xs"
+              :disabled="modalPick.selected.length < modalMin"
+              @click="confirmModes"
+            >Confirm</UButton>
           </div>
         </div>
       </div>
