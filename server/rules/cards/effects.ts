@@ -783,6 +783,7 @@ export const counterTargetGrantingTreasures = (count: number): Effect => counter
 /** Mint `count` real (mortal) tokens onto `ownerId`'s battlefield. */
 function spawnTokens(state: EffectContext['state'], ownerId: PlayerId, spec: TokenSpec, count: number) {
   const defName = registerImplementedToken(spec)
+  if (count > 0) state.players[ownerId]!.createdTokenThisTurn = true // Idol of Oblivion's condition
   const created: ObjId[] = []
   for (let i = 0; i < count; i++) {
     const id = mintCardId()
@@ -1452,6 +1453,21 @@ export function handCardMatches(state: EffectContext['state'], id: ObjId, filter
   if (filter === 'land') return def.types.includes('Land')
   if (filter === 'nonartifactNonland') return !def.types.includes('Artifact') && !def.types.includes('Land')
   return true
+}
+
+/**
+ * Sensei's Divining Top: "Draw a card, then put this artifact on top of its owner's library."
+ * Battlefield → library is PUBLIC → HIDDEN, so the id must be re-minted (invariant #3) or an opponent
+ * who noted the Top's battlefield id could follow it into the library.
+ */
+export const drawThenSelfOnTopOfLibrary = (): Effect => (ctx) => {
+  const obj = ctx.state.objects[ctx.sourceId]
+  drawOne(ctx.state, ctx.controllerId)
+  if (!obj || obj.zone !== 'battlefield') return
+  const name = getDef(obj.defName).name
+  moveTo(ctx.state, ctx.sourceId, 'library', { top: true })
+  remintForHiddenEntry(ctx.state, ctx.sourceId, true)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws a card and puts ${name} on top of their library.`)
 }
 
 /** Gamble: discard a card at random from the controller's hand. */

@@ -69,21 +69,24 @@ describe('every implemented activated ability uses a client-selectable target ki
 })
 
 /**
- * The client's activation menu resolves a card's ability with
- * `legal.activations.find((a) => a.objId === id)` — the FIRST non-mana activated ability of that
- * permanent. A card with two of them would silently offer only one (the other unreachable), so a
- * second one needs an ability picker in DuelBoard.vue first. Mana abilities don't count: they are
- * used via r.tapMana, so Mind Stone / Commander's Sphere / Rogue's Passage (mana + one other) are
- * fine. Extend the client and this guard together.
+ * The client's activation menu lists EVERY activated ability a permanent offers (one entry per
+ * ability, labelled with its cost — Idol of Oblivion has two), so a second ability is no longer
+ * unreachable. What still has to hold is that each ability's cost is one the client can actually pay
+ * through r.activate: mana, {T}, "pay N life", "sacrifice this" or "sacrifice N creatures/Treasures".
+ * A cost outside that set would render a menu entry that cannot be completed.
  */
-describe('no implemented card has two non-mana activated abilities (the client offers one)', () => {
+describe('every implemented activated ability has a cost the client can pay', () => {
   const offenders: string[] = []
   for (const def of allDefs()) {
     if (def.unimplemented) continue
-    const nonMana = (def.abilities ?? []).filter((ab) => ab.kind === 'activated' && !ab.isMana)
-    if (nonMana.length > 1) offenders.push(`${def.name} (${nonMana.length})`)
+    for (const ab of def.abilities ?? []) {
+      if (ab.kind !== 'activated' || ab.isMana) continue
+      const keys = Object.keys(ab.cost)
+      const unknown = keys.filter((k) => !['mana', 'tap', 'life', 'lifeFromCommanderColors', 'sacrifice', 'sacrificeSelf'].includes(k))
+      if (unknown.length) offenders.push(`${def.name}: ${unknown.join(',')}`)
+    }
   }
-  it('every implemented card has at most one client-activatable ability', () => {
+  it('no activated ability has a cost piece the client cannot pay', () => {
     expect(offenders).toEqual([])
   })
 })

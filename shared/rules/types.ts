@@ -245,6 +245,8 @@ export interface PlayerRState {
     typeAbilities?: boolean
   }[]
   landsPlayedThisTurn: number
+  /** "Activate only if you created a token this turn." (Idol of Oblivion) — reset at your untap step */
+  createdTokenThisTurn?: boolean
   /** noncreature spells this player has cast this turn (Esper Sentinel's "first each turn") */
   noncreatureSpellsThisTurn?: number
   /** extra land drops granted this turn (Explore) — added on top of the one-per-turn allowance */
@@ -631,6 +633,9 @@ export interface LegalActions {
     sacCost: number
     /** what that sacrifice cost accepts ('creature' by default; 'treasure' for Face-Breaker) */
     sacFilter?: 'creature' | 'treasure'
+    /** cost pieces the client shows when a permanent offers SEVERAL abilities (Idol of Oblivion) */
+    taps?: boolean
+    sacSelf?: boolean
     lifeCost: number
     /** for a graveyardCard target: the legal cards right now (the board renders them as a picker) */
     graveyardIds?: ObjId[]

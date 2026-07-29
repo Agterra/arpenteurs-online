@@ -48,6 +48,7 @@ import {
   drawPerControlledCreature,
   drawPerGreatestPowerAmong,
   drawThenDiscardThenUntap,
+  drawThenSelfOnTopOfLibrary,
   eachOfYouAndTargetDraws,
   eachOpponentLoses,
   earthquakeX,
@@ -4295,6 +4296,33 @@ export const STARTER_SET: CardDefinition[] = [
         produces: ['W', 'U', 'B', 'R', 'G'],
         effect: addMana('W'),
       },
+    ],
+  },
+  // --- Coverage batch CARD48: permanents with SEVERAL activated abilities ---
+  {
+    name: 'Idol of Oblivion',
+    types: ['Artifact'],
+    manaCost: '{2}',
+    // "{T}: Draw a card. Activate only if you created a token this turn. / {8}, {T}, Sacrifice this
+    //  artifact: Create a 10/10 colorless Eldrazi creature token."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, requiresCreatedToken: true, effect: drawCards(1) },
+      {
+        kind: 'activated',
+        cost: { mana: '{8}', tap: true, sacrificeSelf: true },
+        effect: createToken({ name: 'Eldrazi', types: ['Creature'], subtypes: ['Eldrazi'], power: 10, toughness: 10 }, 1),
+      },
+    ],
+  },
+  {
+    name: "Sensei's Divining Top",
+    types: ['Artifact'],
+    manaCost: '{1}',
+    // "{1}: Look at the top three cards of your library, then put them back in any order. /
+    //  {T}: Draw a card, then put this artifact on top of its owner's library."
+    abilities: [
+      { kind: 'activated', cost: { mana: '{1}' }, effect: lookAndReorder(3) },
+      { kind: 'activated', cost: { tap: true }, effect: drawThenSelfOnTopOfLibrary() },
     ],
   },
 ]

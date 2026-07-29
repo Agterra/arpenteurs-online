@@ -785,6 +785,9 @@ type Activation = {
   targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
   cost: string
   sacCost: number
+  sacFilter?: 'creature' | 'treasure'
+  taps?: boolean
+  sacSelf?: boolean
   lifeCost: number
   graveyardIds?: ObjId[]
 }
@@ -821,6 +824,18 @@ function confirmCastExtra() {
 }
 
 const activationFor = (id: ObjId): Activation | null => legal.value?.activations.find((a) => a.objId === id) ?? null
+/** EVERY activated ability this permanent offers right now (Idol of Oblivion has two) */
+const activationsFor = (id: ObjId): Activation[] => legal.value?.activations.filter((a) => a.objId === id) ?? []
+/** a short cost label so several abilities on one card are told apart in the menu */
+function activationLabel(a: Activation): string {
+  const bits: string[] = []
+  if (a.cost) bits.push(a.cost)
+  if (a.taps) bits.push('{T}')
+  if (a.lifeCost) bits.push(`${a.lifeCost} life`)
+  if (a.sacSelf) bits.push('sacrifice it')
+  if (a.sacCost > 0) bits.push(`sacrifice ${a.sacCost} ${a.sacFilter === 'treasure' ? 'Treasure' : 'creature'}${a.sacCost === 1 ? '' : 's'}`)
+  return bits.length ? bits.join(', ') : 'free'
+}
 // a graveyard-card target for an ACTIVATED or CHANNEL ability: pick from the legal cards, then pay
 const gyAbility = ref<{ kind: 'activate' | 'channel'; objId: ObjId; abilityIndex?: number; cost: string; ids: ObjId[] } | null>(null)
 // "As this permanent enters, choose a creature type": a suggested list plus free text, since the
@@ -862,8 +877,8 @@ const cancelGyAbility = () => {
   gyAbility.value = null
 }
 
-function startActivate(id: ObjId) {
-  const a = activationFor(id)
+function startActivate(id: ObjId, abilityIndex?: number) {
+  const a = abilityIndex == null ? activationFor(id) : (activationsFor(id).find((x) => x.abilityIndex === abilityIndex) ?? null)
   if (!a) return
   closeMenu()
   if (a.targetKind === 'graveyardCard') {
@@ -2423,10 +2438,16 @@ onBeforeUnmount(() => {
           @click.stop
         >
           <div class="truncate px-2 py-1 font-semibold text-dimmed">{{ nameOf(menu.id) }}</div>
-          <template v-if="activationFor(menu.id)">
-            <button type="button" class="menu-item font-semibold text-primary" @click="startActivate(menu.id)">
-              ⚡ Activate ability{{ activationFor(menu.id)!.lifeCost ? ` (pay ${activationFor(menu.id)!.lifeCost} life)` : ''
-              }}{{ activationFor(menu.id)?.targetKind ? ' (choose a target)' : '' }}
+          <template v-if="activationsFor(menu.id).length">
+            <!-- one entry per activated ability: a card can have several (Idol of Oblivion) -->
+            <button
+              v-for="a in activationsFor(menu.id)"
+              :key="a.abilityIndex"
+              type="button"
+              class="menu-item font-semibold text-primary"
+              @click="startActivate(menu.id, a.abilityIndex)"
+            >
+              ⚡ Activate ({{ activationLabel(a) }}){{ a.targetKind ? ' — choose a target' : '' }}
             </button>
             <div class="my-1 border-t border-default" />
           </template>

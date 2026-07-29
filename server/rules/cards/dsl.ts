@@ -125,6 +125,8 @@ export interface ActivatedAbility {
   requiresLandsAtLeast?: number
   /** "Activate only if you control three or more artifacts." (Mox Opal's metalcraft) */
   requiresArtifactsAtLeast?: number
+  /** "Activate only if you created a token this turn." (Idol of Oblivion) */
+  requiresCreatedToken?: boolean
   /**
    * A mana ability whose available colours depend on the board rather than a printed list:
    * `yourLands` = any type a land you control could produce (Reflecting Pool),

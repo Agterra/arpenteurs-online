@@ -527,6 +527,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         if (obj.tapped) return
         if (defIsCreature(def) && obj.summoningSick && !currentKeywords(state, obj).includes('haste')) return
       }
+      // "only if you created a token this turn" (Idol of Oblivion) — hidden until you have
+      if (ab.requiresCreatedToken && !state.players[viewer]!.createdTokenThisTurn) return
       // a sacrifice cost is only payable if the player controls enough creatures
       const sacCost = ab.cost.sacrifice?.count ?? 0
       // "Sacrifice a Treasure" is paid with Treasures, not creatures — the picker needs to know which
@@ -556,6 +558,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         cost: ab.cost.mana ?? '',
         sacCost,
         ...(sacCost ? { sacFilter } : {}),
+        ...(ab.cost.tap ? { taps: true } : {}),
+        ...(ab.cost.sacrificeSelf ? { sacSelf: true } : {}),
         lifeCost,
         ...(graveyardIds ? { graveyardIds } : {}),
       })

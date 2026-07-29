@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**567 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**569 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -248,6 +248,7 @@
 - Hinterland Harbor
 - Holy Strength
 - Horizon Canopy
+- Idol of Oblivion
 - Impact Tremors
 - Indatha Triome
 - Infernal Grasp
@@ -423,6 +424,7 @@
 - Selesnya Guildgate
 - Selesnya Sanctuary
 - Selesnya Signet
+- Sensei's Divining Top
 - Serra Angel
 - Shadowy Backstreet
 - Shamanic Revelation

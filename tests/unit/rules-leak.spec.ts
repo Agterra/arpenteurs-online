@@ -972,6 +972,10 @@ const FUZZ_DECK = [
   // batch CARD47: Growth Spiral (a LAND moved hand→battlefield by a decision, i.e. hidden→public
   // outside the land-drop path) and Chrome Mox (imprint: hand→exile, and its mana colours then depend
   // on the exiled card).
+  // batch CARD48: Sensei's Divining Top — its {T} ability puts ITSELF on top of the library, the
+  // leak-critical public→hidden move, and it has TWO activated abilities so the fuzzer's activation
+  // branch now picks among several on one permanent.
+  ...Array(2).fill("Sensei's Divining Top"),
   ...Array(2).fill('Growth Spiral'),
   ...Array(2).fill('Chrome Mox'),
   ...Array(3).fill('Feign Death'),

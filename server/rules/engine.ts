@@ -806,6 +806,7 @@ function beginStep(state: RulesGameState) {
       p.noncreatureSpellsThisTurn = 0
       p.extraLandsThisTurn = 0
       p.spellsThisTurn = 0
+      p.createdTokenThisTurn = false // Idol of Oblivion: "only if you created a token this turn"
       // CR 502.1 — phasing happens FIRST, before permanents untap
       runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
@@ -2314,6 +2315,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const ability = getDef(obj.defName).abilities?.[msg.abilityIndex]
       if (!ability || ability.kind !== 'activated' || ability.isMana)
         throw new RulesError('NO_ABILITY', 'No such activated ability')
+      if (ability.requiresCreatedToken && !state.players[actor]!.createdTokenThisTurn)
+        throw new RulesError('NO_ABILITY', 'You have not created a token this turn')
       if (ability.cost.tap) {
         if (obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
         // a creature's {T} ability needs it to have been under control since your
