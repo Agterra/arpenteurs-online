@@ -586,6 +586,7 @@ function beginStep(state: RulesGameState) {
       p.landsPlayedThisTurn = 0
       p.noncreatureSpellsThisTurn = 0
       p.extraLandsThisTurn = 0
+      p.spellsThisTurn = 0
       // CR 502.1 — phasing happens FIRST, before permanents untap
       runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
@@ -1149,6 +1150,7 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
       if (w?.selfOnly && p.controllerId !== caster) continue // "whenever YOU cast…" (Beast Whisperer)
       if (w?.noncreatureOnly && isCreatureSpell) continue
       if (w?.creatureOnly && !isCreatureSpell) continue
+      if (w?.typesOnly?.length && !w.typesOnly.some((t) => spellDef.types.includes(t))) continue
       // "their FIRST noncreature spell each turn" — the counter is incremented by r.cast before
       // this runs, so the first such spell of the turn is the one that makes it 1
       if (w?.firstEachTurn && (state.players[caster]!.noncreatureSpellsThisTurn ?? 0) !== 1) continue
@@ -1181,6 +1183,8 @@ export function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, ki
   const def = getDef(obj.defName)
   const ability = abilityFor(def, kind)
   if (!ability) return
+  // an intervening "if" clause (Land Tax) — a false condition means it never triggers
+  if ('condition' in ability && ability.condition && !ability.condition(state, obj.controllerId)) return
   // "This ability triggers only once each turn." (Morbid Opportunist)
   if ('oncePerTurn' in ability && ability.oncePerTurn) {
     if (obj.triggeredThisTurn) return
@@ -1543,6 +1547,12 @@ function graveyardCardMatches(state: RulesGameState, id: ObjId, filter: TargetFi
 }
 
 /** Does `obj` satisfy `spec.filter` (types/subtypes/controller) for the targeting player? */
+/** Mana value of a card definition (generic + every coloured pip) — CR 202.3. */
+export function defManaValue(def: CardDefinition): number {
+  const c = parseManaCost(def.manaCost)
+  return c.generic + (['W', 'U', 'B', 'R', 'G', 'C'] as const).reduce((n, col) => n + c.colored[col], 0)
+}
+
 function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFilter | undefined, byController: PlayerId): boolean {
   if (!filter) return true
   const def = getDef(obj.defName)
@@ -1551,6 +1561,7 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
   if (filter.subtypes && !filter.subtypes.some((st) => def.subtypes?.includes(st) ?? false)) return false
   if (filter.controller === 'you' && obj.controllerId !== byController) return false
   if (filter.controller === 'opponent' && obj.controllerId === byController) return false
+  if (filter.minManaValue != null && defManaValue(def) < filter.minManaValue) return false
   return true
 }
 
@@ -2108,6 +2119,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         const pl = state.players[actor]!
         pl.noncreatureSpellsThisTurn = (pl.noncreatureSpellsThisTurn ?? 0) + 1
       }
+      state.players[actor]!.spellsThisTurn = (state.players[actor]!.spellsThisTurn ?? 0) + 1
       queueCastTriggers(state, actor, adv ? { ...def, types: adv.types } : splitHalf ? { ...def, types: splitHalf.types } : def)
       // prowess (CR 702.108): applied directly at cast (same end state as the stacked trigger,
       // which resolves before the spell; prowess pumps are effectively never responded to). An
@@ -2331,17 +2343,28 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const lib = zoneArr(state, actor, 'library')
       // remove the scried cards from the top, then re-place: kept on top (original
       // relative order), bottomed cards at the bottom
-      const kept = ps.cardIds.filter((id) => !bottom.includes(id))
-      for (const id of ps.cardIds) {
+      // only cards STILL in the library are re-placed: anything that left it meanwhile (a card drawn
+      // by an effect resolving during the peek) must not be re-inserted, or its id would live in two
+      // zones at once and the following re-mint would strand it
+      const stillThere = ps.cardIds.filter((id) => lib.includes(id))
+      const kept = stillThere.filter((id) => !bottom.includes(id))
+      const bottomed = stillThere.filter((id) => bottom.includes(id))
+      for (const id of stillThere) {
         const i = lib.indexOf(id)
         if (i >= 0) lib.splice(i, 1)
       }
       lib.unshift(...kept)
-      lib.push(...bottom)
+      lib.push(...bottomed)
       remintLibrary(state, actor) // end the peek so post-scry ids can't be tracked
+      const thenDraw = ps.thenDraw ?? 0
       state.pending = null
       state.pendingScry = null
-      logLine(state, `${name(state, actor)} keeps ${kept.length} on top, puts ${bottom.length} on the bottom.`)
+      logLine(state, `${name(state, actor)} keeps ${kept.length} on top, puts ${bottomed.length} on the bottom.`)
+      // "…then draw a card" (Opt / Preordain) — AFTER the scry, never during it
+      if (thenDraw) {
+        for (let i = 0; i < thenDraw; i++) drawOne(state, actor)
+        logLine(state, `${name(state, actor)} draws ${thenDraw} card${thenDraw === 1 ? '' : 's'}.`)
+      }
       grantPriority(state, actor)
       break
     }
@@ -2363,13 +2386,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (!obj) continue
         // split (Cultivate/Kodama's Reach): first pick → `first`, the rest → `rest`
         const route = ps.split ? (i === 0 ? ps.split.first : ps.split.rest) : { dest: ps.dest, tapped: ps.tapped }
+        if (ps.reveal) logLine(state, `${name(state, actor)} reveals ${getDef(obj.defName).name}.`)
         if (route.dest === 'graveyard') {
           // Entomb: library → graveyard is hidden → PUBLIC, so no re-mint is needed (the card is
           // legitimately revealed by arriving in a public zone)
           moveToGraveyard(state, id)
         } else if (route.dest === 'libraryTop') {
           topPicks.push(obj)
-          if (ps.reveal) logLine(state, `${name(state, actor)} reveals ${getDef(obj.defName).name}.`)
         } else if (route.dest === 'battlefield') {
           obj.controllerId = actor
           obj.summoningSick = defIsCreature(getDef(obj.defName))

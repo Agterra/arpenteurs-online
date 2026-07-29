@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**473 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**481 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **7** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -14,6 +14,7 @@
 - Acidic Slime
 - Adarkar Wastes
 - Aerie Bowmasters
+- Aetherflux Reservoir
 - Aetherize
 - Air Elemental
 - Ajani, the Greathearted
@@ -28,6 +29,7 @@
 - Anguished Unmaking
 - Arcane Sanctum
 - Arcane Signet
+- Archmage Emeritus
 - Arid Mesa
 - Assault // Battery
 - Audacious Thief
@@ -75,6 +77,7 @@
 - Brainstorm
 - Breeding Pool
 - Brushland
+- Buried Alive
 - Burst Lightning
 - Cabal Coffers
 - Cancel
@@ -115,6 +118,7 @@
 - Delver of Secrets
 - Demonic Tutor
 - Deserted Beach
+- Despark
 - Diabolic Edict
 - Diabolic Intent
 - Diabolic Tutor
@@ -196,6 +200,7 @@
 - Gruul Guildgate
 - Gruul Signet
 - Gruul Turf
+- Guttersnipe
 - Hallowed Fountain
 - Harmonize
 - Harrow
@@ -226,6 +231,7 @@
 - Kodama's Reach
 - Krenko's Command
 - Krenko's Enforcer
+- Land Tax
 - Languish
 - Levitation
 - Lightning Bolt
@@ -267,6 +273,7 @@
 - Mystic Monastery
 - Mystical Tutor
 - Naturalize
+- Nature's Claim
 - Nature's Lore
 - Necroblossom Snarl
 - Negate
@@ -354,6 +361,7 @@
 - Selesnya Sanctuary
 - Selesnya Signet
 - Serra Angel
+- Shamanic Revelation
 - Shardless Agent
 - Shattered Sanctum
 - Shineshadow Snarl

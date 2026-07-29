@@ -111,6 +111,7 @@ export function buildRulesGame(
       landsPlayedThisTurn: 0,
       noncreatureSpellsThisTurn: 0,
       extraLandsThisTurn: 0,
+      spellsThisTurn: 0,
       hasLost: false,
       commanderId: null,
       commanderTax: 0,

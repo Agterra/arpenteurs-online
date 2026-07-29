@@ -466,12 +466,16 @@ export const playersDiscard = (who: 'target' | 'each', count = 1): Effect => (ct
 }
 
 /** Scry N: pause for the controller to look at the top N and bottom any (CR 701.18). */
-export const scry = (n: number): Effect => (ctx) => {
+export const scry = (n: number, opts: { thenDraw?: number } = {}): Effect => (ctx) => {
   const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
   const cardIds = lib.slice(0, Math.min(n, lib.length))
-  if (!cardIds.length) return
+  if (!cardIds.length) {
+    // nothing to look at, but "…then draw a card" still happens (Opt with an empty library)
+    for (let i = 0; i < (opts.thenDraw ?? 0); i++) drawOne(ctx.state, ctx.controllerId)
+    return
+  }
   ctx.state.pending = { kind: 'scry', player: ctx.controllerId }
-  ctx.state.pendingScry = { player: ctx.controllerId, cardIds }
+  ctx.state.pendingScry = { player: ctx.controllerId, cardIds, ...(opts.thenDraw ? { thenDraw: opts.thenDraw } : {}) }
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} scries ${cardIds.length}.`)
 }
 
@@ -927,6 +931,47 @@ export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) =
     ctx.state,
     `Each opponent loses ${x} life (devotion to {${color}}); ${ctx.state.players[ctx.controllerId]!.name} gains ${gained}.`,
   )
+}
+
+/** Nature's Claim: destroy each target permanent, then ITS controller gains `life`. */
+export const destroyPermanentControllerGains = (life: number): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'battlefield') continue
+    const owner = obj.controllerId
+    const nm = getDef(obj.defName).name
+    if (isIndestructible(ctx, t)) logLine(ctx.state, `${nm} is indestructible.`)
+    else {
+      logLine(ctx.state, `${nm} is destroyed.`)
+      moveToGraveyard(ctx.state, t)
+    }
+    ctx.state.players[owner]!.life += life
+    logLine(ctx.state, `${ctx.state.players[owner]!.name} gains ${life} life.`)
+  }
+}
+
+/** Shamanic Revelation: draw one card per creature you control. */
+export const drawPerControlledCreature = (): Effect => (ctx) => {
+  const n = battlefieldCreatures(ctx.state, ctx.controllerId).length
+  for (let i = 0; i < n; i++) drawOne(ctx.state, ctx.controllerId)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws ${n} card${n === 1 ? '' : 's'} (one per creature).`)
+}
+
+/** Shamanic Revelation's ferocious rider: gain `life` per creature you control with power ≥ `power`. */
+export const gainLifePerBigCreature = (power: number, life: number): Effect => (ctx) => {
+  const n = battlefieldCreatures(ctx.state, ctx.controllerId).filter((c) => currentPower(ctx.state, c) >= power).length
+  if (!n) return
+  ctx.state.players[ctx.controllerId]!.life += n * life
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n * life} life (ferocious).`)
+}
+
+/** Aetherflux Reservoir: gain 1 life for each spell its controller has cast this turn. */
+export const gainLifePerSpellThisTurn = (): Effect => (ctx) => {
+  const n = ctx.state.players[ctx.controllerId]!.spellsThisTurn ?? 0
+  if (!n) return
+  ctx.state.players[ctx.controllerId]!.life += n
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n} life (spells cast this turn).`)
 }
 
 /** Mana Geyser: add {R} for each TAPPED land the controller's opponents control. */

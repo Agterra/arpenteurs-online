@@ -207,6 +207,8 @@ export interface PlayerRState {
   noncreatureSpellsThisTurn?: number
   /** extra land drops granted this turn (Explore) — added on top of the one-per-turn allowance */
   extraLandsThisTurn?: number
+  /** spells this player has cast this turn (Aetherflux Reservoir counts them) */
+  spellsThisTurn?: number
   hasLost: boolean
   /** the player's commander object id (exactly one; no partners yet) */
   commanderId: ObjId | null
@@ -236,7 +238,12 @@ export interface RulesGameState {
   /** details of a triggered ability awaiting its controller's target choice */
   pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
-  pendingScry: { player: PlayerId; cardIds: ObjId[] } | null
+  /**
+   * An active scry. `thenDraw` is the "…then draw a card" half of Opt / Preordain: it MUST wait for
+   * the scry to be answered — drawing while the peek is open would take a card the player is still
+   * looking at (it left a dangling id in the hand; the leak fuzzer caught it).
+   */
+  pendingScry: { player: PlayerId; cardIds: ObjId[]; thenDraw?: number } | null
   /**
    * An active library search (tutor / land-ramp): the matching library ids the
    * searching player may pick from. Exposed ONLY to the actor (sanctioned peek,

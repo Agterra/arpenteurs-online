@@ -663,6 +663,11 @@ const FUZZ_DECK = [
   ...Array(2).fill('Dimir Aqueduct'),
   ...Array(2).fill('Rampaging Baloths'),
   ...Array(2).fill('Entomb'),
+  // batch CARD29: Guttersnipe (a typed cast trigger firing on most fuzz casts), Aetherflux Reservoir
+  // (a per-turn spell counter + a 50-life ability) and Land Tax (an intervening "if" upkeep search).
+  ...Array(2).fill('Guttersnipe'),
+  ...Array(2).fill('Aetherflux Reservoir'),
+  ...Array(2).fill('Land Tax'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

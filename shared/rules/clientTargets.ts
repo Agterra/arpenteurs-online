@@ -64,6 +64,8 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'cyclonic rift': 'permanent', // nonland permanent you don't control
   'stroke of midnight': 'permanent', // nonland permanent; its controller gets a 1/1 Human
   'withering torment': 'permanent', // creature or enchantment
+  "nature's claim": 'permanent', // artifact or enchantment; its controller gains 4 life
+  despark: 'permanent', // mana value 4 or greater
   vandalblast: 'permanent', // artifact you don't control
   'diabolic edict': 'player',
   'sign in blood': 'player',

@@ -29,6 +29,8 @@ export interface TargetFilter {
   excludeTypes?: CardType[] // target must be NONE of these card types (e.g. nonland)
   subtypes?: string[] // target must have one of these subtypes
   controller?: 'you' | 'opponent' // relative to the targeting player
+  /** target's mana value must be at least this (Despark: "mana value 4 or greater") */
+  minManaValue?: number
 }
 
 export interface TargetSpec {
@@ -137,6 +139,11 @@ export interface TriggeredAbility {
    * attached to (Skullclamp's "whenever equipped creature dies").
    */
   watch?: { scope: 'anyCreature' | 'attachedCreature'; controllerOnly?: boolean; excludeSelf?: boolean }
+  /**
+   * An "intervening if" clause (Land Tax: "if an opponent controls more lands than you"). Checked as
+   * the trigger would go on the stack; a false condition simply means it does not trigger.
+   */
+  condition?: (state: RulesGameState, controllerId: PlayerId) => boolean
   /**
    * "This ability triggers only once each turn." (Morbid Opportunist) — tracked per source object,
    * reset with the other per-turn state at the untap step.
@@ -247,7 +254,15 @@ export interface CardDefinition {
    * current power instead of a fixed string.
    */
   castSpell?: {
-    watch?: { opponentsOnly?: boolean; selfOnly?: boolean; creatureOnly?: boolean; noncreatureOnly?: boolean; firstEachTurn?: boolean }
+    watch?: {
+      opponentsOnly?: boolean
+      selfOnly?: boolean
+      creatureOnly?: boolean
+      noncreatureOnly?: boolean
+      /** only spells of these card types (Guttersnipe: instant or sorcery) */
+      typesOnly?: CardType[]
+      firstEachTurn?: boolean
+    }
     unlessPay?: string
     unlessPayFromPower?: boolean
     effect: Effect

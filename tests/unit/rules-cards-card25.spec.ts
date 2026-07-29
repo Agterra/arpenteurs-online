@@ -28,6 +28,26 @@ describe('CARD25 — Opt and Preordain', () => {
     expect(state.zones.perPlayer[A]!.hand.length).toBe(handBefore - 1 + 1) // spell out, 1 drawn
   })
 
+  it('the draw waits for the scry: the peeked card is never taken mid-peek', () => {
+    // REGRESSION (found by the CI leak fuzzer): `sequence(scry(1), drawCards(1))` drew the very card
+    // being scried, so r.scry re-inserted an id that was already in the hand and the following
+    // library re-mint stranded it — a dangling hand id.
+    const { state, A } = makeDuel()
+    const opt = putCard(state, A, 'Opt', 'hand')
+    toStep(state, 'main1')
+    addMana(state, A, 'U', 1)
+    act(state, A, { type: 'r.cast', objId: opt, targets: [] })
+    until(state, (s) => s.pending?.kind === 'scry', 'the scry')
+    const peeked = state.pendingScry!.cardIds[0]!
+    const handBefore = state.zones.perPlayer[A]!.hand.length
+    expect(state.zones.perPlayer[A]!.hand).not.toContain(peeked) // nothing drawn yet
+    act(state, A, { type: 'r.scry', toBottom: [peeked] }) // bottom it, THEN draw
+    expect(state.zones.perPlayer[A]!.hand.length).toBe(handBefore + 1)
+    // every id in every zone still resolves to a live object
+    for (const zone of Object.values(state.zones.perPlayer[A]!))
+      for (const id of zone as string[]) expect(state.objects[id]).toBeTruthy()
+  })
+
   it('Preordain scries 2 then draws', () => {
     const { state, A } = makeDuel()
     const pre = putCard(state, A, 'Preordain', 'hand')

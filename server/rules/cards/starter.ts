@@ -5,6 +5,7 @@
  */
 import type { CardDefinition } from './dsl'
 import { battlefieldCreatures } from '../state'
+import { controlledLands } from '../engine'
 import {
   adapt,
   addCounters,
@@ -30,12 +31,14 @@ import {
   destroyAllCreatures,
   destroyPermanent,
   destroyPermanentGrantToken,
+  destroyPermanentControllerGains,
   destroyTarget,
   drainEachOpponentByDevotion,
   drainEachOpponentX,
   drainTargetPlayer,
   drawCards,
   drawCardsX,
+  drawPerControlledCreature,
   earthquakeX,
   exileGraveyard,
   extraLandDrop,
@@ -52,6 +55,8 @@ import {
   eachOpponentLoses,
   gainLife,
   gainLifeX,
+  gainLifePerBigCreature,
+  gainLifePerSpellThisTurn,
   loseAllAbilities,
   loseLife,
   mill,
@@ -2861,8 +2866,8 @@ export const STARTER_SET: CardDefinition[] = [
     types: ['Instant'],
     manaCost: '{U}',
     colors: ['U'],
-    // "Scry 1. Draw a card."
-    spell: { effect: sequence(scry(1), drawCards(1)) },
+    // "Scry 1. Draw a card." — the draw waits for the scry to be answered (see pendingScry.thenDraw)
+    spell: { effect: scry(1, { thenDraw: 1 }) },
   },
   {
     name: 'Preordain',
@@ -2870,7 +2875,7 @@ export const STARTER_SET: CardDefinition[] = [
     manaCost: '{U}',
     colors: ['U'],
     // "Scry 2, then draw a card."
-    spell: { effect: sequence(scry(2), drawCards(1)) },
+    spell: { effect: scry(2, { thenDraw: 1 }) },
   },
   {
     name: 'Ornithopter of Paradise',
@@ -3200,5 +3205,98 @@ export const STARTER_SET: CardDefinition[] = [
     keywords: ['trample'],
     // "Trample. Landfall — Whenever a land you control enters, create a 4/4 green Beast creature token."
     landEnters: { effect: createToken({ name: 'Beast', power: 4, toughness: 4, subtypes: ['Beast'] }) },
+  },
+
+  // --- Coverage batch CARD29: typed cast triggers, an intervening "if", mana-value targeting ---
+  {
+    name: "Nature's Claim",
+    types: ['Instant'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "Destroy target artifact or enchantment. Its controller gains 4 life."
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Enchantment'] } }],
+      effect: destroyPermanentControllerGains(4),
+    },
+  },
+  {
+    name: 'Buried Alive',
+    types: ['Sorcery'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    // "Search your library for up to three creature cards, put them into your graveyard, then shuffle."
+    spell: { effect: searchLibrary({ filter: { types: ['Creature'] }, dest: 'graveyard', count: 3 }) },
+  },
+  {
+    name: 'Shamanic Revelation',
+    types: ['Sorcery'],
+    manaCost: '{3}{G}{G}',
+    colors: ['G'],
+    // "Draw a card for each creature you control. Ferocious — You gain 4 life for each creature you
+    //  control with power 4 or greater."
+    spell: { effect: sequence(drawPerControlledCreature(), gainLifePerBigCreature(4, 4)) },
+  },
+  {
+    name: 'Despark',
+    types: ['Instant'],
+    manaCost: '{W}{B}',
+    colors: ['W', 'B'],
+    // "Exile target permanent with mana value 4 or greater."
+    spell: { targets: [{ kind: 'permanent', count: 1, filter: { minManaValue: 4 } }], effect: exileTarget() },
+  },
+  {
+    name: 'Guttersnipe',
+    types: ['Creature'],
+    subtypes: ['Goblin', 'Shaman'],
+    manaCost: '{2}{R}',
+    colors: ['R'],
+    power: 2,
+    toughness: 2,
+    // "Whenever you cast an instant or sorcery spell, this creature deals 2 damage to each opponent."
+    castSpell: { watch: { selfOnly: true, typesOnly: ['Instant', 'Sorcery'] }, effect: dealToEachOpponent(2) },
+  },
+  {
+    name: 'Archmage Emeritus',
+    types: ['Creature'],
+    subtypes: ['Human', 'Wizard'],
+    manaCost: '{2}{U}{U}',
+    colors: ['U'],
+    power: 2,
+    toughness: 2,
+    // "Magecraft — Whenever you cast or copy an instant or sorcery spell, draw a card." (the engine
+    //  has no spell copies, so casting is the whole of it here)
+    castSpell: { watch: { selfOnly: true, typesOnly: ['Instant', 'Sorcery'] }, effect: drawCards(1) },
+  },
+  {
+    name: 'Aetherflux Reservoir',
+    types: ['Artifact'],
+    manaCost: '{4}',
+    // "Whenever you cast a spell, you gain 1 life for each spell you've cast this turn."
+    castSpell: { watch: { selfOnly: true }, effect: gainLifePerSpellThisTurn() },
+    // "Pay 50 life: This artifact deals 50 damage to any target."
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { life: 50 },
+        targets: [{ kind: 'anyTarget', count: 1 }],
+        effect: dealDamage(50),
+      },
+    ],
+  },
+  {
+    name: 'Land Tax',
+    types: ['Enchantment'],
+    manaCost: '{W}',
+    colors: ['W'],
+    // "At the beginning of your upkeep, IF an opponent controls more lands than you, you may search
+    //  your library for up to three basic land cards, reveal them, put them into your hand, then
+    //  shuffle." (the search itself is optional by taking nothing)
+    upkeep: {
+      condition: (state, controllerId) =>
+        state.turnOrder.some(
+          (pid) => pid !== controllerId && !state.players[pid]!.hasLost && controlledLands(state, pid) > controlledLands(state, controllerId),
+        ),
+      effect: searchLibrary({ filter: 'basicLand', dest: 'hand', count: 3, reveal: true }),
+    },
   },
 ]
