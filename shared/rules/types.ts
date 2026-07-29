@@ -393,6 +393,11 @@ export interface RulesGameState {
   pendingRevealTop: { player: PlayerId; cardId: ObjId; sourceName: string } | null
   /** "…may draw up to two cards" (Arcane Denial): a count between 0 and `max` (r.mayDraw) */
   pendingMayDraw: { player: PlayerId; max: number; sourceName: string } | null
+  /**
+   * "You may choose new targets for target spell or ability" (Deflecting Swat) — `player` re-aims the
+   * stack item `itemId`; the new targets must still be legal FOR THAT ITEM'S controller (CR 115.7b).
+   */
+  pendingRetarget: { player: PlayerId; itemId: ObjId; sourceName: string } | null
   pendingDiscard: {
     player: PlayerId
     count: number
@@ -651,6 +656,12 @@ export interface LegalActions {
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
   needsBlockers: boolean
+  /** a "choose new targets" decision is waiting (r.retarget): the item and what it can be aimed at */
+  needsRetarget: boolean
+  retargetItemId: ObjId | null
+  retargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+  retargetCount: number
+  retargetSourceName: string
   /** a "you may draw up to N cards" decision is waiting (r.mayDraw) */
   needsMayDraw: boolean
   mayDrawMax: number

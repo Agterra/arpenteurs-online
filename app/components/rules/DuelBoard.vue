@@ -609,6 +609,22 @@ function onBattlefieldClick(id: ObjId) {
     }
     return
   }
+  if (legal.value?.needsRetarget) {
+    // the same coarse checks the ordinary pickers use; the server re-validates for the ITEM's controller
+    const kind = legal.value.retargetKind
+    const card = cardOf(id)
+    const line = display.value[card?.defName ?? '']?.typeLine ?? ''
+    const ok =
+      kind === 'permanent'
+        ? card?.zone === 'battlefield'
+        : kind === 'creature'
+          ? card?.zone === 'battlefield' && line.includes('Creature')
+          : kind === 'anyTarget'
+            ? card?.zone === 'battlefield' && (line.includes('Creature') || line.includes('Planeswalker'))
+            : false
+    if (ok) send({ type: 'r.retarget', targets: [id] })
+    return
+  }
   if (legal.value?.needsProliferate) {
     // only things that already have a counter are eligible (the server re-checks)
     if (legal.value.proliferateIds.includes(id)) toggleProliferate(id)
@@ -704,6 +720,7 @@ function onOpponentClick(pid: PlayerId) {
     pendingAttacker.value = null
     return
   }
+  if (canRetargetPlayer.value) return void send({ type: 'r.retarget', targets: [pid] })
   if (canActivateTargetPlayer.value) return void sendActivate(pid)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [pid] })
   if (canCascadeTargetPlayer.value) return void sendCascade(true, [pid])
@@ -716,6 +733,7 @@ function onStackTarget(stackId: ObjId) {
 }
 
 function onSelfClick() {
+  if (canRetargetPlayer.value) return void send({ type: 'r.retarget', targets: [you.value] })
   if (canActivateTargetPlayer.value) return void sendActivate(you.value)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [you.value] })
   if (canCascadeTargetPlayer.value) return void sendCascade(true, [you.value])
@@ -738,6 +756,10 @@ function isValidTarget(id: ObjId): boolean {
   return typeLine.includes('Creature')
 }
 /** a player HUD click is a legal spell target ('any target', 'player', or 'player or planeswalker'). */
+/** while re-aiming a spell/ability, can a PLAYER be the new target? (Deflecting Swat) */
+const canRetargetPlayer = computed(
+  () => !!legal.value?.needsRetarget && (legal.value.retargetKind === 'player' || legal.value.retargetKind === 'anyTarget'),
+)
 const targetingPlayerOk = computed(
   () => targeting.value?.spec === 'any' || targeting.value?.spec === 'player' || targeting.value?.spec === 'player-or-pw',
 )
@@ -1316,7 +1338,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsRetarget || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1479,7 +1501,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="flex items-center gap-2 rounded px-1"
                   :data-arrow="`player:${pid}`"
-                  :class="(legal?.needsAttackers && pendingAttacker) || targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer
+                  :class="(legal?.needsAttackers && pendingAttacker) || targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer || canRetargetPlayer
                     ? 'ring-2 ring-rose-400 cursor-crosshair'
                     : 'cursor-default'"
                   @click="onOpponentClick(pid)"
@@ -1706,7 +1728,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="flex flex-col items-center rounded-lg px-3 py-1"
                 :data-arrow="`player:${you}`"
-                :class="targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer ? 'ring-2 ring-rose-400 cursor-crosshair' : 'cursor-default'"
+                :class="targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer || canRetargetPlayer ? 'ring-2 ring-rose-400 cursor-crosshair' : 'cursor-default'"
                 @click="onSelfClick"
                 @mouseenter="setHover(you)"
                 @mouseleave="clearHover()"
@@ -2071,6 +2093,17 @@ onBeforeUnmount(() => {
               @click="confirmModes"
             >Confirm</UButton>
           </div>
+        </div>
+      </div>
+
+      <!-- "you may choose new targets" (Deflecting Swat): click a new target, or keep the old ones -->
+      <div v-if="legal?.needsRetarget" class="fixed inset-x-0 bottom-24 z-40 flex justify-center">
+        <div class="flex items-center gap-2 rounded-lg border border-primary bg-default px-3 py-2 text-sm shadow-xl">
+          <span>
+            New target for {{ legal.retargetSourceName }}
+            <template v-if="legal.retargetKind">({{ legal.retargetKind === 'anyTarget' ? 'creature, player or planeswalker' : legal.retargetKind }})</template>
+          </span>
+          <UButton size="xs" variant="ghost" color="neutral" @click="send({ type: 'r.retarget', targets: [] })">Keep current</UButton>
         </div>
       </div>
 

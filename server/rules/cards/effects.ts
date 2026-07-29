@@ -1767,6 +1767,27 @@ export const mayDrawUpTo = (max: number, label: string): Effect => (ctx) => {
   ctx.state.pendingMayDraw = { player: ctx.controllerId, max, sourceName: label }
 }
 
+/**
+ * Deflecting Swat: "You may choose new targets for target spell or ability." Opens the re-aim decision
+ * for THIS spell's controller; the new targets are validated against the targeted item's own specs, so
+ * they must be legal for ITS controller (CR 115.7b) — that is what makes redirecting a Bolt back at its
+ * caster legal while an illegal aim is refused.
+ */
+export const chooseNewTargets = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const item = ctx.state.zones.stack.find((x) => x.id === t)
+    if (!item || !item.targets.length) continue
+    ctx.state.pending = { kind: 'retarget', player: ctx.controllerId }
+    ctx.state.pendingRetarget = {
+      player: ctx.controllerId,
+      itemId: item.id,
+      sourceName: getDef(item.defName).name,
+    }
+    return
+  }
+}
+
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */
 export const noop = (): Effect => () => {}
 

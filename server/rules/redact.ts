@@ -252,6 +252,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayAffordable: false,
     needsTypeChoice: false,
     typeChoiceName: '',
+    needsRetarget: false,
+    retargetItemId: null,
+    retargetKind: null,
+    retargetCount: 0,
+    retargetSourceName: '',
     needsMayDraw: false,
     mayDrawMax: 0,
     mayDrawSourceName: '',
@@ -401,6 +406,37 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPayCost: pop.cost,
         optionalPaySourceName: getDef(pop.defName).name,
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
+      }
+    }
+    if (state.pending.kind === 'retarget' && state.pendingRetarget) {
+      // the item being re-aimed is on the public stack; publish what its targets must be so the board can
+      // collect them with its ordinary pickers (a single-target item is the case the UI supports)
+      const prt = state.pendingRetarget
+      const item = state.zones.stack.find((x) => x.id === prt.itemId)
+      const def = item ? getDef(item.defName) : null
+      const body =
+        item && def
+          ? item.kind === 'spell'
+            ? (def.modes?.length ? def.modes[item.mode ?? 0] : def.spell)
+            : item.trigger === 'dies'
+              ? def.dies
+              : item.trigger === 'attacks'
+                ? def.attacks
+                : def.enters
+          : null
+      const specs = body?.targets ?? []
+      const total = specs.reduce((n, sp) => n + sp.count, 0)
+      const single = specs.length === 1 && specs[0]!.count === 1 ? specs[0]!.kind : null
+      return {
+        ...none,
+        needsRetarget: true,
+        retargetItemId: prt.itemId,
+        retargetKind:
+          single === 'creature' || single === 'permanent' || single === 'player' || single === 'anyTarget' || single === 'spell'
+            ? single
+            : null,
+        retargetCount: total,
+        retargetSourceName: prt.sourceName,
       }
     }
     if (state.pending.kind === 'mayDraw' && state.pendingMayDraw) {

@@ -99,6 +99,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
   }),
   // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
   // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
+  // "you may choose new targets for target spell or ability" (Deflecting Swat) — an empty list keeps
+  // the current targets
+  z.object({ type: z.literal('r.retarget'), targets: z.array(Id).max(8).default([]) }),
   // "…may draw up to two cards" (Arcane Denial)
   z.object({ type: z.literal('r.mayDraw'), count: z.number().int().min(0).max(4) }),
   // "you may reveal it and put it into your hand" (Herald's Horn)

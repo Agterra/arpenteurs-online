@@ -2134,6 +2134,8 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
 
 /** Is there at least one legal target for `spec` right now? (drives CR 603.3c trigger removal + client castability) */
 export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
+  // "target spell or ability" (Deflecting Swat): anything on the stack that HAS targets to re-aim
+  if (spec.kind === 'spellOrAbility') return state.zones.stack.some((s) => s.targets.length > 0)
   if (spec.kind === 'spell')
     return state.zones.stack.some(
       (s) =>
@@ -2160,6 +2162,11 @@ export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byCon
 }
 
 export function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | PlayerId, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
+  if (spec.kind === 'spellOrAbility') {
+    // a spell OR a triggered/activated ability on the stack, and only one that actually has targets
+    const item = state.zones.stack.find((s) => s.id === (t as ObjId))
+    return !!item && item.targets.length > 0
+  }
   if (spec.kind === 'spell') {
     const item = state.zones.stack.find((s) => s.kind === 'spell' && s.id === (t as ObjId))
     if (!item) return false
@@ -2852,9 +2859,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         evoke: castingEvoke || undefined,
         overloaded: castingOverload || undefined,
       })
-      const targetNames = msg.targets.map((t) =>
-        Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId),
-      )
+      const targetNames = msg.targets.map((t) => {
+        if (Object.hasOwn(state.players, t)) return name(state, t as PlayerId)
+        // a target can be a triggered ABILITY on the stack (Deflecting Swat), whose synthetic id has no
+        // object of its own — name it after its source card
+        if (state.objects[t as ObjId]) return objName(state, t as ObjId)
+        const item = state.zones.stack.find((x) => x.id === t)
+        return item ? `${getDef(item.defName).name}'s ability` : 'something'
+      })
       logLine(
         state,
         castingFaceDown
@@ -3659,6 +3671,38 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         }
       }
       if (!ids.length) logLine(state, `${name(state, actor)} declines.`)
+      if (!state.pending) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.retarget': {
+      if (state.pending?.kind !== 'retarget' || state.pending.player !== actor || !state.pendingRetarget)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your new targets')
+      const prt = state.pendingRetarget
+      const item = state.zones.stack.find((x) => x.id === prt.itemId)
+      if (item && msg.targets.length) {
+        // the item keeps its OWN targeting restrictions, judged for ITS controller (CR 115.7b)
+        const def = getDef(item.defName)
+        const body = item.kind === 'spell' ? activeSpell(def, item.mode) : abilityFor(def, item.trigger)
+        const specs = flattenSpecs(body?.targets)
+        if (msg.targets.length !== specs.length)
+          throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
+        msg.targets.forEach((t, i) => {
+          if (!isLegalTarget(state, specs[i]!, t, item.controllerId, def.colors ?? []))
+            throw new RulesError('BAD_TARGETS', 'Illegal new target')
+        })
+        item.targets = [...msg.targets]
+        logLine(
+          state,
+          `${name(state, actor)} chooses new targets for ${prt.sourceName}: ${msg.targets
+            .map((t) => (Object.hasOwn(state.players, t) ? name(state, t as PlayerId) : objName(state, t as ObjId)))
+            .join(', ')}.`,
+        )
+      } else {
+        logLine(state, `${name(state, actor)} leaves ${prt.sourceName}'s targets unchanged.`)
+      }
+      state.pending = null
+      state.pendingRetarget = null
       if (!state.pending) grantPriority(state, state.activePlayer)
       break
     }

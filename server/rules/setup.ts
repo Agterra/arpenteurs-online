@@ -57,6 +57,7 @@ export function buildRulesGame(
     pendingProliferate: null,
     pendingRevealTop: null,
     pendingMayDraw: null,
+    pendingRetarget: null,
     pendingOptionalPay: null,
     pendingPutBack: null,
     entersChoiceQueue: [],

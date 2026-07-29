@@ -21,6 +21,7 @@ import {
   burdenCounterThenDraw,
   chaosWarpTarget,
   chooseFromHand,
+  chooseNewTargets,
   countersOnEachCreatureOfTarget,
   counterTarget,
   counterTargetGrantingToken,
@@ -4829,6 +4830,20 @@ export const STARTER_SET: CardDefinition[] = [
     delayed: {
       victimDraws: { at: 'nextUpkeep', effect: mayDrawUpTo(2, 'Arcane Denial') },
       casterDraws: { at: 'nextUpkeep', effect: drawCards(1) },
+    },
+  },
+  // --- Coverage batch CARD60: Deflecting Swat (choose new targets) ---
+  {
+    name: 'Deflecting Swat',
+    types: ['Instant'],
+    manaCost: '{2}{R}',
+    colors: ['R'],
+    // "If you control a commander, you may cast this spell without paying its mana cost. / You may
+    //  choose new targets for target spell or ability."
+    freeIfCommander: true,
+    spell: {
+      targets: [{ kind: 'spellOrAbility', count: 1 }],
+      effect: chooseNewTargets(),
     },
   },
 ]

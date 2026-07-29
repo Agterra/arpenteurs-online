@@ -45,7 +45,7 @@ export interface TargetSpec {
    * enchantment, …); player; anyTarget = creature or player; spell = a spell on
    * the stack (counters); graveyardCard = a card in a graveyard (recursion).
    */
-  kind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard'
+  kind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'spellOrAbility' | 'graveyardCard'
   count: number
   /** optional narrowing for creature/permanent targets */
   filter?: TargetFilter

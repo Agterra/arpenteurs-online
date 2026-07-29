@@ -288,6 +288,12 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'retarget') {
+      // "you may choose new targets": keeping them is always legal, so the fuzzer takes that branch —
+      // picking a legal new target for an arbitrary stack item would mean re-deriving its specs here
+      applyRulesAction(state, p, { type: 'r.retarget', targets: [] })
+      return true
+    }
     if (state.pending.kind === 'mayDraw' && state.pendingMayDraw) {
       // "…may draw up to two cards" (Arcane Denial): a random legal count, 0 included
       applyRulesAction(state, p, { type: 'r.mayDraw', count: Math.floor(rnd() * (state.pendingMayDraw.max + 1)) })
@@ -1030,6 +1036,9 @@ const FUZZ_DECK = [
   // draws whenever a big creature you control enters.
   // batch CARD59: Arcane Denial — a counter whose compensation lands at the NEXT turn's upkeep, so the
   // fuzzer answers a may-draw decision on somebody else's turn (library→hand for a non-active player).
+  // batch CARD60: Deflecting Swat — targets a SPELL OR ABILITY on the stack and opens the re-aim
+  // decision. Fuzz games have no commanders, so it is cast for its {2}{R}; the fuzzer keeps the targets.
+  ...Array(2).fill('Deflecting Swat'),
   ...Array(2).fill('Arcane Denial'),
   ...Array(2).fill('Urborg, Tomb of Yawgmoth'),
   ...Array(2).fill("Garruk's Uprising"),
