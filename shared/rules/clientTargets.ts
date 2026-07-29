@@ -31,6 +31,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'grasp of darkness': 'creature',
   'swords to plowshares': 'creature',
   'path to exile': 'creature',
+  'infernal grasp': 'creature',
   'deadly rollick': 'creature', // exile target creature (also castable free)
   'gird for battle': 'creature',
   unsummon: 'creature',
@@ -62,6 +63,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'chaos warp': 'permanent', // any permanent — its owner shuffles it away
   'cyclonic rift': 'permanent', // nonland permanent you don't control
   'stroke of midnight': 'permanent', // nonland permanent; its controller gets a 1/1 Human
+  'withering torment': 'permanent', // creature or enchantment
   vandalblast: 'permanent', // artifact you don't control
   'diabolic edict': 'player',
   'sign in blood': 'player',

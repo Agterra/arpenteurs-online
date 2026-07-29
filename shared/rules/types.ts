@@ -103,6 +103,8 @@ export interface GameObject {
   loyalty?: number
   /** a loyalty ability has been activated this turn (once-per-turn restriction, CR 606.3) */
   loyaltyActivatedThisTurn?: boolean
+  /** a `oncePerTurn` triggered ability of this object has already fired this turn */
+  triggeredThisTurn?: boolean
   // combat (transient, cleared at end of combat)
   attackingDefender: PlayerId | null // the player this creature is attacking (a PW's controller if attacking a PW)
   /** the planeswalker this creature is attacking (null = attacking the player directly) */

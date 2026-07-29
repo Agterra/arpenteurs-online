@@ -86,6 +86,16 @@ export function permanentCostReduction(state: RulesGameState, caster: PlayerId, 
   return total
 }
 
+/**
+ * How many lands this player may play this turn: one, plus any static allowance from their
+ * permanents (Exploration), plus one-shot grants from spells (Explore).
+ */
+export function landDropAllowance(state: RulesGameState, player: PlayerId): number {
+  let extra = state.players[player]!.extraLandsThisTurn ?? 0
+  for (const id of zoneArr(state, player, 'battlefield')) extra += getDef(state.objects[id]!.defName).extraLandDrops ?? 0
+  return 1 + extra
+}
+
 /** How many lands a player controls (Temple of the False God's activation condition). */
 export const controlledLands = (state: RulesGameState, player: PlayerId) =>
   zoneArr(state, player, 'battlefield').filter((id) => defIsLand(getDef(state.objects[id]!.defName))).length
@@ -582,7 +592,8 @@ function beginStep(state: RulesGameState) {
         if (obj.zone === 'battlefield' && obj.controllerId === ap && !obj.phasedOut) {
           obj.tapped = false
           obj.summoningSick = false
-          obj.loyaltyActivatedThisTurn = false // a new turn re-enables one loyalty ability per PW
+          obj.loyaltyActivatedThisTurn = false
+      obj.triggeredThisTurn = false // a new turn re-enables one loyalty ability per PW
         }
       }
       // no player receives priority during untap
@@ -1163,6 +1174,11 @@ export function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, ki
   const def = getDef(obj.defName)
   const ability = abilityFor(def, kind)
   if (!ability) return
+  // "This ability triggers only once each turn." (Morbid Opportunist)
+  if ('oncePerTurn' in ability && ability.oncePerTurn) {
+    if (obj.triggeredThisTurn) return
+    obj.triggeredThisTurn = true
+  }
   const controllerId = obj.controllerId
   const label = TRIGGER_LABEL[kind]
   const specs = flattenSpecs(ability.targets)
@@ -1646,7 +1662,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length)
         throw new RulesError('TIMING', 'Lands are played in your main phase with an empty stack')
       const p = state.players[actor]!
-      if (p.landsPlayedThisTurn >= 1 + (p.extraLandsThisTurn ?? 0))
+      if (p.landsPlayedThisTurn >= landDropAllowance(state, actor))
         throw new RulesError('LAND_LIMIT', 'Already played a land this turn')
       const obj = requireInHand(state, actor, msg.objId)
       if (!defIsLand(getDef(obj.defName))) throw new RulesError('NOT_A_LAND', 'That is not a land')

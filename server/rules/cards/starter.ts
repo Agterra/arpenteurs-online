@@ -31,6 +31,7 @@ import {
   destroyPermanentGrantToken,
   destroyTarget,
   drainEachOpponentByDevotion,
+  drainEachOpponentX,
   drainTargetPlayer,
   drawCards,
   drawCardsX,
@@ -44,6 +45,7 @@ import {
   grantKeywordsToControlled,
   grantProtection,
   makeUnblockable,
+  returnAllAttackersToHand,
   returnAllNonlandYouDontControlToHand,
   returnToHand,
   eachOpponentLoses,
@@ -230,6 +232,14 @@ const dualLand = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, s
   name,
   types: ['Land'],
   subtypes,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/** A "Snarl" land: untapped if you reveal a matching land card from hand, else tapped. */
+const revealLand = (name: string, a: ManaColor, b: ManaColor, need: [string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTappedUnlessRevealFromHand: need,
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
 })
 
@@ -3000,5 +3010,98 @@ export const STARTER_SET: CardDefinition[] = [
     keywords: ['indestructible'],
     // "Indestructible. {T}: Add {C}."
     abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') }],
+  },
+
+  // --- Coverage batch CARD27: the reveal lands, a static extra land drop, and six singles ---
+  revealLand('Choked Estuary', 'U', 'B', ['Island', 'Swamp']),
+  revealLand('Foreboding Ruins', 'B', 'R', ['Swamp', 'Mountain']),
+  revealLand('Frostboil Snarl', 'U', 'R', ['Island', 'Mountain']),
+  revealLand('Fortified Village', 'G', 'W', ['Forest', 'Plains']),
+  revealLand('Port Town', 'W', 'U', ['Plains', 'Island']),
+  revealLand('Furycalm Snarl', 'R', 'W', ['Mountain', 'Plains']),
+  revealLand('Game Trail', 'R', 'G', ['Mountain', 'Forest']),
+  revealLand('Shineshadow Snarl', 'W', 'B', ['Plains', 'Swamp']),
+  revealLand('Necroblossom Snarl', 'B', 'G', ['Swamp', 'Forest']),
+  revealLand('Vineglimmer Snarl', 'G', 'U', ['Forest', 'Island']),
+  {
+    name: 'Exploration',
+    types: ['Enchantment'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "You may play an additional land on each of your turns."
+    extraLandDrops: 1,
+  },
+  {
+    name: 'Infernal Grasp',
+    types: ['Instant'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "Destroy target creature. You lose 2 life."
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: sequence(destroyTarget(), loseLife(2)) },
+  },
+  {
+    name: 'Withering Torment',
+    types: ['Instant'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    // "Destroy target creature or enchantment. You lose 2 life."
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Creature', 'Enchantment'] } }],
+      effect: sequence(destroyPermanent(), loseLife(2)),
+    },
+  },
+  {
+    name: 'Exsanguinate',
+    types: ['Sorcery'],
+    manaCost: '{X}{B}{B}',
+    colors: ['B'],
+    // "Each opponent loses X life. You gain life equal to the life lost this way."
+    spell: { effect: drainEachOpponentX() },
+  },
+  {
+    name: 'Basilisk Collar',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{1}',
+    // "Equipped creature has deathtouch and lifelink. Equip {1}"
+    equipCost: '{1}',
+    grantsToHost: { keywords: ['deathtouch', 'lifelink'] },
+  },
+  {
+    name: 'Skyshroud Claim',
+    types: ['Sorcery'],
+    manaCost: '{3}{G}',
+    colors: ['G'],
+    // "Search your library for up to two Forest cards, put them onto the battlefield, then shuffle."
+    spell: { effect: searchLibrary({ filter: { landSubtypes: ['Forest'] }, dest: 'battlefield', count: 2 }) },
+  },
+  {
+    name: 'Diabolic Intent',
+    types: ['Sorcery'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "As an additional cost to cast this spell, sacrifice a creature. Search your library for a
+    //  card, put that card into your hand, then shuffle."
+    additionalCost: { sacrifice: { count: 1, filter: 'creature' } },
+    spell: { effect: searchLibrary({ filter: 'any', dest: 'hand', count: 1 }) },
+  },
+  {
+    name: 'Aetherize',
+    types: ['Instant'],
+    manaCost: '{3}{U}',
+    colors: ['U'],
+    // "Return all attacking creatures to their owner's hand."
+    spell: { effect: returnAllAttackersToHand() },
+  },
+  {
+    name: 'Morbid Opportunist',
+    types: ['Creature'],
+    subtypes: ['Human', 'Wizard'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    power: 1,
+    toughness: 3,
+    // "Whenever one or more other creatures die, draw a card. This ability triggers only once each turn."
+    dies: { watch: { scope: 'anyCreature', excludeSelf: true }, oncePerTurn: true, effect: drawCards(1) },
   },
 ]

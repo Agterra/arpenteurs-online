@@ -22,7 +22,7 @@ import { getDef } from './cards/registry'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
-import { controlledLands, hasAnyLegalTarget, permanentCostReduction } from './engine'
+import { controlledLands, hasAnyLegalTarget, landDropAllowance, permanentCostReduction } from './engine'
 
 function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean {
   const obj = state.objects[id]
@@ -426,7 +426,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   for (const id of zoneArr(state, viewer, 'hand')) {
     const def = getDef(state.objects[id]!.defName)
     if (defIsLand(def)) {
-      if (isMain && state.players[viewer]!.landsPlayedThisTurn < 1 + (state.players[viewer]!.extraLandsThisTurn ?? 0))
+      if (isMain && state.players[viewer]!.landsPlayedThisTurn < landDropAllowance(state, viewer))
         playableLandIds.push(id)
       continue
     }

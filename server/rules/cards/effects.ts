@@ -929,6 +929,28 @@ export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) =
   )
 }
 
+/** Exsanguinate: each opponent loses X life and the controller gains the total lost. */
+export const drainEachOpponentX = (): Effect => (ctx) => {
+  const x = ctx.x ?? 0
+  if (x <= 0) return
+  let gained = 0
+  for (const pid of ctx.state.turnOrder) {
+    if (pid === ctx.controllerId || ctx.state.players[pid]!.hasLost) continue
+    ctx.state.players[pid]!.life -= x
+    gained += x
+  }
+  ctx.state.players[ctx.controllerId]!.life += gained
+  logLine(ctx.state, `Each opponent loses ${x} life; ${ctx.state.players[ctx.controllerId]!.name} gains ${gained}.`)
+}
+
+/** Aetherize: return every ATTACKING creature to its owner's hand (each id re-minted by returnToHand). */
+export const returnAllAttackersToHand = (): Effect => (ctx) => {
+  const attackers = Object.values(ctx.state.objects).filter((o) => o.zone === 'battlefield' && o.attackingDefender)
+  if (!attackers.length) return
+  logLine(ctx.state, `All ${attackers.length} attacking creature(s) are returned to their owners' hands.`)
+  for (const o of attackers) returnToHand()({ ...ctx, targets: [o.id] })
+}
+
 /** "You may play an additional land this turn." (Explore) */
 export const extraLandDrop = (n: number): Effect => (ctx) => {
   const p = ctx.state.players[ctx.controllerId]!

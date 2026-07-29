@@ -105,6 +105,17 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
       }).length
       if (basics < needBasics) obj.tapped = true
     }
+    // the reveal lands: "unless you reveal an Island or Swamp card from your hand" — revealed
+    // automatically when the controller holds one (and logged, so the reveal is really public)
+    const revealTypes = def.entersTappedUnlessRevealFromHand
+    if (revealTypes?.length) {
+      const shown = zoneArr(state, obj.controllerId, 'hand').find((id) => {
+        const d = getDef(state.objects[id]!.defName)
+        return d.types.includes('Land') && (d.subtypes ?? []).some((st) => revealTypes.includes(st))
+      })
+      if (shown) logLine(state, `${state.players[obj.controllerId]!.name} reveals ${getDef(state.objects[shown]!.defName).name}.`)
+      else obj.tapped = true
+    }
     // Battlebond lands: "unless you have two or more OPPONENTS" (a duel always taps them)
     const needFoes = def.entersTappedUnlessOpponentsAtLeast
     if (needFoes) {

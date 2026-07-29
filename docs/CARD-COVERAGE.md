@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**437 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**456 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -14,6 +14,7 @@
 - Acidic Slime
 - Adarkar Wastes
 - Aerie Bowmasters
+- Aetherize
 - Air Elemental
 - Ajani, the Greathearted
 - Ambition's Cost
@@ -37,6 +38,7 @@
 - Badlands
 - Barktooth Warbeard
 - Barren Moor
+- Basilisk Collar
 - Bastion of Remembrance
 - Battering Craghorn
 - Battlefield Forge
@@ -79,6 +81,7 @@
 - Centaur Courser
 - Chaos Warp
 - Char
+- Choked Estuary
 - Cinder Glade
 - City of Brass
 - Clifftop Retreat
@@ -109,6 +112,7 @@
 - Demonic Tutor
 - Deserted Beach
 - Diabolic Edict
+- Diabolic Intent
 - Diabolic Tutor
 - Dimir Guildgate
 - Dimir Signet
@@ -131,7 +135,9 @@
 - Esper Sentinel
 - Evolving Wilds
 - Exotic Orchard
+- Exploration
 - Explore
+- Exsanguinate
 - Fabled Passage
 - Faithful Watchdog
 - Faithless Looting
@@ -149,12 +155,17 @@
 - Flametongue Kavu
 - Fleshbag Marauder
 - Flooded Strand
+- Foreboding Ruins
 - Forest
 - Forgotten Cave
+- Fortified Village
 - Foundry Inspector
 - Frontier Bivouac
+- Frostboil Snarl
+- Furycalm Snarl
 - Fyndhorn Elves
 - Gaea's Anthem
+- Game Trail
 - Generous Gift
 - Giant Growth
 - Giant Spider
@@ -188,6 +199,7 @@
 - Holy Strength
 - Impact Tremors
 - Indatha Triome
+- Infernal Grasp
 - Isamaru, Hound of Konda
 - Island
 - Isolated Chapel
@@ -235,6 +247,7 @@
 - Mind Stone
 - Misty Rainforest
 - Monastery Swiftspear
+- Morbid Opportunist
 - Morphic Pool
 - Mortify
 - Mountain
@@ -245,6 +258,7 @@
 - Mystical Tutor
 - Naturalize
 - Nature's Lore
+- Necroblossom Snarl
 - Negate
 - Nessian Asp
 - Night's Whisper
@@ -273,6 +287,7 @@
 - Plateau
 - Polluted Delta
 - Pongify
+- Port Town
 - Pounce
 - Prairie Stream
 - Preordain
@@ -326,6 +341,7 @@
 - Serra Angel
 - Shardless Agent
 - Shattered Sanctum
+- Shineshadow Snarl
 - Shipwreck Marsh
 - Shivan Dragon
 - Shivan Reef
@@ -335,6 +351,7 @@
 - Simic Guildgate
 - Simic Signet
 - Skullclamp
+- Skyshroud Claim
 - Smoldering Marsh
 - Smothering Tithe
 - Sol Ring
@@ -420,6 +437,7 @@
 - Vicious Conquistador
 - Village Rites
 - Vindicate
+- Vineglimmer Snarl
 - Viscera Seer
 - Volcanic Hammer
 - Volcanic Island
@@ -433,6 +451,7 @@
 - White Knight
 - Wind Drake
 - Windswept Heath
+- Withering Torment
 - Woe Strider
 - Wooded Foothills
 - Woodland Cemetery

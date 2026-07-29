@@ -137,6 +137,11 @@ export interface TriggeredAbility {
    * attached to (Skullclamp's "whenever equipped creature dies").
    */
   watch?: { scope: 'anyCreature' | 'attachedCreature'; controllerOnly?: boolean; excludeSelf?: boolean }
+  /**
+   * "This ability triggers only once each turn." (Morbid Opportunist) — tracked per source object,
+   * reset with the other per-turn state at the untap step.
+   */
+  oncePerTurn?: boolean
 }
 /** The trigger events the engine emits. */
 export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw'
@@ -403,6 +408,19 @@ export interface CardDefinition {
   entersTappedUnlessOpponentsAtLeast?: number
   /** The slow lands: "This land enters tapped unless you control two or more OTHER lands." */
   entersTappedUnlessOtherLandsAtLeast?: number
+  /**
+   * The "Snarl" / reveal lands: "As this land enters, you may reveal an Island or Swamp card from
+   * your hand. If you don't, this land enters tapped." Listed as land SUBTYPES. Since revealing is
+   * free and always beneficial, the engine reveals automatically when a matching card is in hand
+   * (logging it, so the information really is public) rather than opening a decision nobody would
+   * decline — a documented simplification.
+   */
+  entersTappedUnlessRevealFromHand?: string[]
+  /**
+   * "You may play an additional land on each of your turns." (Exploration) — a STATIC allowance from
+   * a permanent, summed with any one-shot `extraLandsThisTurn` grants (Explore).
+   */
+  extraLandDrops?: number
   /**
    * "If you control a commander, you may cast this spell without paying its mana cost."
    * (the free-spell cycle: Fierce Guardianship, Deadly Rollick, …). Cast via `r.cast.free`; the

@@ -632,6 +632,11 @@ const FUZZ_DECK = [
   // Cycling {3}, so the fuzzer's cycling branch runs on a land too).
   ...Array(2).fill('Gray Merchant of Asphodel'),
   ...Array(2).fill('Ketria Triome'),
+  // batch CARD27: a reveal land (its hand check runs on every entry), Exploration (a static extra
+  // land drop) and Morbid Opportunist (a once-per-turn dies trigger among many deaths).
+  ...Array(2).fill('Foreboding Ruins'),
+  ...Array(2).fill('Exploration'),
+  ...Array(2).fill('Morbid Opportunist'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
