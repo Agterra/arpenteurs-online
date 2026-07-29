@@ -1028,7 +1028,9 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
       let targets = item.targets
       if (specs.length) {
         targets = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
-        if (!targets.length) {
+        // an all-optional target list may legitimately be empty (Takenuma channelled for the mill
+        // alone) — only a chosen-but-now-illegal target fizzles the ability
+        if (!targets.length && !(specs.every((sp) => sp.optional) && item.targets.length === 0)) {
           logLine(state, `${getDef(item.defName).name}'s channel ability fizzles (targets are gone).`)
           checkSBA(state)
           return

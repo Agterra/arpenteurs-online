@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**534 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**536 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -81,6 +81,7 @@
 - Breeding Pool
 - Brushland
 - Buried Alive
+- Buried Ruin
 - Burst Lightning
 - Cabal Coffers
 - Cancel
@@ -449,6 +450,7 @@
 - Sword of Vengeance
 - Swords to Plowshares
 - Taiga
+- Takenuma, Abandoned Mire
 - Talisman of Conviction
 - Talisman of Creativity
 - Talisman of Curiosity

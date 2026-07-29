@@ -1140,6 +1140,14 @@ export const targetSpellManaValue = (ctx: EffectContext): number => {
   return 0
 }
 
+/** Takenuma: the controller mills N cards (the target-based `mill` needs a player target). */
+export const millSelf = (n: number): Effect => (ctx) => {
+  const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
+  const moved = Math.min(n, lib.length)
+  for (let i = 0; i < moved; i++) moveTo(ctx.state, lib[0]!, 'graveyard')
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} mills ${moved} card${moved === 1 ? '' : 's'}.`)
+}
+
 /** Bloom Tender: for each COLOUR among permanents you control, add one mana of that colour. */
 export const addManaPerColorAmongPermanents = (): Effect => (ctx) => {
   const colors = new Set<ManaColor>()

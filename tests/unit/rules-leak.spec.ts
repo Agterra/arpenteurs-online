@@ -363,7 +363,11 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       tapSource(src, legal)
     }
     const targets: ObjId[] = []
-    if (ch.targetKind) {
+    if (ch.targetKind === 'graveyardCard') {
+      // redact hands us the legal graveyard cards; an optional one may also be declined
+      const gy = ch.graveyardIds ?? []
+      if (gy.length && rnd() < 0.7) targets.push(pick(gy))
+    } else if (ch.targetKind) {
       const cands = Object.values(state.objects)
         .filter((o) => o.zone === 'battlefield' && (ch.targetKind === 'permanent' || getDef(o.defName).types.includes('Creature')))
         .map((o) => o.id)
@@ -435,7 +439,11 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     const sacrifices = a.sacCost > 0 ? myCreatures.slice(0, a.sacCost) : []
     if (a.sacCost > 0 && sacrifices.length < a.sacCost) return tryPass() // can't pay the cost
     const targets: (ObjId | PlayerId)[] = []
-    if (a.targetKind) {
+    if (a.targetKind === 'graveyardCard') {
+      const gy = a.graveyardIds ?? []
+      if (!gy.length) return tryPass()
+      targets.push(pick(gy))
+    } else if (a.targetKind) {
       const allCreatures = Object.values(state.objects)
         .filter((o) => o.zone === 'battlefield' && getDef(o.defName).types.includes('Creature'))
         .map((o) => o.id)
@@ -820,6 +828,10 @@ const FUZZ_DECK = [
   // fuzzer exercises a hand→graveyard cost plus an ability on the stack from a card that is now gone.
   ...Array(2).fill('Otawara, Soaring City'),
   ...Array(2).fill('Sokenzan, Crucible of Defiance'),
+  // batch CARD38: graveyard targets on an ACTIVATED ability (Buried Ruin) and on a CHANNEL ability
+  // (Takenuma) — both move a card graveyard→hand, the leak-critical re-mint path.
+  ...Array(2).fill('Buried Ruin'),
+  ...Array(2).fill('Takenuma, Abandoned Mire'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

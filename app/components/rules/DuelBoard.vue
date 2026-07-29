@@ -297,6 +297,10 @@ const channeling = ref<{ objId: ObjId; cost: string; targetKind: 'creature' | 'p
 function startChannel(id: ObjId) {
   const ch = channelOf(id)
   if (!ch) return
+  if (ch.targetKind === 'graveyardCard') {
+    gyAbility.value = { kind: 'channel', objId: id, cost: ch.cost, ids: ch.graveyardIds ?? [] }
+    return
+  }
   if (ch.targetKind) {
     channeling.value = { objId: id, cost: ch.cost, targetKind: ch.targetKind }
     return
@@ -688,10 +692,11 @@ const canCascadeTargetPlayer = computed(
 type Activation = {
   objId: ObjId
   abilityIndex: number
-  targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | null
+  targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
   cost: string
   sacCost: number
   lifeCost: number
+  graveyardIds?: ObjId[]
 }
 const activating = ref<Activation | null>(null)
 const extraCostOf = (id: ObjId) => legal.value?.castExtraCost.find((c) => c.objId === id) ?? null
@@ -726,10 +731,28 @@ function confirmCastExtra() {
 }
 
 const activationFor = (id: ObjId): Activation | null => legal.value?.activations.find((a) => a.objId === id) ?? null
+// a graveyard-card target for an ACTIVATED or CHANNEL ability: pick from the legal cards, then pay
+const gyAbility = ref<{ kind: 'activate' | 'channel'; objId: ObjId; abilityIndex?: number; cost: string; ids: ObjId[] } | null>(null)
+function pickGraveyardForAbility(id: ObjId) {
+  const g = gyAbility.value
+  if (!g || !g.ids.includes(id)) return
+  gyAbility.value = null
+  if (g.kind === 'channel') return void send({ type: 'r.channel', objId: g.objId, targets: [id] })
+  if (g.cost) return void beginActivatePayment(g.objId, g.abilityIndex!, g.cost, [id])
+  send({ type: 'r.activate', objId: g.objId, abilityIndex: g.abilityIndex!, targets: [id] })
+}
+const cancelGyAbility = () => {
+  gyAbility.value = null
+}
+
 function startActivate(id: ObjId) {
   const a = activationFor(id)
   if (!a) return
   closeMenu()
+  if (a.targetKind === 'graveyardCard') {
+    gyAbility.value = { kind: 'activate', objId: id, abilityIndex: a.abilityIndex, cost: a.cost, ids: a.graveyardIds ?? [] }
+    return
+  }
   if (a.targetKind) return void (activating.value = a) // pick a target first
   // a "sacrifice a creature" cost: pick which creature(s) to sacrifice, then activate
   if (a.sacCost > 0) return void beginCostSacrifice(id, a.abilityIndex, a.sacCost)
@@ -1132,7 +1155,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1979,6 +2002,28 @@ onBeforeUnmount(() => {
             <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
               Pay ward
             </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- a graveyard-card target for an activated / channel ability -->
+      <div v-if="gyAbility" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-h-[85vh] max-w-md flex-col rounded-lg border border-fuchsia-400 bg-default p-4 shadow-xl">
+          <p class="mb-2 text-sm font-semibold">Choose a card from a graveyard</p>
+          <div class="flex flex-wrap gap-2 overflow-y-auto">
+            <RulesCard
+              v-for="id in gyAbility.ids"
+              :key="`gya${id}`"
+              :card="st.cards[id]!"
+              :display="display[st.cards[id]!.defName ?? '']"
+              size="sm"
+              glow
+              @click="pickGraveyardForAbility(id)"
+              @preview="hoverDisplay = $event"
+            />
+          </div>
+          <div class="mt-3 flex justify-end">
+            <UButton size="sm" variant="ghost" color="neutral" @click="cancelGyAbility">Cancel</UButton>
           </div>
         </div>
       </div>

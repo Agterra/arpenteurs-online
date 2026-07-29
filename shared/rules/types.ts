@@ -544,7 +544,16 @@ export interface LegalActions {
   triggerGraveyardIds: ObjId[]
   triggerSourceName: string | null
   /** non-mana activated abilities you can use right now (cost = mana part, '' if none; sacCost = creatures to sacrifice as a cost) */
-  activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null; cost: string; sacCost: number; lifeCost: number }[]
+  activations: {
+    objId: ObjId
+    abilityIndex: number
+    targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+    cost: string
+    sacCost: number
+    lifeCost: number
+    /** for a graveyardCard target: the legal cards right now (the board renders them as a picker) */
+    graveyardIds?: ObjId[]
+  }[]
   /** your Equipment that can be equipped right now (sorcery speed, cost affordable, you control a creature) */
   equippableIds: ObjId[]
   /** loyalty abilities you may activate now (your planeswalkers, once/turn, cost affordable) */
@@ -552,7 +561,13 @@ export interface LegalActions {
   /** hand cards you can cycle right now (instant speed, cost affordable) — CR 702.29 */
   cyclable: { objId: ObjId; cost: string }[]
   /** hand cards whose CHANNEL ability you can use right now (cost already reduced) */
-  channelable: { objId: ObjId; cost: string; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | null }[]
+  channelable: {
+    objId: ObjId
+    cost: string
+    targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'graveyardCard' | null
+    /** for a graveyardCard target: the legal cards right now */
+    graveyardIds?: ObjId[]
+  }[]
   /** castable cards that have a kicker — the client offers a "kick" toggle (cost = kicker's mana) — CR 702.33 */
   kickable: { objId: ObjId; cost: string }[]
   /** hand cards castable for their OVERLOAD cost right now (untargeted "each" body) — CR 702.96 */

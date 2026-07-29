@@ -68,6 +68,7 @@ import {
   loseLife,
   loseTheGame,
   mill,
+  millSelf,
   playersDiscard,
   playersSacrifice,
   pump,
@@ -3559,6 +3560,41 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Draw two cards, then discard two cards. Untap up to three lands."
     spell: { effect: drawThenDiscardThenUntap(2, 2, 3) },
+  },
+
+  // --- Coverage batch CARD38: graveyard targets on activated / channel abilities ---
+  {
+    name: 'Buried Ruin',
+    types: ['Land'],
+    // "{T}: Add {C}." / "{2}, {T}, Sacrifice this land: Return target artifact card from your
+    //  graveyard to your hand."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true, sacrificeSelf: true },
+        targets: [{ kind: 'graveyardCard', count: 1, filter: { types: ['Artifact'], controller: 'you' } }],
+        effect: returnFromGraveyard(),
+      },
+    ],
+  },
+  {
+    name: 'Takenuma, Abandoned Mire',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "{T}: Add {B}." / "Channel — {3}{B}, Discard this card: Mill three cards, then return a creature
+    //  or planeswalker card from your graveyard to your hand." DOCUMENTED SIMPLIFICATION: the printed
+    //  card mills FIRST and then chooses, so a just-milled card can be returned. The engine models the
+    //  pick as a TARGET of the channel ability, which is chosen before the mill — so the choice is made
+    //  from the graveyard as it stood beforehand. A non-targeted "choose on resolution" decision would
+    //  be needed for the exact wording.
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['B'], effect: addMana('B') }],
+    channel: {
+      cost: '{3}{B}',
+      reducedByLegendaries: true,
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { types: ['Creature', 'Planeswalker'], controller: 'you' }, optional: true }],
+      effect: sequence(millSelf(3), returnFromGraveyard()),
+    },
   },
 
   // --- Coverage batch CARD37: CHANNEL (the Kamigawa legendary lands) ---

@@ -474,7 +474,25 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       // "pay N life" is payable only at life ≥ N (CR 119.4) — mirrors the engine's check
       const lifeCost = ab.cost.life ?? 0
       if (lifeCost > state.players[viewer]!.life) return
-      activations.push({ objId: obj.id, abilityIndex: i, targetKind: ab.targets?.[0]?.kind ?? null, cost: ab.cost.mana ?? '', sacCost, lifeCost })
+      const spec = ab.targets?.[0]
+      // a graveyardCard target needs the graveyard picker, so hand the client the legal cards
+      const graveyardIds =
+        spec?.kind === 'graveyardCard'
+          ? state.turnOrder.flatMap((pid) =>
+              zoneArr(state, pid, 'graveyard').filter((gid) => isLegalTarget(state, spec, gid, viewer, def.colors ?? [])),
+            )
+          : undefined
+      // nothing legal to target → not offered, unless the target is optional (it may be declined)
+      if (spec?.kind === 'graveyardCard' && !graveyardIds?.length && !spec.optional) return
+      activations.push({
+        objId: obj.id,
+        abilityIndex: i,
+        targetKind: spec?.kind ?? null,
+        cost: ab.cost.mana ?? '',
+        sacCost,
+        lifeCost,
+        ...(graveyardIds ? { graveyardIds } : {}),
+      })
     })
   }
 
@@ -628,16 +646,28 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     const cost = channelCost(state, viewer, def)
     if (!planPayment(cost, potential).covered) continue
     const spec = def.channel.targets?.[0]
-    if (spec && !hasAnyLegalTarget(state, spec, viewer, def.colors ?? [])) continue
+    // an OPTIONAL target may be declined, so such an ability is offered even with nothing legal
+    if (spec && !spec.optional && !hasAnyLegalTarget(state, spec, viewer, def.colors ?? [])) continue
+    const chGraveyard =
+      spec?.kind === 'graveyardCard'
+        ? state.turnOrder.flatMap((pid) =>
+            zoneArr(state, pid, 'graveyard').filter((gid) => isLegalTarget(state, spec, gid, viewer, def.colors ?? [])),
+          )
+        : undefined
     const generic = cost.generic ? `{${cost.generic}}` : ''
     const pips = (['W', 'U', 'B', 'R', 'G', 'C'] as const).map((c) => `{${c}}`.repeat(cost.colored[c])).join('')
     channelable.push({
       objId: id,
       cost: `${generic}${pips}` || '{0}',
       targetKind:
-        spec?.kind === 'creature' || spec?.kind === 'permanent' || spec?.kind === 'player' || spec?.kind === 'anyTarget'
+        spec?.kind === 'creature' ||
+        spec?.kind === 'permanent' ||
+        spec?.kind === 'player' ||
+        spec?.kind === 'anyTarget' ||
+        spec?.kind === 'graveyardCard'
           ? spec.kind
           : null,
+      ...(chGraveyard ? { graveyardIds: chGraveyard } : {}),
     })
   }
 

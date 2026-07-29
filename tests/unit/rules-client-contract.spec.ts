@@ -26,7 +26,9 @@ import {
 // canTargetPlayerForTrigger) and for an ACTIVATED ability (isActivateTargetCard +
 // canActivateTargetPlayer). 'spell' targets go through a separate stack-click path
 // (onStackTarget), so they're allowed too.
-const CLIENT_TARGET_KINDS = new Set(['creature', 'permanent', 'player', 'anyTarget', 'spell'])
+// 'graveyardCard' became selectable in batch CARD38: redact publishes the legal graveyard cards for
+// an activated / channel ability and the board renders them as a picker.
+const CLIENT_TARGET_KINDS = new Set(['creature', 'permanent', 'player', 'anyTarget', 'spell', 'graveyardCard'])
 const TRIGGERS = ['enters', 'dies', 'attacks', 'upkeep'] as const
 
 describe('every implemented targeted trigger uses a client-selectable target kind', () => {
@@ -139,7 +141,8 @@ describe('every implemented channel ability targets a client-selectable kind', (
   for (const def of allDefs()) {
     if (def.unimplemented || !def.channel) continue
     for (const spec of def.channel.targets ?? [])
-      if (!['creature', 'permanent', 'player', 'anyTarget'].includes(spec.kind)) offenders.push(`${def.name}: ${spec.kind}`)
+      if (!['creature', 'permanent', 'player', 'anyTarget', 'graveyardCard'].includes(spec.kind))
+        offenders.push(`${def.name}: ${spec.kind}`)
   }
   it('no channel ability targets an unsupported kind', () => {
     expect(offenders).toEqual([])
