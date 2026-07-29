@@ -194,6 +194,10 @@ export const counterTarget = (): Effect => (ctx) => {
   for (const t of ctx.targets) {
     const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
     if (!item) continue // already resolved / countered
+    if (getDef(item.defName).cantBeCountered) {
+      logLine(ctx.state, `${getDef(item.defName).name} can't be countered.`)
+      continue
+    }
     logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name}.`)
     if (item.flashback) moveTo(ctx.state, item.id, 'exile')
     else moveToGraveyard(ctx.state, item.id) // pulls it off the stack, into the graveyard
@@ -704,6 +708,10 @@ export const counterTargetGrantingToken = (spec: TokenSpec, count: number): Effe
   for (const t of ctx.targets) {
     const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
     if (!item) continue // already resolved / countered
+    if (getDef(item.defName).cantBeCountered) {
+      logLine(ctx.state, `${getDef(item.defName).name} can't be countered.`)
+      continue
+    }
     const victim = item.controllerId
     logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name}.`)
     if (item.flashback) moveTo(ctx.state, item.id, 'exile')
@@ -899,6 +907,13 @@ export const drainTargetPlayer = (n: number): Effect => (ctx) => {
     ctx.state.players[ctx.controllerId]!.life += n
     logLine(ctx.state, `${ctx.state.players[t]!.name} loses ${n} life; ${ctx.state.players[ctx.controllerId]!.name} gains ${n}.`)
   }
+}
+
+/** "You may play an additional land this turn." (Explore) */
+export const extraLandDrop = (n: number): Effect => (ctx) => {
+  const p = ctx.state.players[ctx.controllerId]!
+  p.extraLandsThisTurn = (p.extraLandsThisTurn ?? 0) + n
+  logLine(ctx.state, `${p.name} may play ${n} additional land${n === 1 ? '' : 's'} this turn.`)
 }
 
 /** Add mana to the controller's pool (mana abilities — no stack). */

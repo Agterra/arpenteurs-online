@@ -426,7 +426,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   for (const id of zoneArr(state, viewer, 'hand')) {
     const def = getDef(state.objects[id]!.defName)
     if (defIsLand(def)) {
-      if (isMain && state.players[viewer]!.landsPlayedThisTurn < 1) playableLandIds.push(id)
+      if (isMain && state.players[viewer]!.landsPlayedThisTurn < 1 + (state.players[viewer]!.extraLandsThisTurn ?? 0))
+        playableLandIds.push(id)
       continue
     }
     const timingOk = def.types.includes('Instant') || isMain || (def.keywords?.includes('flash') ?? false)
@@ -511,7 +512,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     const sacPool = sacCount
       ? zoneArr(state, viewer, 'battlefield').filter((pid) => {
           const d = getDef(state.objects[pid]!.defName)
-          return ac.sacrifice!.filter === 'creature' ? defIsCreature(d) : defIsCreature(d) || d.types.includes('Artifact')
+          return ac.sacrifice!.filter === 'creature'
+            ? defIsCreature(d)
+            : ac.sacrifice!.filter === 'land'
+              ? defIsLand(d)
+              : defIsCreature(d) || d.types.includes('Artifact')
         }).length
       : 0
     const discardCount = ac.discard ?? 0

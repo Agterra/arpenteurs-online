@@ -543,6 +543,7 @@ function beginStep(state: RulesGameState) {
       const p = state.players[ap]!
       p.landsPlayedThisTurn = 0
       p.noncreatureSpellsThisTurn = 0
+      p.extraLandsThisTurn = 0
       // CR 502.1 — phasing happens FIRST, before permanents untap
       runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
@@ -1016,7 +1017,7 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     if (item.suspendHaste && defIsCreature(def)) obj.summoningSick = false
     moveTo(state, obj.id, 'battlefield') // moveTo initialises loyalty for a planeswalker (CR 306.5b)
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
-    if (def.entersTapped) obj.tapped = true // e.g. Worn Powerstone (cast, enters tapped)
+    // (entersTapped is applied by moveTo for every entry path)
     fireEntersTriggers(state, obj.id) // a face-down creature has no own ETB (guarded in fireEntersTriggers)
     // Saga (CR 714.2b/3): a lore counter is added as it enters → chapter I triggers
     if (defIsSaga(def)) {
@@ -1095,7 +1096,9 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
       if (!p || !ab || p.phasedOut || state.loseAbilities.includes(p.id)) continue
       const w = ab.watch
       if (w?.opponentsOnly && p.controllerId === caster) continue
+      if (w?.selfOnly && p.controllerId !== caster) continue // "whenever YOU cast…" (Beast Whisperer)
       if (w?.noncreatureOnly && isCreatureSpell) continue
+      if (w?.creatureOnly && !isCreatureSpell) continue
       // "their FIRST noncreature spell each turn" — the counter is incremented by r.cast before
       // this runs, so the first such spell of the turn is the one that makes it 1
       if (w?.firstEachTurn && (state.players[caster]!.noncreatureSpellsThisTurn ?? 0) !== 1) continue
@@ -1611,11 +1614,12 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (actor !== state.activePlayer || !isMainPhase(state) || state.zones.stack.length)
         throw new RulesError('TIMING', 'Lands are played in your main phase with an empty stack')
       const p = state.players[actor]!
-      if (p.landsPlayedThisTurn >= 1) throw new RulesError('LAND_LIMIT', 'Already played a land this turn')
+      if (p.landsPlayedThisTurn >= 1 + (p.extraLandsThisTurn ?? 0))
+        throw new RulesError('LAND_LIMIT', 'Already played a land this turn')
       const obj = requireInHand(state, actor, msg.objId)
       if (!defIsLand(getDef(obj.defName))) throw new RulesError('NOT_A_LAND', 'That is not a land')
       moveTo(state, obj.id, 'battlefield')
-      if (getDef(obj.defName).entersTapped) obj.tapped = true // e.g. a Guildgate
+      // (entersTapped is applied by moveTo for every entry path)
       p.landsPlayedThisTurn++
       state.passed = []
       logLine(state, `${name(state, actor)} plays ${objName(state, obj.id)}${obj.tapped ? ' (tapped)' : ''}.`)
@@ -1889,7 +1893,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
             !!o && !!d && o.zone === 'battlefield' && o.controllerId === actor &&
             (extra.sacrifice.filter === 'creature'
               ? defIsCreature(d)
-              : defIsCreature(d) || d.types.includes('Artifact'))
+              : extra.sacrifice.filter === 'land'
+                ? defIsLand(d)
+                : defIsCreature(d) || d.types.includes('Artifact'))
           if (!ok) throw new RulesError('BAD_SACRIFICE', 'Not a legal permanent to sacrifice')
         }
       }

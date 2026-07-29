@@ -203,6 +203,8 @@ export interface PlayerRState {
   landsPlayedThisTurn: number
   /** noncreature spells this player has cast this turn (Esper Sentinel's "first each turn") */
   noncreatureSpellsThisTurn?: number
+  /** extra land drops granted this turn (Explore) — added on top of the one-per-turn allowance */
+  extraLandsThisTurn?: number
   hasLost: boolean
   /** the player's commander object id (exactly one; no partners yet) */
   commanderId: ObjId | null

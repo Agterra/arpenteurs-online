@@ -231,7 +231,7 @@ export interface CardDefinition {
    * current power instead of a fixed string.
    */
   castSpell?: {
-    watch?: { opponentsOnly?: boolean; noncreatureOnly?: boolean; firstEachTurn?: boolean }
+    watch?: { opponentsOnly?: boolean; selfOnly?: boolean; creatureOnly?: boolean; noncreatureOnly?: boolean; firstEachTurn?: boolean }
     unlessPay?: string
     unlessPayFromPower?: boolean
     effect: Effect
@@ -258,7 +258,9 @@ export interface CardDefinition {
    * validates before any mutation and pays it with the other costs. A sacrifice hits the graveyard
    * AFTER the spell is on the stack, so its dies triggers resolve above the spell (CR 603.3b).
    */
-  additionalCost?: { sacrifice?: { count: number; filter: 'creature' | 'artifactOrCreature' }; discard?: number }
+  additionalCost?: { sacrifice?: { count: number; filter: 'creature' | 'artifactOrCreature' | 'land' }; discard?: number }
+  /** "This spell can't be countered." (Dovin's Veto) — every counter effect skips it. */
+  cantBeCountered?: boolean
   /**
    * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
    * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the

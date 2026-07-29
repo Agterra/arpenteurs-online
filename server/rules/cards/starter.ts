@@ -35,6 +35,7 @@ import {
   drawCardsX,
   earthquakeX,
   exileGraveyard,
+  extraLandDrop,
   exileTarget,
   fight,
   gainAndDrawEqualToLands,
@@ -2784,5 +2785,84 @@ export const STARTER_SET: CardDefinition[] = [
     //  Treasure tokens."
     additionalCost: { discard: 1 },
     spell: { effect: sequence(drawCards(2), createTreasures(2)) },
+  },
+
+  // --- Coverage batch CARD25: cantrips, an extra land drop, an own-cast trigger, sac-a-land ---
+  {
+    name: 'Opt',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Scry 1. Draw a card."
+    spell: { effect: sequence(scry(1), drawCards(1)) },
+  },
+  {
+    name: 'Preordain',
+    types: ['Sorcery'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Scry 2, then draw a card."
+    spell: { effect: sequence(scry(2), drawCards(1)) },
+  },
+  {
+    name: 'Ornithopter of Paradise',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Thopter'],
+    manaCost: '{2}',
+    power: 0,
+    toughness: 2,
+    keywords: ['flying'],
+    // "Flying. {T}: Add one mana of any color."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') },
+    ],
+  },
+  {
+    name: 'Explore',
+    types: ['Sorcery'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    // "You may play an additional land this turn. Draw a card."
+    spell: { effect: sequence(extraLandDrop(1), drawCards(1)) },
+  },
+  {
+    name: 'Beast Whisperer',
+    types: ['Creature'],
+    subtypes: ['Elf', 'Druid'],
+    manaCost: '{2}{G}{G}',
+    colors: ['G'],
+    power: 2,
+    toughness: 3,
+    // "Whenever you cast a creature spell, draw a card."
+    castSpell: { watch: { selfOnly: true, creatureOnly: true }, effect: drawCards(1) },
+  },
+  {
+    name: "Dovin's Veto",
+    types: ['Instant'],
+    manaCost: '{W}{U}',
+    colors: ['W', 'U'],
+    // "This spell can't be countered. Counter target noncreature spell."
+    cantBeCountered: true,
+    spell: { targets: [{ kind: 'spell', count: 1, filter: { excludeTypes: ['Creature'] } }], effect: counterTarget() },
+  },
+  {
+    name: 'Crop Rotation',
+    types: ['Instant'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "As an additional cost to cast this spell, sacrifice a land. Search your library for a land
+    //  card, put that card onto the battlefield, then shuffle." (any land, and untapped)
+    additionalCost: { sacrifice: { count: 1, filter: 'land' } },
+    spell: { effect: searchLibrary({ filter: { types: ['Land'] }, dest: 'battlefield', count: 1 }) },
+  },
+  {
+    name: 'Harrow',
+    types: ['Instant'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    // "As an additional cost to cast this spell, sacrifice a land. Search your library for up to two
+    //  basic land cards, put them onto the battlefield, then shuffle."
+    additionalCost: { sacrifice: { count: 1, filter: 'land' } },
+    spell: { effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', count: 2 }) },
   },
 ]

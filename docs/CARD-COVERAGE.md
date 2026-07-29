@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**385 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**393 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -37,6 +37,7 @@
 - Bastion of Remembrance
 - Battering Craghorn
 - Battlefield Forge
+- Beast Whisperer
 - Beast Within
 - Benalish Cavalry
 - Benalish Hero
@@ -85,6 +86,7 @@
 - Concentrate
 - Counterspell
 - Craw Wurm
+- Crop Rotation
 - Cruel Celebrant
 - Crystal Ball
 - Cultivate
@@ -108,6 +110,7 @@
 - Disfigure
 - Divination
 - Doomed Traveler
+- Dovin's Veto
 - Dragon Fodder
 - Dragonskull Summit
 - Dreamroot Cascade
@@ -121,6 +124,7 @@
 - Esper Sentinel
 - Evolving Wilds
 - Exotic Orchard
+- Explore
 - Fabled Passage
 - Faithful Watchdog
 - Faithless Looting
@@ -164,6 +168,7 @@
 - Gruul Signet
 - Hallowed Fountain
 - Harmonize
+- Harrow
 - Haunted Ridge
 - Hero's Downfall
 - Heroic Intervention
@@ -228,6 +233,8 @@
 - Night's Whisper
 - Nissa, Voice of Zendikar
 - Nyxborn Rollicker
+- Opt
+- Ornithopter of Paradise
 - Orzhov Guildgate
 - Orzhov Signet
 - Overgrown Farmland
@@ -246,6 +253,7 @@
 - Pongify
 - Pounce
 - Prairie Stream
+- Preordain
 - Prey Upon
 - Prickly Boggart
 - Prismatic Vista

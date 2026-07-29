@@ -45,6 +45,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   "an offer you can't refuse": 'spell',
   'swan song': 'spell', // enchantment / instant / sorcery only (the server enforces the filter)
   'fierce guardianship': 'spell', // noncreature spell (also castable free — see ALT_TARGET_CLASS)
+  "dovin's veto": 'spell', // noncreature spell; itself uncounterable
   vindicate: 'permanent',
   'beast within': 'permanent',
   'generous gift': 'permanent',

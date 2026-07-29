@@ -623,6 +623,11 @@ const FUZZ_DECK = [
   // hidden→public) run under the leak assertions.
   ...Array(2).fill('Village Rites'),
   ...Array(2).fill('Thrill of Possibility'),
+  // batch CARD25: Opt (a scry cantrip), Explore (an extra land drop) and Crop Rotation (sacrifice a
+  // LAND, then fetch any land — a library search whose pick can itself be a tapland).
+  ...Array(2).fill('Opt'),
+  ...Array(2).fill('Explore'),
+  ...Array(2).fill('Crop Rotation'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

@@ -69,6 +69,10 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
       obj.loyalty = def.loyalty ?? 0
       obj.loyaltyActivatedThisTurn = false
     }
+    // "This permanent enters tapped" (Guildgates, Temples, Bojuka Bog…). Centralised here so EVERY
+    // entry path agrees: it used to be applied only where a land was played or a spell resolved, so
+    // a tapland FETCHED by a search (Crop Rotation → Bojuka Bog) entered untapped.
+    if (def.entersTapped) obj.tapped = true
     // enters-with-counters (counters were just reset above) — before any SBA check so a
     // 0/0-with-counters creature survives; applies on ANY entry path (cast, tutor, move)
     if (def.entersWithCounters) obj.counters['+1/+1'] = def.entersWithCounters
