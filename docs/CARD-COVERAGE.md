@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**606 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**607 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -67,6 +67,7 @@
 - Birth of Meletis
 - Bitterblossom
 - Black Knight
+- Black Market Connections
 - Blasphemous Act
 - Blaze
 - Blighted Woodland

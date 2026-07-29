@@ -288,6 +288,14 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'modes' && state.pendingModes) {
+      // a modal TRIGGER ("choose one or more" — Black Market Connections): pick a legal non-empty subset
+      const pm = state.pendingModes
+      const all = [...Array(pm.labels.length).keys()]
+      const picked = pm.oneOrMore ? all.filter(() => rnd() < 0.5) : all.slice(0, pm.count)
+      applyRulesAction(state, p, { type: 'r.chooseModes', modes: picked.length ? picked : [all[0]!] })
+      return true
+    }
     if (state.pending.kind === 'retarget') {
       // "you may choose new targets": keeping them is always legal, so the fuzzer takes that branch —
       // picking a legal new target for an arbitrary stack item would mean re-deriving its specs here
@@ -1043,6 +1051,9 @@ const FUZZ_DECK = [
   // batch CARD61: Mystic Remora — a cumulative-upkeep permanent (an age counter and a growing
   // pay-or-sacrifice decision every one of its controller's upkeeps) whose all-or-nothing draw fires on
   // every opponent noncreature spell, so both decisions are answered constantly.
+  // batch CARD62: Black Market Connections — a MODAL TRIGGER at every one of its controller's first main
+  // phases, so the fuzzer answers a mode choice each turn cycle and pays life for it (it can lose a game).
+  ...Array(2).fill('Black Market Connections'),
   ...Array(2).fill('Mystic Remora'),
   ...Array(2).fill('Deflecting Swat'),
   ...Array(2).fill('Arcane Denial'),

@@ -252,6 +252,11 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayAffordable: false,
     needsTypeChoice: false,
     typeChoiceName: '',
+    needsModes: false,
+    modeLabels: [],
+    modeOneOrMore: false,
+    modeCount: 0,
+    modeSourceName: '',
     needsRetarget: false,
     retargetItemId: null,
     retargetKind: null,
@@ -407,6 +412,17 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPayCost: pop.cost,
         optionalPaySourceName: getDef(pop.defName).name,
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
+      }
+    }
+    if (state.pending.kind === 'modes' && state.pendingModes) {
+      const pm = state.pendingModes
+      return {
+        ...none,
+        needsModes: true,
+        modeLabels: [...pm.labels],
+        modeOneOrMore: pm.oneOrMore,
+        modeCount: pm.count,
+        modeSourceName: pm.sourceName,
       }
     }
     if (state.pending.kind === 'retarget' && state.pendingRetarget) {

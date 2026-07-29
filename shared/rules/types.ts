@@ -64,6 +64,8 @@ export type Keyword =
   | 'wither'
   | 'phasing'
   | 'banding'
+  // CR 702.73: "this card is every creature type" — honoured by every chosen-type check
+  | 'changeling'
 
 // Turn structure. Combat is split so priority is granted in each step.
 export const STEPS = [
@@ -160,7 +162,7 @@ export interface StackItem {
   /** which triggered ability this is (for kind: 'ability') */
   trigger?:
     | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-    | 'beginCombat' | 'leavesBattlefield' | 'etbWatch'
+    | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -398,6 +400,11 @@ export interface RulesGameState {
    * stack item `itemId`; the new targets must still be legal FOR THAT ITEM'S controller (CR 115.7b).
    */
   pendingRetarget: { player: PlayerId; itemId: ObjId; sourceName: string } | null
+  /**
+   * A MODAL TRIGGER's mode choice (Black Market Connections: "choose one or more" at your first main
+   * phase). The chosen modes' effects run in printed order, exactly like a modal spell's.
+   */
+  pendingModes: { player: PlayerId; sourceId: ObjId; sourceName: string; count: number; oneOrMore: boolean; labels: string[] } | null
   pendingDiscard: {
     player: PlayerId
     count: number
@@ -658,6 +665,12 @@ export interface LegalActions {
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
   needsBlockers: boolean
+  /** a modal TRIGGER is waiting for its modes (r.chooseModes) */
+  needsModes: boolean
+  modeLabels: string[]
+  modeOneOrMore: boolean
+  modeCount: number
+  modeSourceName: string
   /** a "choose new targets" decision is waiting (r.retarget): the item and what it can be aimed at */
   needsRetarget: boolean
   retargetItemId: ObjId | null

@@ -4859,4 +4859,38 @@ export const STARTER_SET: CardDefinition[] = [
       effect: mayDrawUpTo(2, 'Mystic Remora', { exact: true }),
     },
   },
+  // --- Coverage batch CARD62: Black Market Connections (a MODAL trigger) ---
+  {
+    name: 'Black Market Connections',
+    types: ['Enchantment'],
+    manaCost: '{2}{B}',
+    colors: ['B'],
+    // "At the beginning of your first main phase, choose one or more —
+    //  • Sell Contraband — Create a Treasure token. You lose 1 life.
+    //  • Buy Information — Draw a card. You lose 2 life.
+    //  • Hire a Mercenary — Create a 3/2 colorless Shapeshifter creature token with changeling. You
+    //    lose 3 life."
+    firstMain: {
+      modeRule: { oneOrMore: true },
+      modes: [
+        { label: 'Sell Contraband — a Treasure, lose 1 life', effect: sequence(createTreasures(1), loseLife(1)) },
+        { label: 'Buy Information — draw a card, lose 2 life', effect: sequence(drawCards(1), loseLife(2)) },
+        {
+          label: 'Hire a Mercenary — a 3/2 Shapeshifter, lose 3 life',
+          effect: sequence(
+            createToken({
+              name: 'Shapeshifter',
+              types: ['Creature'],
+              subtypes: ['Shapeshifter'],
+              power: 3,
+              toughness: 2,
+              keywords: ['changeling'],
+            }),
+            loseLife(3),
+          ),
+        },
+      ],
+      effect: noop(), // the modes carry the whole ability
+    },
+  },
 ]

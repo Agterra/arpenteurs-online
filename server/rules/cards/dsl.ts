@@ -192,6 +192,15 @@ export interface SpellMode {
   effect: Effect
 }
 
+/**
+ * Does this card have creature type `type`? CHANGELING (CR 702.73) makes a card every creature type, so
+ * every "of the chosen type" check goes through here rather than reading `subtypes` directly.
+ */
+export function hasCreatureType(def: CardDefinition, type: string): boolean {
+  if ((def.keywords ?? []).includes('changeling')) return true
+  return (def.subtypes ?? []).includes(type)
+}
+
 /** A triggered ability body (CR 603): optional targets chosen when it goes on the stack. */
 export interface TriggeredAbility {
   /**
@@ -230,7 +239,7 @@ export interface TriggeredAbility {
 /** The trigger events the engine emits. */
 export type TriggerKind =
   | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch'
+  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -636,6 +645,12 @@ export interface CardDefinition {
    * for other permanents entering. `watch` is required here.
    */
   entersWatch?: TriggeredAbility
+  /**
+   * "At the beginning of your FIRST main phase, …" (Black Market Connections) — fires as main1 begins,
+   * for the active player only. `modes` on the ability makes it a MODAL trigger: its controller chooses
+   * which modes happen (the same "choose one or more" shape as a modal spell, but on a trigger).
+   */
+  firstMain?: TriggeredAbility & { modes?: SpellMode[]; modeRule?: { count?: number; oneOrMore?: boolean } }
   /** "At the beginning of combat on your turn, …" (Helm of the Host, The Ozolith) — CR 506.1 */
   beginCombat?: TriggeredAbility
   /**

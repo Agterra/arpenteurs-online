@@ -99,6 +99,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   }),
   // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
   // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
+  // a modal TRIGGER's modes (Black Market Connections)
+  z.object({ type: z.literal('r.chooseModes'), modes: z.array(z.number().int().min(0).max(9)).max(4).default([]) }),
   // "you may choose new targets for target spell or ability" (Deflecting Swat) — an empty list keeps
   // the current targets
   z.object({ type: z.literal('r.retarget'), targets: z.array(Id).max(8).default([]) }),

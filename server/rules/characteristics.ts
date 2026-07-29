@@ -35,10 +35,15 @@ function baseT(state: RulesGameState, obj: GameObject): number {
 function affectsMatch(affects: AffectsFilter, src: GameObject, obj: GameObject, objSubtypes: string[]): boolean {
   if (affects.controllerOnly && src.controllerId !== obj.controllerId) return false
   if (affects.excludeSelf && src.id === obj.id) return false
-  if (affects.subtype && !objSubtypes.includes(affects.subtype)) return false
+  if (affects.subtype && !objSubtypes.includes(affects.subtype) && !(getDef(obj.defName).keywords ?? []).includes('changeling'))
+    return false
   // "of the chosen type": the type this source's controller picked as it entered (Patchwork Banner).
   // No type chosen yet (it left before the choice) → the effect applies to nothing.
-  if (affects.subtypeChosen && !(src.chosenType && objSubtypes.includes(src.chosenType))) return false
+  if (affects.subtypeChosen) {
+    // changeling (CR 702.73) counts as the chosen type too
+    const isChangeling = (getDef(obj.defName).keywords ?? []).includes('changeling')
+    if (!(src.chosenType && (isChangeling || objSubtypes.includes(src.chosenType)))) return false
+  }
   return true
 }
 

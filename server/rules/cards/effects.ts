@@ -4,6 +4,7 @@
  * zone/SBA invariants hold). Grows every milestone.
  */
 import type { Ability, EffectContext, Effect } from './dsl'
+import { hasCreatureType } from './dsl'
 import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { parseManaCost } from '#shared/utils/manaCost'
 import { changeLife, putCounters, apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
@@ -1745,7 +1746,7 @@ export const lookTopTakeIfChosenType = (): Effect => (ctx) => {
   const top = ctx.state.zones.perPlayer[ctx.controllerId]!.library[0]
   if (!top || !chosen) return
   const def = getDef(ctx.state.objects[top]!.defName)
-  if (!def.types.includes('Creature') || !(def.subtypes ?? []).includes(chosen)) {
+  if (!def.types.includes('Creature') || !hasCreatureType(def, chosen)) {
     logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} looks at the top card of their library.`)
     return
   }

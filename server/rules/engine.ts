@@ -15,7 +15,7 @@ import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { emptyPool } from '#shared/rules/types'
 import { defKey, getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
-import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
+import { hasCreatureType, defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 import { handCardMatches, proliferateTargets, scry as scryEffect, untapOwnLands } from './cards/effects'
 import {
@@ -88,7 +88,7 @@ export function permanentCostReduction(state: RulesGameState, caster: PlayerId, 
     // "creature spells you cast OF THE CHOSEN TYPE cost {1} less" (Herald's Horn)
     if (r.chosenTypeOnly) {
       const chosen = state.objects[id]!.chosenType
-      if (!chosen || !def.types.includes('Creature') || !(def.subtypes ?? []).includes(chosen)) continue
+      if (!chosen || !def.types.includes('Creature') || !hasCreatureType(def, chosen)) continue
     }
     total += r.amount
   }
@@ -144,7 +144,7 @@ function restrictionAllows(
   if (bucket.legendary && !(def.supertypes?.includes('Legendary') ?? false)) return false
   if (bucket.creatureType) {
     if (!def.types.includes('Creature')) return false
-    if (!(def.subtypes ?? []).includes(bucket.creatureType)) return false
+    if (!hasCreatureType(def, bucket.creatureType)) return false
   }
   return true
 }
@@ -197,7 +197,12 @@ function sharesTypeWithCommander(state: RulesGameState, player: PlayerId, def: C
   const cmd = state.players[player]!.commanderId
   const cmdDef = cmd && state.objects[cmd] ? getDef(state.objects[cmd]!.defName) : null
   if (!cmdDef) return false
-  return (def.subtypes ?? []).some((st) => (cmdDef.subtypes ?? []).includes(st))
+  // changeling shares a type with anything (CR 702.73)
+  return (
+    (def.keywords ?? []).includes('changeling') ||
+    (cmdDef.keywords ?? []).includes('changeling') ||
+    (def.subtypes ?? []).some((st) => (cmdDef.subtypes ?? []).includes(st))
+  )
 }
 
 /**
@@ -978,6 +983,12 @@ function beginStep(state: RulesGameState) {
     }
     case 'main1': {
       if (fireDelayedTriggers(state, 'nextMainPhase')) return // Mana Drain's mana / a pay-or-else
+      // "At the beginning of your first main phase, …" (Black Market Connections)
+      for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
+        if (!getDef(state.objects[id]?.defName ?? '').firstMain) continue
+        queueTriggeredAbility(state, id, 'firstMain')
+        if (state.pending) break
+      }
       advanceSagas(state) // CR 714.3: "after your draw step" add a lore counter to each of AP's Sagas
       if (!state.pending) grantPriority(state, ap)
       return
@@ -1258,6 +1269,7 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'beginCombat' ? def.beginCombat
     : kind === 'leavesBattlefield' ? def.leavesBattlefield
     : kind === 'etbWatch' ? def.entersWatch
+    : kind === 'firstMain' ? def.firstMain
     : def.enters
 }
 
@@ -1274,6 +1286,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   beginCombat: 'beginning of combat',
   leavesBattlefield: 'leaves-the-battlefield',
   etbWatch: 'enters-the-battlefield',
+  firstMain: 'first main phase',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1321,6 +1334,24 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
   if (item.cascade) {
     resolveCascade(state, item)
     return
+  }
+  // a MODAL trigger (Black Market Connections): its controller chooses the modes, then the chosen ones
+  // resolve in printed order — the same rule a modal spell follows (CR 601.2b)
+  if (item.trigger === 'firstMain') {
+    const ability = getDef(item.defName).firstMain
+    if (ability?.modes?.length) {
+      state.pending = { kind: 'modes', player: item.controllerId }
+      state.pendingModes = {
+        player: item.controllerId,
+        sourceId: item.sourceId,
+        sourceName: getDef(item.defName).name,
+        count: ability.modeRule?.count ?? 1,
+        oneOrMore: !!ability.modeRule?.oneOrMore,
+        labels: ability.modes.map((m) => m.label),
+      }
+      logLine(state, `${getDef(item.defName).name}: ${name(state, item.controllerId)} chooses its modes.`)
+      return
+    }
   }
   // a GRANTED triggered ability (Malakir Rebirth's "when this creature dies, …"): the body comes from
   // the granting card, the source is the permanent that gained it
@@ -1625,7 +1656,7 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
       // "whenever you cast a creature spell OF THE CHOSEN TYPE" (Vanquisher's Banner)
       if (w?.chosenTypeOnly) {
         const chosen = state.objects[id]?.chosenType
-        if (!chosen || !spellDef.types.includes('Creature') || !(spellDef.subtypes ?? []).includes(chosen)) continue
+        if (!chosen || !spellDef.types.includes('Creature') || !hasCreatureType(spellDef, chosen)) continue
       }
       // "their FIRST noncreature spell each turn" — the counter is incremented by r.cast before
       // this runs, so the first such spell of the turn is the one that makes it 1
@@ -3716,6 +3747,33 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       if (!ids.length) logLine(state, `${name(state, actor)} declines.`)
       if (!state.pending) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.chooseModes': {
+      if (state.pending?.kind !== 'modes' || state.pending.player !== actor || !state.pendingModes)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your modes')
+      const pm = state.pendingModes
+      const src = state.objects[pm.sourceId]
+      const ability = src ? getDef(src.defName).firstMain : undefined
+      const ids = [...new Set(msg.modes)].sort((a, b) => a - b)
+      // compare against the RAW list: comparing the deduped set with itself never catches a duplicate
+      if (ids.length !== msg.modes.length) throw new RulesError('BAD_MODE', 'Each mode may be chosen only once')
+      if (ids.some((i) => i < 0 || i >= (ability?.modes?.length ?? 0))) throw new RulesError('BAD_MODE', 'Choose a valid mode')
+      const min = pm.oneOrMore ? 1 : pm.count
+      const max = pm.oneOrMore ? (ability?.modes?.length ?? 0) : pm.count
+      if (ids.length < min || ids.length > max)
+        throw new RulesError('BAD_MODE', min === max ? `Choose exactly ${min}` : `Choose ${min} to ${max} modes`)
+      state.pending = null
+      state.pendingModes = null
+      for (const i of ids) {
+        const mode = ability?.modes?.[i]
+        if (!mode) continue
+        logLine(state, `${pm.sourceName} — ${mode.label}.`)
+        mode.effect({ state, controllerId: actor, sourceId: pm.sourceId, targets: [] })
+      }
+      checkSBA(state)
+      if (!state.pending && state.status === 'active') grantPriority(state, state.activePlayer)
       break
     }
 
