@@ -245,6 +245,9 @@ export interface PlayerRState {
     uncounterable?: boolean
     /** Secluded Courtyard: may also pay to ACTIVATE an ability of a creature source of that type */
     typeAbilities?: boolean
+    /** Path of Ancestry: unrestricted mana that scries 1 when spent on a creature sharing a type
+     *  with your commander */
+    scryIfSharesCommanderType?: boolean
   }[]
   landsPlayedThisTurn: number
   /** "Activate only if you created a token this turn." (Idol of Oblivion) — reset at your untap step */
@@ -378,6 +381,12 @@ export interface RulesGameState {
    * proliferations are still to come (Contagion Engine proliferates twice, each with its own choice).
    */
   pendingProliferate: { player: PlayerId; remaining: number } | null
+  /**
+   * "Look at the top card of your library. If it's a creature card of the chosen type, you may reveal
+   * it and put it into your hand." (Herald's Horn) — an actor-only peek at ONE card with a yes/no
+   * answer (r.revealTop). The id is published to that player alone, like a scry.
+   */
+  pendingRevealTop: { player: PlayerId; cardId: ObjId; sourceName: string } | null
   pendingDiscard: {
     player: PlayerId
     count: number
@@ -630,6 +639,10 @@ export interface LegalActions {
   incomingAttackerIds: ObjId[]
   needsAttackers: boolean
   needsBlockers: boolean
+  /** a "look at the top card, you may take it" decision is waiting (r.revealTop) */
+  needsRevealTop: boolean
+  revealTopCardId: ObjId | null
+  revealTopSourceName: string
   /** a PROLIFERATE choice is waiting: the permanents and players that have a counter right now */
   needsProliferate: boolean
   proliferateIds: ObjId[]

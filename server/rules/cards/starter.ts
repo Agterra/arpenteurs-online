@@ -78,6 +78,7 @@ import {
   graveyardCardOnTopOfLibrary,
   impulseExile,
   lookAndReorder,
+  lookTopTakeIfChosenType,
   lookTransformIfInstantSorcery,
   loseAllAbilities,
   loseLife,
@@ -4673,5 +4674,49 @@ export const STARTER_SET: CardDefinition[] = [
     //  instant or sorcery spell, create a Treasure token." (copying is out of scope — nothing copies yet)
     dynamicPT: { per: 'artifactsYouControl', power: 1, toughness: 0 },
     castSpell: { watch: { selfOnly: true, typesOnly: ['Instant', 'Sorcery'] }, effect: createTreasures(1) },
+  },
+  // --- Coverage batch CARD56: the chosen-type artifacts + Path of Ancestry ---
+  {
+    name: "Herald's Horn",
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "As this artifact enters, choose a creature type. / Creature spells you cast of the chosen type
+    //  cost {1} less to cast. / At the beginning of your upkeep, look at the top card of your library.
+    //  If it's a creature card of the chosen type, you may reveal it and put it into your hand."
+    entersChooseType: true,
+    spellCostReduction: { amount: 1, chosenTypeOnly: true },
+    upkeep: { effect: lookTopTakeIfChosenType() },
+  },
+  {
+    name: "Vanquisher's Banner",
+    types: ['Artifact'],
+    manaCost: '{5}',
+    // "As this artifact enters, choose a creature type. / Creatures you control of the chosen type get
+    //  +1/+1. / Whenever you cast a creature spell of the chosen type, draw a card."
+    entersChooseType: true,
+    statics: [{ affects: { controllerOnly: true, subtypeChosen: true }, power: 1, toughness: 1 }],
+    castSpell: { watch: { selfOnly: true, chosenTypeOnly: true }, effect: drawCards(1) },
+  },
+  {
+    name: 'Path of Ancestry',
+    types: ['Land'],
+    entersTapped: true,
+    // "This land enters tapped. / {T}: Add one mana of any color in your commander's color identity.
+    //  When that mana is spent to cast a creature spell that shares a creature type with your
+    //  commander, scry 1."
+    //  DOCUMENTED SIMPLIFICATION: the colour choice is the full five (the engine does not restrict it to
+    //  the commander's identity — a mono-colour commander would let you make any colour), while the SCRY
+    //  rider is exact: it only fires when that mana pays for a creature sharing a type with the commander.
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaRestriction: { scryIfSharesCommanderType: true },
+        effect: addMana('W'),
+      },
+    ],
   },
 ]

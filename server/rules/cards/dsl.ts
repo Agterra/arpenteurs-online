@@ -165,6 +165,12 @@ export interface ActivatedAbility {
     chosenTypeOnly?: boolean
     legendaryOnly?: boolean
     uncounterable?: boolean
+    /**
+     * Path of Ancestry: the mana is NOT restricted, but "when that mana is spent to cast a creature
+     * spell that shares a creature type with your commander, scry 1" — a rider carried by the bucket
+     * and checked as the mana is spent.
+     */
+    scryIfSharesCommanderType?: boolean
     /** Secluded Courtyard: "…or activate an ability of a creature source of the chosen type" */
     alsoTypeAbilities?: boolean
   }
@@ -390,6 +396,8 @@ export interface CardDefinition {
       noncreatureOnly?: boolean
       /** only spells of these card types (Guttersnipe: instant or sorcery) */
       typesOnly?: CardType[]
+      /** "whenever you cast a CREATURE spell of the chosen type" (Vanquisher's Banner) */
+      chosenTypeOnly?: boolean
       firstEachTurn?: boolean
     }
     unlessPay?: string
@@ -445,7 +453,13 @@ export interface CardDefinition {
    * every matching permanent you control as a spell is cast, applied to the GENERIC portion only,
    * and mirrored in redact's castability check. `types`/`colors` empty = every spell you cast.
    */
-  spellCostReduction?: { amount: number; types?: CardType[]; colors?: ManaColor[] }
+  spellCostReduction?: {
+    amount: number
+    types?: CardType[]
+    colors?: ManaColor[]
+    /** "Creature spells you cast OF THE CHOSEN TYPE cost {1} less" (Herald's Horn) */
+    chosenTypeOnly?: boolean
+  }
   /**
    * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
    * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the

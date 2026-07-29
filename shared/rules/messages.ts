@@ -99,6 +99,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   }),
   // "As this permanent enters, choose a creature type." — a free-text type name, bounded to a plain
   // word or two (the printed card allows ANY creature type, so this is not a fixed enum)
+  // "you may reveal it and put it into your hand" (Herald's Horn)
+  z.object({ type: z.literal('r.revealTop'), take: z.boolean() }),
   z.object({ type: z.literal('r.chooseType'), creatureType: z.string().trim().min(2).max(30).regex(/^[A-Za-z][A-Za-z' -]*$/) }),
   // "…unless that player pays {N}" (Rhystic Study / Esper Sentinel): pay, or the ability resolves
   z.object({ type: z.literal('r.optionalPay'), pay: z.boolean() }),

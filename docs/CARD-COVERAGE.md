@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**594 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**597 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -256,6 +256,7 @@
 - Haunted Ridge
 - Hedge Maze
 - Helm of the Host
+- Herald's Horn
 - Hero's Downfall
 - Heroic Intervention
 - Hill Giant
@@ -366,6 +367,7 @@
 - Pale Bears
 - Parallel Lives
 - Patchwork Banner
+- Path of Ancestry
 - Path to Exile
 - Pearl Medallion
 - Phyrexian Altar
@@ -560,6 +562,7 @@
 - Vampire Nighthawk
 - Vampiric Tutor
 - Vandalblast
+- Vanquisher's Banner
 - Vault of Champions
 - Vault of Whispers
 - Verdant Catacombs

@@ -284,6 +284,12 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       }
       return true
     }
+    if (state.pending.kind === 'revealTop') {
+      // "you may reveal it and put it into your hand" (Herald's Horn): take it about half the time —
+      // library → hand is hidden → hidden, but the card is REVEALED on the way
+      applyRulesAction(state, p, { type: 'r.revealTop', take: rnd() < 0.5 })
+      return true
+    }
     if (state.pending.kind === 'proliferate') {
       // pick a random subset of the eligible permanents/players (declining is legal too)
       const lg = computeLegal(state, p)
@@ -1004,6 +1010,10 @@ const FUZZ_DECK = [
   // batch CARD55: Urza's Saga — a SAGA that is PLAYED as a land (the entry path that had no lore
   // counter at all until this batch), grants itself two abilities as its chapters tick over, makes
   // board-counting Construct tokens and fetches an artifact before sacrificing itself.
+  // batch CARD56: Herald's Horn — its upkeep look opens the reveal-top decision every turn cycle (an
+  // actor-only peek at ONE library card, so the history-aware assertion watches that id), and its
+  // type-gated discount changes what the fuzzer can afford.
+  ...Array(2).fill("Herald's Horn"),
   ...Array(3).fill("Urza's Saga"),
   ...Array(2).fill('The One Ring'),
   ...Array(3).fill("Witch's Cottage"),

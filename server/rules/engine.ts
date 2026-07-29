@@ -17,7 +17,7 @@ import { defKey, getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
 import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
-import { handCardMatches, proliferateTargets, untapOwnLands } from './cards/effects'
+import { handCardMatches, proliferateTargets, scry as scryEffect, untapOwnLands } from './cards/effects'
 import {
   changeLife,
   putCounters,
@@ -85,6 +85,11 @@ export function permanentCostReduction(state: RulesGameState, caster: PlayerId, 
     if (!r) continue
     if (r.types?.length && !r.types.some((t) => def.types.includes(t))) continue
     if (r.colors?.length && !r.colors.some((c) => (def.colors ?? []).includes(c))) continue
+    // "creature spells you cast OF THE CHOSEN TYPE cost {1} less" (Herald's Horn)
+    if (r.chosenTypeOnly) {
+      const chosen = state.objects[id]!.chosenType
+      if (!chosen || !def.types.includes('Creature') || !(def.subtypes ?? []).includes(chosen)) continue
+    }
     total += r.amount
   }
   return total
@@ -134,6 +139,8 @@ function restrictionAllows(
   bucket: NonNullable<PlayerRState['restrictedMana']>[number],
   def: CardDefinition,
 ): boolean {
+  // Path of Ancestry's mana carries a RIDER, not a restriction: it pays for anything
+  if (bucket.scryIfSharesCommanderType) return true
   if (bucket.legendary && !(def.supertypes?.includes('Legendary') ?? false)) return false
   if (bucket.creatureType) {
     if (!def.types.includes('Creature')) return false
@@ -164,6 +171,7 @@ function spendSpellMana(state: RulesGameState, player: PlayerId, deduct: ManaPoo
   const p = state.players[player]!
   const buckets = (p.restrictedMana ??= []).filter((b) => restrictionAllows(b, def))
   let uncounterable = false
+  let scries = 0
   for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) {
     let owed = deduct[c]
     for (const bucket of buckets) {
@@ -173,11 +181,23 @@ function spendSpellMana(state: RulesGameState, player: PlayerId, deduct: ManaPoo
       bucket.amount -= take
       owed -= take
       if (bucket.uncounterable) uncounterable = true
+      // Path of Ancestry: "when that mana is spent to cast a creature spell that shares a creature type
+      // with your commander, scry 1"
+      if (bucket.scryIfSharesCommanderType && sharesTypeWithCommander(state, player, def)) scries++
     }
     p.manaPool[c] -= owed
   }
   p.restrictedMana = p.restrictedMana!.filter((b) => b.amount > 0)
-  return { uncounterable }
+  return { uncounterable, scries }
+}
+
+/** Does `def` share a creature type with this player's commander? (Path of Ancestry's rider) */
+function sharesTypeWithCommander(state: RulesGameState, player: PlayerId, def: CardDefinition): boolean {
+  if (!def.types.includes('Creature')) return false
+  const cmd = state.players[player]!.commanderId
+  const cmdDef = cmd && state.objects[cmd] ? getDef(state.objects[cmd]!.defName) : null
+  if (!cmdDef) return false
+  return (def.subtypes ?? []).some((st) => (cmdDef.subtypes ?? []).includes(st))
 }
 
 /**
@@ -1543,6 +1563,11 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
       if (w?.noncreatureOnly && isCreatureSpell) continue
       if (w?.creatureOnly && !isCreatureSpell) continue
       if (w?.typesOnly?.length && !w.typesOnly.some((t) => spellDef.types.includes(t))) continue
+      // "whenever you cast a creature spell OF THE CHOSEN TYPE" (Vanquisher's Banner)
+      if (w?.chosenTypeOnly) {
+        const chosen = state.objects[id]?.chosenType
+        if (!chosen || !spellDef.types.includes('Creature') || !(spellDef.subtypes ?? []).includes(chosen)) continue
+      }
       // "their FIRST noncreature spell each turn" — the counter is incremented by r.cast before
       // this runs, so the first such spell of the turn is the one that makes it 1
       if (w?.firstEachTurn && (state.players[caster]!.noncreatureSpellsThisTurn ?? 0) !== 1) continue
@@ -2357,10 +2382,15 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           ...(restriction.legendaryOnly ? { legendary: true } : {}),
           ...(restriction.uncounterable ? { uncounterable: true } : {}),
           ...(restriction.alsoTypeAbilities ? { typeAbilities: true } : {}),
+          ...(restriction.scryIfSharesCommanderType ? { scryIfSharesCommanderType: true } : {}),
         }
         ;(state.players[actor]!.restrictedMana ??= []).push(bucket)
-        const only = restriction.legendaryOnly ? 'legendary spells' : `${obj.chosenType ?? 'the chosen type'} creature spells`
-        logLine(state, `${name(state, actor)} adds {${msg.color}} (only for ${only}).`)
+        if (restriction.scryIfSharesCommanderType) {
+          logLine(state, `${name(state, actor)} adds {${msg.color}} (scries 1 if spent on a creature sharing a type with their commander).`)
+        } else {
+          const only = restriction.legendaryOnly ? 'legendary spells' : `${obj.chosenType ?? 'the chosen type'} creature spells`
+          logLine(state, `${name(state, actor)} adds {${msg.color}} (only for ${only}).`)
+        }
       } else if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
       // pay a mana ability's sacrifice cost (the Altars) — after the mana is in the pool, so a dies
@@ -2716,6 +2746,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const payment = planPayment(cost, spellPayablePool(state, actor, def))
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
       const spent = spendSpellMana(state, actor, payment.deduct, def)
+      const pathScries = spent.scries // Path of Ancestry: scry 1 per rider-mana spent on a matching creature
       for (const c of convokeCreatures) c.tapped = true // convoke is paid by tapping (CR 702.51c)
       if (lifeX) {
         changeLife(state, actor, -lifeX)
@@ -2775,6 +2806,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)} (additional cost).`)
         moveToGraveyard(state, id)
       }
+      // Path of Ancestry's rider: its mana was spent on a creature sharing a type with the commander
+      for (let i = 0; i < pathScries; i++) scryEffect(1)({ state, controllerId: actor, sourceId: obj.id, targets: [] })
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)
       // cascade (CR 702.85): "when you cast this spell" — trigger goes on the stack above it
@@ -3552,6 +3585,26 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         }
       }
       if (!ids.length) logLine(state, `${name(state, actor)} declines.`)
+      if (!state.pending) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.revealTop': {
+      if (state.pending?.kind !== 'revealTop' || state.pending.player !== actor || !state.pendingRevealTop)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your reveal')
+      const prt = state.pendingRevealTop
+      state.pending = null
+      state.pendingRevealTop = null
+      const card = state.objects[prt.cardId]
+      if (msg.take && card && card.zone === 'library') {
+        // library → hand is hidden → hidden, but the card was REVEALED on the way, so the log names it
+        const label = getDef(card.defName).name
+        moveTo(state, prt.cardId, 'hand')
+        remintForHiddenEntry(state, prt.cardId, false)
+        logLine(state, `${name(state, actor)} reveals ${label} and puts it into their hand (${prt.sourceName}).`)
+      } else {
+        logLine(state, `${name(state, actor)} leaves the card on top of their library.`)
+      }
       if (!state.pending) grantPriority(state, state.activePlayer)
       break
     }

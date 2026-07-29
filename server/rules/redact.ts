@@ -156,6 +156,11 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
       ? { matchIds: [...state.pendingSearch.matchIds], dest: state.pendingSearch.dest, count: state.pendingSearch.count }
       : null
   if (search) for (const id of search.matchIds) if (state.objects[id]) cards[id] = toClientCard(state.objects[id]!)
+  // reveal-top peek (Herald's Horn): the ONE card is shown to its owner alone, never to an opponent
+  if (state.pendingRevealTop && state.pendingRevealTop.player === viewer) {
+    const id = state.pendingRevealTop.cardId
+    if (state.objects[id]) cards[id] = toClientCard(state.objects[id]!)
+  }
 
   const perPlayer: RulesClientState['zones']['perPlayer'] = {}
   for (const pid of state.turnOrder) {
@@ -247,6 +252,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     optionalPayAffordable: false,
     needsTypeChoice: false,
     typeChoiceName: '',
+    needsRevealTop: false,
+    revealTopCardId: null,
+    revealTopSourceName: '',
     needsProliferate: false,
     proliferateIds: [],
     proliferatePlayerIds: [],
@@ -390,6 +398,16 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         optionalPayCost: pop.cost,
         optionalPaySourceName: getDef(pop.defName).name,
         optionalPayAffordable: planPayment(parseManaCost(pop.cost), state.players[viewer]!.manaPool).covered,
+      }
+    }
+    if (state.pending.kind === 'revealTop' && state.pendingRevealTop) {
+      // an actor-only peek at ONE card (the sanctioned window of invariant #2, like a scry)
+      const prt = state.pendingRevealTop
+      return {
+        ...none,
+        needsRevealTop: true,
+        revealTopCardId: prt.cardId,
+        revealTopSourceName: prt.sourceName,
       }
     }
     if (state.pending.kind === 'proliferate' && state.pendingProliferate) {

@@ -1703,6 +1703,29 @@ export const loseLifePerBurdenCounter = (): Effect => (ctx) => {
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${n} life (burden counters).`)
 }
 
+/**
+ * Herald's Horn: "look at the top card of your library. If it's a creature card of the chosen type, you
+ * may reveal it and put it into your hand." The look is actor-only; the decision only opens when the
+ * card actually matches, so a non-matching top card reveals nothing at all (not even that it was seen).
+ */
+export const lookTopTakeIfChosenType = (): Effect => (ctx) => {
+  const src = ctx.state.objects[ctx.sourceId]
+  const chosen = src?.chosenType
+  const top = ctx.state.zones.perPlayer[ctx.controllerId]!.library[0]
+  if (!top || !chosen) return
+  const def = getDef(ctx.state.objects[top]!.defName)
+  if (!def.types.includes('Creature') || !(def.subtypes ?? []).includes(chosen)) {
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} looks at the top card of their library.`)
+    return
+  }
+  ctx.state.pending = { kind: 'revealTop', player: ctx.controllerId }
+  ctx.state.pendingRevealTop = {
+    player: ctx.controllerId,
+    cardId: top,
+    sourceName: getDef(src!.defName).name,
+  }
+}
+
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */
 export const noop = (): Effect => () => {}
 
