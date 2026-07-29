@@ -99,6 +99,52 @@ export function landDropAllowance(state: RulesGameState, player: PlayerId): numb
 }
 
 /**
+ * Schedule a DELAYED trigger (CR 603.7). It fires at the given step of a LATER turn than the one it
+ * was created on, then is removed.
+ */
+export function scheduleDelayed(
+  state: RulesGameState,
+  entry: { at: 'nextUpkeep' | 'nextMainPhase'; player: PlayerId; defName: string; key: string; x?: number },
+) {
+  ;(state.delayedTriggers ??= []).push({ ...entry, createdTurn: state.turnNumber })
+}
+
+/**
+ * Fire the delayed triggers due at `at` for the active player: each resolves its effect or, with
+ * `unlessPay`, opens the pay-or-else decision. Returns true when a decision was opened (the caller
+ * must not grant priority then).
+ */
+function fireDelayedTriggers(state: RulesGameState, at: 'nextUpkeep' | 'nextMainPhase'): boolean {
+  const due = (state.delayedTriggers ?? []).filter(
+    (d) => d.at === at && d.player === state.activePlayer && d.createdTurn < state.turnNumber,
+  )
+  if (!due.length) return false
+  state.delayedTriggers = (state.delayedTriggers ?? []).filter((d) => !due.includes(d))
+  for (const d of due) {
+    const body = getDef(d.defName).delayed?.[d.key]
+    if (!body) continue
+    if (body.unlessPay && !state.pending) {
+      state.pending = { kind: 'optionalPay', player: d.player }
+      state.pendingOptionalPay = {
+        player: d.player,
+        beneficiary: d.player,
+        cost: body.unlessPay,
+        defName: d.defName,
+        sourceId: '',
+        trigger: 'delayed',
+        delayedKey: d.key,
+      }
+      logLine(state, `${getDef(d.defName).name}: ${name(state, d.player)} must pay ${body.unlessPay}.`)
+      continue
+    }
+    logLine(state, `${getDef(d.defName).name}'s delayed ability triggers.`)
+    body.effect({ state, controllerId: d.player, sourceId: '', targets: [], x: d.x })
+  }
+  checkSBA(state)
+  return !!state.pending
+}
+
+/**
  * Colours a player's LANDS can additionally produce thanks to a granted mana ability (Chromatic
  * Lantern). Empty when they control no such permanent.
  */
@@ -502,7 +548,12 @@ function repairControlFlow(state: RulesGameState) {
       // the payer left → they can't pay, so the ability happens for its controller
       if (optionalPay && !state.players[optionalPay.beneficiary]!.hasLost) {
         const d = getDef(optionalPay.defName)
-        const ab = optionalPay.trigger === 'draw' ? d.drawnCard : d.castSpell
+        const ab =
+          optionalPay.trigger === 'delayed'
+            ? d.delayed?.[optionalPay.delayedKey ?? '']
+            : optionalPay.trigger === 'draw'
+              ? d.drawnCard
+              : d.castSpell
         ab?.effect({ state, controllerId: optionalPay.beneficiary, sourceId: optionalPay.sourceId, targets: [] })
       }
       grantPriority(state, state.activePlayer)
@@ -702,6 +753,7 @@ function beginStep(state: RulesGameState) {
       return
     }
     case 'upkeep': {
+      if (fireDelayedTriggers(state, 'nextUpkeep')) return // a pay-or-else decision is open
       fireUpkeepTriggers(state) // "at the beginning of your upkeep" triggers onto the stack
       advanceSuspend(state) // CR 702.62c/d: remove a time counter from each suspended card; cast at 0
       // a targeted upkeep trigger sets pending → its controller chooses first
@@ -709,6 +761,7 @@ function beginStep(state: RulesGameState) {
       return
     }
     case 'main1': {
+      if (fireDelayedTriggers(state, 'nextMainPhase')) return // Mana Drain's mana / a pay-or-else
       advanceSagas(state) // CR 714.3: "after your draw step" add a lore counter to each of AP's Sagas
       if (!state.pending) grantPriority(state, ap)
       return
@@ -2869,7 +2922,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       } else {
         logLine(state, `${name(state, actor)} declines to pay ${pop.cost}.`)
         const d = getDef(pop.defName)
-        const cd = pop.trigger === 'draw' ? d.drawnCard : d.castSpell
+        const cd =
+          pop.trigger === 'delayed' ? d.delayed?.[pop.delayedKey ?? ''] : pop.trigger === 'draw' ? d.drawnCard : d.castSpell
         cd?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })
       }
       // resume: the active player gets priority and the stack keeps resolving (CR 117.3c)

@@ -351,6 +351,20 @@ export interface RulesGameState {
    * hold, and hand → library is hidden → hidden, so nothing new is revealed either way.
    */
   pendingPutBack: { player: PlayerId; count: number } | null
+  /**
+   * Scheduled DELAYED triggers (CR 603.7) — "at the beginning of your next upkeep / main phase".
+   * `defName` + `key` point at the body in `CardDefinition.delayed` (functions can't be serialised);
+   * `x` carries any value captured when it was scheduled (Mana Drain's mana value). It fires at the
+   * matching step of a LATER turn than the one it was created on.
+   */
+  delayedTriggers: {
+    at: 'nextUpkeep' | 'nextMainPhase'
+    player: PlayerId
+    defName: string
+    key: string
+    x?: number
+    createdTurn: number
+  }[]
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
   entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number }[]
   /**
@@ -365,8 +379,10 @@ export interface RulesGameState {
     cost: string
     defName: string
     sourceId: ObjId
-    /** which tax trigger opened it — picks `castSpell` vs `drawnCard` back off the definition */
-    trigger: 'cast' | 'draw'
+    /** which trigger opened it — picks `castSpell` / `drawnCard` / a `delayed` entry off the def */
+    trigger: 'cast' | 'draw' | 'delayed'
+    /** for a delayed trigger: which `CardDefinition.delayed` entry this is */
+    delayedKey?: string
   } | null
   /** true only on the very first turn's first player (skips their draw) */
   firstTurnSkipDraw: boolean

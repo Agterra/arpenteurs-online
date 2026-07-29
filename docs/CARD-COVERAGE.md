@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**528 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**530 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -270,6 +270,7 @@
 - Mahamoti Djinn
 - Man-o'-War
 - Mana Confluence
+- Mana Drain
 - Mana Geyser
 - Manalith
 - Marhault Elsdragon
@@ -320,6 +321,7 @@
 - Overgrown Tomb
 - Ovinize
 - Pacifism
+- Pact of Negation
 - Paladin en-Vec
 - Pale Bears
 - Path to Exile

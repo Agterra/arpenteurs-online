@@ -116,6 +116,7 @@ async function rehydrate(gameId: string): Promise<Room> {
     rulesState.keywordGrants ??= []
     rulesState.unblockable ??= []
     rulesState.entersChoiceQueue ??= []
+    rulesState.delayedTriggers ??= []
     rulesState.pendingEntersChoice ??= null
     rulesState.pendingOptionalPay ??= null
     rulesState.pendingPutBack ??= null

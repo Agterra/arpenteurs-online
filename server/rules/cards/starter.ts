@@ -12,6 +12,7 @@ import {
   addCountersToEachControlled,
   addLoyaltyToOtherPlaneswalkers,
   addMana,
+  addManaEqualToX,
   addManaPerLandSubtype,
   addManaPerColorAmongPermanents,
   addManaPerOpponentTappedLand,
@@ -64,6 +65,7 @@ import {
   lookAndReorder,
   loseAllAbilities,
   loseLife,
+  loseTheGame,
   mill,
   playersDiscard,
   playersSacrifice,
@@ -76,9 +78,11 @@ import {
   returnFromGraveyard,
   returnFromGraveyardToBattlefield,
   scry,
+  scheduleDelayedTrigger,
   searchLibrary,
   sequence,
   surveil,
+  targetSpellManaValue,
   setBasePT,
   lookTransformIfInstantSorcery,
   targetPlayerDrawDrain,
@@ -3554,6 +3558,37 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Draw two cards, then discard two cards. Untap up to three lands."
     spell: { effect: drawThenDiscardThenUntap(2, 2, 3) },
+  },
+
+  // --- Coverage batch CARD36: delayed triggers (CR 603.7) ---
+  {
+    name: 'Mana Drain',
+    types: ['Instant'],
+    manaCost: '{U}{U}',
+    colors: ['U'],
+    // "Counter target spell. At the beginning of your next main phase, add an amount of {C} equal to
+    //  that spell's mana value."
+    spell: {
+      targets: [{ kind: 'spell', count: 1 }],
+      effect: sequence(
+        scheduleDelayedTrigger('drain', { at: 'nextMainPhase', captureX: targetSpellManaValue }),
+        counterTarget(),
+      ),
+    },
+    delayed: { drain: { at: 'nextMainPhase', effect: addManaEqualToX('C') } },
+  },
+  {
+    name: 'Pact of Negation',
+    types: ['Instant'],
+    manaCost: '{0}',
+    colors: ['U'],
+    // "Counter target spell. At the beginning of your next upkeep, pay {3}{U}{U}. If you don't, you
+    //  lose the game."
+    spell: {
+      targets: [{ kind: 'spell', count: 1 }],
+      effect: sequence(counterTarget(), scheduleDelayedTrigger('pact', { at: 'nextUpkeep' })),
+    },
+    delayed: { pact: { at: 'nextUpkeep', unlessPay: '{3}{U}{U}', effect: loseTheGame() } },
   },
 
   // --- Coverage batch CARD35: a granted land mana ability + a library reorder ---

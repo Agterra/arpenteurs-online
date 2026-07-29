@@ -261,6 +261,13 @@ export interface CardDefinition {
   enters?: TriggeredAbility
   dies?: TriggeredAbility
   attacks?: TriggeredAbility
+  /**
+   * DELAYED triggered abilities (CR 603.7): "At the beginning of your next upkeep / next main phase,
+   * …", scheduled by an effect (`scheduleDelayed`) and keyed here so the scheduled entry — which
+   * lives in serialisable state — can find its body again. `unlessPay` makes it a pay-or-else
+   * decision (Pact of Negation: pay {3}{U}{U} or `effect` happens, which is losing the game).
+   */
+  delayed?: Record<string, { at: 'nextUpkeep' | 'nextMainPhase'; unlessPay?: string; effect: Effect }>
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
   /**

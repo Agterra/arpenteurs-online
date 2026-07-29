@@ -41,6 +41,8 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   ovinize: 'creature',
   damn: 'creature', // overloaded, it destroys each creature (no target — the Overload button)
   counterspell: 'spell',
+  'mana drain': 'spell',
+  'pact of negation': 'spell',
   cancel: 'spell',
   negate: 'spell',
   "an offer you can't refuse": 'spell',

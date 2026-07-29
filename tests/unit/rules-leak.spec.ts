@@ -789,6 +789,10 @@ const FUZZ_DECK = [
   // Lantern (every land gains an any-colour ability, so the fuzzer's taps go through the granted path).
   ...Array(3).fill('Ponder'),
   ...Array(2).fill('Chromatic Lantern'),
+  // batch CARD36: Mana Drain (a DELAYED trigger that pays out at its controller's next main phase)
+  // and Pact of Negation (a delayed pay-or-lose, so the fuzzer's optionalPay branch can end a game).
+  ...Array(2).fill('Mana Drain'),
+  ...Array(2).fill('Pact of Negation'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

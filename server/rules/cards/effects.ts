@@ -15,7 +15,15 @@ import { currentKeywords, currentPower } from '../characteristics'
 // fireEntersTriggers/openSacrifice are hoisted function exports; the effects→engine
 // edge is a call-time-only cycle (invoked inside effect bodies, never at module
 // init), so it is safe — mirrors the existing effects→registry (getDef) cycle.
-import { chaosWarpPermanent, devotionTo, fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
+import {
+  chaosWarpPermanent,
+  devotionTo,
+  fireEntersTriggers,
+  openDiscard,
+  openSacrifice,
+  remintForHiddenEntry,
+  scheduleDelayed,
+} from '../engine'
 
 // intrinsic OR granted indestructible (Heroic Intervention) — the same check checkSBA's
 // damage path uses, so a destroy effect and lethal damage agree on who survives
@@ -1061,6 +1069,50 @@ export const eachOfYouAndTargetDraws = (n: number): Effect => (ctx) => {
     for (let i = 0; i < n; i++) drawOne(ctx.state, t)
     logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} and ${ctx.state.players[t]!.name} each draw ${n}.`)
   }
+}
+
+/**
+ * Schedule one of the source card's `delayed` bodies (CR 603.7). `captureX` reads a value off the
+ * resolution context to remember (Mana Drain: the countered spell's mana value).
+ */
+export const scheduleDelayedTrigger = (
+  key: string,
+  opts: { at: 'nextUpkeep' | 'nextMainPhase'; captureX?: (ctx: EffectContext) => number } = { at: 'nextUpkeep' },
+): Effect => (ctx) => {
+  const src = ctx.state.objects[ctx.sourceId]
+  const defName = src ? src.defName : ''
+  if (!defName) return
+  scheduleDelayed(ctx.state, {
+    at: opts.at,
+    player: ctx.controllerId,
+    defName,
+    key,
+    ...(opts.captureX ? { x: opts.captureX(ctx) } : {}),
+  })
+  logLine(ctx.state, `${getDef(defName).name} sets up a delayed trigger.`)
+}
+
+/** Mana Drain: add X mana of `color` (X captured when the delayed trigger was scheduled). */
+export const addManaEqualToX = (color: ManaColor): Effect => (ctx) => {
+  const n = ctx.x ?? 0
+  if (n <= 0) return
+  ctx.state.players[ctx.controllerId]!.manaPool[color] += n
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} adds ${n} {${color}}.`)
+}
+
+/** Pact of Negation: the controller loses the game (the unpaid half of a pact). */
+export const loseTheGame = (): Effect => (ctx) => {
+  ctx.state.players[ctx.controllerId]!.hasLost = true
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses the game (unpaid pact).`)
+}
+
+/** The mana value of the spell this effect is countering / referring to (for captureX). */
+export const targetSpellManaValue = (ctx: EffectContext): number => {
+  for (const t of ctx.targets) {
+    const item = ctx.state.zones.stack.find((st) => st.kind === 'spell' && st.id === t)
+    if (item) return manaValueOf(getDef(item.defName))
+  }
+  return 0
 }
 
 /** Bloom Tender: for each COLOUR among permanents you control, add one mana of that colour. */
