@@ -249,6 +249,11 @@ export interface RulesGameState {
     thenDraw?: number
     /** surveil (CR 701.42): the cards NOT kept on top go to the GRAVEYARD, not to the bottom */
     surveil?: boolean
+    /**
+     * Ponder: the peeked cards go back on top in an order the player CHOOSES (r.scry.order), and they
+     * may shuffle instead (r.scry.shuffle). Nothing goes to the bottom or the graveyard.
+     */
+    reorder?: boolean
   } | null
   /**
    * An active library search (tutor / land-ramp): the matching library ids the
@@ -472,7 +477,7 @@ export interface RulesClientState {
   log: string[]
   seq: number
   /** YOUR active scry (top-N ids you're looking at) — actor-only; null for everyone else */
-  scry: { cardIds: ObjId[]; surveil?: boolean } | null
+  scry: { cardIds: ObjId[]; surveil?: boolean; reorder?: boolean } | null
   /** YOUR active library search — actor-only; the ids you may pick and how many */
   search: { matchIds: ObjId[]; dest: 'battlefield' | 'hand'; count: number } | null
 }

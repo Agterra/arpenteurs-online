@@ -843,6 +843,15 @@ function counterMenuCard(delta: number) {
 
 // scry: pick which of the peeked top-N cards go to the bottom
 const scryBottom = ref<Set<ObjId>>(new Set())
+// Ponder-style reorder: the click ORDER is the new library order (first clicked = top)
+const scryOrder = ref<ObjId[]>([])
+function toggleScryOrder(id: ObjId) {
+  scryOrder.value = scryOrder.value.includes(id) ? scryOrder.value.filter((x) => x !== id) : [...scryOrder.value, id]
+}
+function confirmReorder(shuffle: boolean) {
+  send({ type: 'r.scry', toBottom: [], order: shuffle ? undefined : scryOrder.value, shuffle: shuffle || undefined })
+  scryOrder.value = []
+}
 function toggleScry(id: ObjId) {
   const next = new Set(scryBottom.value)
   if (next.has(id)) next.delete(id)
@@ -1824,17 +1833,22 @@ onBeforeUnmount(() => {
       <div v-if="st.scry" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
         <div class="rounded-lg border border-default bg-default p-4 shadow-xl">
           <p class="mb-2 text-sm font-semibold">
-            {{ st?.scry?.surveil
-              ? 'Surveil — click a card to put it into your graveyard (the rest stay on top)'
-              : 'Scry — click a card to put it on the bottom (the rest stay on top)' }}
+            {{ st?.scry?.reorder
+              ? 'Look — click the cards in the order they go back on top, or shuffle'
+              : st?.scry?.surveil
+                ? 'Surveil — click a card to put it into your graveyard (the rest stay on top)'
+                : 'Scry — click a card to put it on the bottom (the rest stay on top)' }}
           </p>
           <div class="flex gap-3">
             <div v-for="id in st.scry.cardIds" :key="id" class="flex flex-col items-center gap-1">
+              <span v-if="st?.scry?.reorder && scryOrder.includes(id)" class="text-[10px] font-semibold text-primary">
+                #{{ scryOrder.indexOf(id) + 1 }}
+              </span>
               <RulesCard
                 :card="st.cards[id]!"
                 :display="display[st.cards[id]!.defName ?? '']"
-                :selected="scryBottom.has(id)"
-                @click="toggleScry(id)"
+                :selected="st?.scry?.reorder ? scryOrder.includes(id) : scryBottom.has(id)"
+                @click="st?.scry?.reorder ? toggleScryOrder(id) : toggleScry(id)"
               />
               <span class="text-[10px]" :class="scryBottom.has(id) ? 'text-error font-semibold' : 'text-dimmed'">
                 {{ scryBottom.has(id) ? 'to bottom' : 'keep on top' }}
@@ -1842,7 +1856,18 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="mt-3 flex justify-end">
-            <UButton size="sm" icon="i-lucide-check" @click="confirmScry">
+            <template v-if="st?.scry?.reorder">
+              <UButton size="sm" variant="ghost" color="neutral" @click="confirmReorder(true)">Shuffle</UButton>
+              <UButton
+                size="sm"
+                icon="i-lucide-check"
+                :disabled="scryOrder.length !== (st?.scry?.cardIds.length ?? 0)"
+                @click="confirmReorder(false)"
+              >
+                Put back {{ scryOrder.length }}/{{ st?.scry?.cardIds.length ?? 0 }} (first = top)
+              </UButton>
+            </template>
+            <UButton v-else size="sm" icon="i-lucide-check" @click="confirmScry">
               Done ({{ scryBottom.size }} to bottom)
             </UButton>
           </div>

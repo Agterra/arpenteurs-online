@@ -61,6 +61,7 @@ import {
   gainLifeX,
   gainLifePerBigCreature,
   gainLifePerSpellThisTurn,
+  lookAndReorder,
   loseAllAbilities,
   loseLife,
   mill,
@@ -3553,6 +3554,27 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Draw two cards, then discard two cards. Untap up to three lands."
     spell: { effect: drawThenDiscardThenUntap(2, 2, 3) },
+  },
+
+  // --- Coverage batch CARD35: a granted land mana ability + a library reorder ---
+  {
+    name: 'Chromatic Lantern',
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // 'Lands you control have "{T}: Add one mana of any color." {T}: Add one mana of any color.'
+    grantsLandManaColors: ['W', 'U', 'B', 'R', 'G'],
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') },
+    ],
+  },
+  {
+    name: 'Ponder',
+    types: ['Sorcery'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Look at the top three cards of your library, then put them back in any order. You may shuffle.
+    //  Draw a card." (the draw waits for the reorder, like Opt's)
+    spell: { effect: lookAndReorder(3, { thenDraw: 1 }) },
   },
 
   // --- Coverage batch CARD34: optional ("you may") targets, incl. graveyard-card triggers ---

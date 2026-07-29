@@ -477,7 +477,14 @@ export const playersDiscard = (who: 'target' | 'each', count = 1): Effect => (ct
 export const surveil = (n: number, opts: { thenDraw?: number } = {}): Effect => (ctx) =>
   scry(n, { ...opts, surveil: true })(ctx)
 
-export const scry = (n: number, opts: { thenDraw?: number; surveil?: boolean } = {}): Effect => (ctx) => {
+/**
+ * Ponder: "Look at the top three cards of your library, then put them back in any order. You may
+ * shuffle." Shares the scry decision with `reorder` set — r.scry then reads `order` (or `shuffle`).
+ */
+export const lookAndReorder = (n: number, opts: { thenDraw?: number } = {}): Effect => (ctx) =>
+  scry(n, { ...opts, reorder: true })(ctx)
+
+export const scry = (n: number, opts: { thenDraw?: number; surveil?: boolean; reorder?: boolean } = {}): Effect => (ctx) => {
   const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
   const cardIds = lib.slice(0, Math.min(n, lib.length))
   if (!cardIds.length) {
@@ -491,10 +498,13 @@ export const scry = (n: number, opts: { thenDraw?: number; surveil?: boolean } =
     cardIds,
     ...(opts.thenDraw ? { thenDraw: opts.thenDraw } : {}),
     ...(opts.surveil ? { surveil: true } : {}),
+    ...(opts.reorder ? { reorder: true } : {}),
   }
   logLine(
     ctx.state,
-    `${ctx.state.players[ctx.controllerId]!.name} ${opts.surveil ? 'surveils' : 'scries'} ${cardIds.length}.`,
+    `${ctx.state.players[ctx.controllerId]!.name} ${
+      opts.reorder ? `looks at the top ${cardIds.length}` : opts.surveil ? `surveils ${cardIds.length}` : `scries ${cardIds.length}`
+    }.`,
   )
 }
 

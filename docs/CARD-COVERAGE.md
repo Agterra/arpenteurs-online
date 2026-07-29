@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**526 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**528 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -92,6 +92,7 @@
 - Chaos Warp
 - Char
 - Choked Estuary
+- Chromatic Lantern
 - Cinder Glade
 - City of Brass
 - Clifftop Retreat
@@ -332,6 +333,7 @@
 - Plains
 - Plateau
 - Polluted Delta
+- Ponder
 - Pongify
 - Port Town
 - Pounce

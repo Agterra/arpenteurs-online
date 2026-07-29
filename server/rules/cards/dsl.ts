@@ -329,6 +329,12 @@ export interface CardDefinition {
    */
   attackTax?: number
   /**
+   * Chromatic Lantern: 'Lands you control have "{T}: Add one mana of any color."' A granted mana
+   * ability — r.tapMana accepts these colours from any land its controller controls, and redact adds
+   * them to that land's colour choices.
+   */
+  grantsLandManaColors?: ManaColor[]
+  /**
    * A static cost reduction this PERMANENT gives your spells (Foundry Inspector: "artifact spells
    * you cast cost {1} less"; the Medallions: "[colour] spells you cast cost {1} less"). Summed over
    * every matching permanent you control as a spell is cast, applied to the GENERIC portion only,

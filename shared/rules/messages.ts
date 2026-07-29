@@ -64,7 +64,13 @@ export const RulesMsg = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('r.discard'), objIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.chooseTargets'), targets: z.array(Id).max(8) }),
-  z.object({ type: z.literal('r.scry'), toBottom: z.array(Id).max(20) }),
+  z.object({
+    type: z.literal('r.scry'),
+    toBottom: z.array(Id).max(20),
+    // Ponder-style reorder: the peeked cards in the order they go back on top, or a shuffle instead
+    order: z.array(Id).max(20).optional(),
+    shuffle: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('r.search'), cardIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.sacrifice'), objIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.equip'), equipmentId: Id, creatureId: Id }),

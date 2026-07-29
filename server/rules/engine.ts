@@ -98,6 +98,19 @@ export function landDropAllowance(state: RulesGameState, player: PlayerId): numb
   return 1 + extra
 }
 
+/**
+ * Colours a player's LANDS can additionally produce thanks to a granted mana ability (Chromatic
+ * Lantern). Empty when they control no such permanent.
+ */
+export function grantedLandManaColors(state: RulesGameState, player: PlayerId): ManaColor[] {
+  const out = new Set<ManaColor>()
+  for (const id of zoneArr(state, player, 'battlefield')) {
+    if (state.objects[id]!.phasedOut || state.loseAbilities.includes(id)) continue
+    for (const c of getDef(state.objects[id]!.defName).grantsLandManaColors ?? []) out.add(c)
+  }
+  return (['W', 'U', 'B', 'R', 'G', 'C'] as const).filter((c) => out.has(c))
+}
+
 /** How many artifacts a player controls (Mox Opal's metalcraft). */
 export const controlledArtifacts = (state: RulesGameState, player: PlayerId) =>
   zoneArr(state, player, 'battlefield').filter((id) => getDef(state.objects[id]!.defName).types.includes('Artifact')).length
@@ -1771,6 +1784,23 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const ability =
         filterAbility || (msg.color && manaAbilities.find((a) => (a.produces ?? []).includes(msg.color!))) || manaAbilities[0]
       if (!ability) throw new RulesError('NO_MANA_ABILITY', 'No mana ability')
+      // a colour GRANTED to your lands (Chromatic Lantern): tap the land and add it, whatever the
+      // land's own abilities produce
+      if (
+        msg.color &&
+        defIsLand(getDef(obj.defName)) &&
+        grantedLandManaColors(state, actor).includes(msg.color) &&
+        !manaAbilities.some((a) =>
+          (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces) : (a.produces ?? [])).includes(msg.color!),
+        )
+      ) {
+        if (obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
+        obj.tapped = true
+        state.players[actor]!.manaPool[msg.color]++
+        logLine(state, `${name(state, actor)} taps ${objName(state, obj.id)} for {${msg.color}} (granted).`)
+        state.passed = []
+        break
+      }
       // asking for a colour none of its mana abilities can make is illegal (rather than silently
       // falling back to another ability's output)
       if (
@@ -2485,6 +2515,36 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const bottom = [...new Set(msg.toBottom)]
       for (const id of bottom) if (!ps.cardIds.includes(id)) throw new RulesError('BAD_SCRY', 'Not among the scried cards')
       const lib = zoneArr(state, actor, 'library')
+      // Ponder-style REORDER: the peeked cards go back on top in the chosen order, or the player
+      // shuffles instead. Nothing is bottomed or binned, so this path is separate from scry/surveil.
+      if (ps.reorder) {
+        const stillInLib = ps.cardIds.filter((id) => lib.includes(id))
+        const chosen = [...new Set(msg.order ?? stillInLib)].filter((id) => stillInLib.includes(id))
+        if (!msg.shuffle && chosen.length !== stillInLib.length)
+          throw new RulesError('BAD_SCRY', `Order all ${stillInLib.length} cards, or shuffle`)
+        for (const id of stillInLib) {
+          const i = lib.indexOf(id)
+          if (i >= 0) lib.splice(i, 1)
+        }
+        if (msg.shuffle) {
+          lib.push(...stillInLib)
+          shuffleInPlace(lib)
+          logLine(state, `${name(state, actor)} shuffles their library.`)
+        } else {
+          lib.unshift(...chosen)
+          logLine(state, `${name(state, actor)} puts ${chosen.length} cards back on top in a chosen order.`)
+        }
+        remintLibrary(state, actor) // end the peek so the looked-at ids can't be tracked
+        const draws = ps.thenDraw ?? 0
+        state.pending = null
+        state.pendingScry = null
+        if (draws) {
+          for (let i = 0; i < draws; i++) drawOne(state, actor)
+          logLine(state, `${name(state, actor)} draws ${draws} card${draws === 1 ? '' : 's'}.`)
+        }
+        grantPriority(state, actor)
+        break
+      }
       // remove the scried cards from the top, then re-place: kept on top (original
       // relative order), bottomed cards at the bottom
       // only cards STILL in the library are re-placed: anything that left it meanwhile (a card drawn

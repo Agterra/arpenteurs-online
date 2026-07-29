@@ -27,6 +27,7 @@ import {
   controlledArtifacts,
   controlledLands,
   dynamicManaColors,
+  grantedLandManaColors,
   hasAnyLegalTarget,
   isLegalTarget,
   landDropAllowance,
@@ -116,7 +117,11 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
   // scry peek: the scrying player (and ONLY them) sees the top-N library cards
   const scry =
     state.pendingScry && state.pendingScry.player === viewer
-      ? { cardIds: [...state.pendingScry.cardIds], ...(state.pendingScry.surveil ? { surveil: true } : {}) }
+      ? {
+          cardIds: [...state.pendingScry.cardIds],
+          ...(state.pendingScry.surveil ? { surveil: true } : {}),
+          ...(state.pendingScry.reorder ? { reorder: true } : {}),
+        }
       : null
   if (scry) for (const id of scry.cardIds) if (state.objects[id]) cards[id] = toClientCard(state.objects[id]!)
   // search peek: the searching player (and ONLY them) sees the matching library cards
@@ -420,12 +425,18 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     // a dynamic source's choices come from the board (Reflecting Pool, Mox Amber)
     const colorsOf = (a: (typeof manaAbilities)[number]) =>
       a.filter ? [] : a.dynamicProduces ? dynamicManaColors(state, viewer, a.dynamicProduces) : (a.produces ?? [])
+    // colours granted to your lands (Chromatic Lantern) join that land's own choices
+    const granted = defIsLand(getDef(obj.defName)) ? grantedLandManaColors(state, viewer) : []
     manaSourceColors[obj.id] =
       manaAbilities.length > 1
         ? [...new Set(manaAbilities.flatMap(colorsOf))]
         : manaAbilities[0]!.chooseColor || manaAbilities[0]!.dynamicProduces
           ? colorsOf(manaAbilities[0]!)
           : []
+    if (granted.length) {
+      const own = manaSourceColors[obj.id]!.length ? manaSourceColors[obj.id]! : manaAbilities.flatMap(colorsOf)
+      manaSourceColors[obj.id] = [...new Set([...own, ...granted])]
+    }
     // a filter ability is offered only while its hybrid cost is actually payable from the pool
     for (const a of manaAbilities) {
       if (!a.filter) continue

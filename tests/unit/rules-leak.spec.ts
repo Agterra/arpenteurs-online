@@ -169,7 +169,20 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       return true
     }
     if (state.pending.kind === 'scry' && state.pendingScry) {
-      // randomly bottom some of the peeked cards (exercises scry + library re-mint)
+      // Ponder-style reorder: either shuffle, or put every peeked card back in a shuffled order
+      if (state.pendingScry.reorder) {
+        if (rnd() < 0.5) applyRulesAction(state, p, { type: 'r.scry', toBottom: [], shuffle: true })
+        else {
+          const order = [...state.pendingScry.cardIds]
+          for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(rnd() * (i + 1))
+            ;[order[i], order[j]] = [order[j]!, order[i]!]
+          }
+          applyRulesAction(state, p, { type: 'r.scry', toBottom: [], order })
+        }
+        return true
+      }
+      // randomly bottom some of the peeked cards (exercises scry/surveil + library re-mint)
       const toBottom = state.pendingScry.cardIds.filter(() => rnd() < 0.5)
       applyRulesAction(state, p, { type: 'r.scry', toBottom })
       return true
@@ -772,6 +785,10 @@ const FUZZ_DECK = [
   // re-mint path) and Sun Titan (the same shape returning a permanent to the battlefield).
   ...Array(3).fill('Eternal Witness'),
   ...Array(2).fill('Sun Titan'),
+  // batch CARD35: Ponder (the reorder mode of the shared peek, plus a sequenced draw) and Chromatic
+  // Lantern (every land gains an any-colour ability, so the fuzzer's taps go through the granted path).
+  ...Array(3).fill('Ponder'),
+  ...Array(2).fill('Chromatic Lantern'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
