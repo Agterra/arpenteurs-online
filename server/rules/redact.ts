@@ -175,6 +175,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     declarableAttackerIds: [],
     declarableBlockerIds: [],
     attackablePlayerIds: [],
+    attackTaxPerCreature: {},
     attackablePlaneswalkerIds: [],
     incomingAttackerIds: [],
     needsAttackers: false,
@@ -226,9 +227,18 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
 
   if (state.pending) {
     if (state.pending.player !== viewer) return none
-    if (state.pending.kind === 'attackers')
+    if (state.pending.kind === 'attackers') {
+      // what each opponent charges per attacker sent their way (Propaganda / Ghostly Prison)
+      const attackTaxPerCreature: Record<PlayerId, number> = {}
+      for (const pid of state.turnOrder) {
+        if (pid === viewer || state.players[pid]!.hasLost) continue
+        let t = 0
+        for (const id of zoneArr(state, pid, 'battlefield')) t += getDef(state.objects[id]!.defName).attackTax ?? 0
+        if (t) attackTaxPerCreature[pid] = t
+      }
       return {
         ...none,
+        attackTaxPerCreature,
         needsAttackers: true,
         declarableAttackerIds: battlefieldCreatures(state, viewer)
           .filter((c) => {
@@ -242,6 +252,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
           .filter((o) => o.zone === 'battlefield' && o.controllerId !== viewer && !state.players[o.controllerId]!.hasLost && getDef(o.defName).types.includes('Planeswalker'))
           .map((o) => o.id),
       }
+    }
     if (state.pending.kind === 'blockers')
       return {
         ...none,

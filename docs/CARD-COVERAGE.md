@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**518 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**522 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **7** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -181,6 +181,7 @@
 - Forgotten Cave
 - Fortified Village
 - Foundry Inspector
+- Frantic Search
 - Frontier Bivouac
 - Frostboil Snarl
 - Furycalm Snarl
@@ -189,6 +190,7 @@
 - Gamble
 - Game Trail
 - Generous Gift
+- Ghostly Prison
 - Giant Growth
 - Giant Spider
 - Gird for Battle
@@ -337,6 +339,7 @@
 - Prickly Boggart
 - Prismatic Vista
 - Prodigal Sorcerer
+- Propaganda
 - Putrefy
 - Putrid Goblin
 - Pyroclasm
@@ -511,6 +514,7 @@
 - Whispersilk Cloak
 - White Knight
 - Wind Drake
+- Windborn Muse
 - Windswept Heath
 - Withering Torment
 - Woe Strider

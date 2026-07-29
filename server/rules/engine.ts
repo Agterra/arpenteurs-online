@@ -12,10 +12,12 @@ import { currentKeywords, currentPower, currentToughness, hostCantAttack, hostCa
 import { STEPS } from '#shared/rules/types'
 import type { RulesMsgT } from '#shared/rules/messages'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
+import { emptyPool } from '#shared/rules/types'
 import { getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
 import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
+import { untapOwnLands } from './cards/effects'
 import {
   alivePlayers,
   apnapOrder,
@@ -345,14 +347,14 @@ function advanceSacrificeQueue(state: RulesGameState) {
 
 /** Open a forced-discard prompt for the first player in `players` with cards in hand;
  *  the rest queue (each discards `count`). No-op if nobody has cards. */
-export function openDiscard(state: RulesGameState, players: PlayerId[], count: number) {
+export function openDiscard(state: RulesGameState, players: PlayerId[], count: number, thenUntapLands = 0) {
   const queue = players.filter((pid) => !state.players[pid]!.hasLost && zoneArr(state, pid, 'hand').length > 0)
   if (!queue.length) return
-  promptDiscard(state, queue[0]!, queue.slice(1), count)
+  promptDiscard(state, queue[0]!, queue.slice(1), count, thenUntapLands)
 }
-function promptDiscard(state: RulesGameState, player: PlayerId, queue: PlayerId[], count: number) {
+function promptDiscard(state: RulesGameState, player: PlayerId, queue: PlayerId[], count: number, thenUntapLands = 0) {
   state.pending = { kind: 'discard', player }
-  state.pendingDiscard = { player, count, queue }
+  state.pendingDiscard = { player, count, queue, ...(thenUntapLands ? { thenUntapLands } : {}) }
 }
 /** After a forced discard resolves, prompt the next queued player, else hand priority back. */
 function advanceDiscardQueue(state: RulesGameState) {
@@ -2235,6 +2237,29 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
     case 'r.attackers': {
       if (state.pending?.kind !== 'attackers' || state.pending.player !== actor)
         throw new RulesError('NOT_PENDING', 'Not waiting for your attackers')
+      // attack taxes (Propaganda / Ghostly Prison, CR 508.1g): each defender's taxing permanents
+      // charge the attacking player per creature aimed at that defender. Validated + paid BEFORE any
+      // attacker is marked, so an unaffordable declaration changes nothing.
+      {
+        let tax = 0
+        for (const { defenderId } of msg.attacks) {
+          const defPlayer = Object.hasOwn(state.players, defenderId)
+            ? (defenderId as PlayerId)
+            : state.objects[defenderId]?.controllerId
+          if (!defPlayer || defPlayer === actor) continue
+          for (const id of zoneArr(state, defPlayer, 'battlefield')) {
+            const t = getDef(state.objects[id]!.defName).attackTax
+            if (t) tax += t
+          }
+        }
+        if (tax > 0) {
+          const pool = state.players[actor]!.manaPool
+          const payment = planPayment({ generic: tax, colored: emptyPool() }, pool)
+          if (!payment.covered) throw new RulesError('CANT_PAY', `Attacking costs {${tax}} (short ${payment.shortfall})`)
+          for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
+          logLine(state, `${name(state, actor)} pays {${tax}} to attack.`)
+        }
+      }
       const seenAttackers = new Set<ObjId>()
       const opponents = opponentsOf(state, actor)
       for (const { attackerId, defenderId } of msg.attacks) {
@@ -2388,6 +2413,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${getDef(state.objects[madnessId]!.defName).name} — madness: ${name(state, actor)} may cast it.`)
         break // defer finishCleanup / advanceDiscardQueue until the madness window resolves
       }
+      // Frantic Search: "…then untap up to three lands" — after the discard, before priority returns
+      const untapAfter = forced?.thenUntapLands ?? 0
+      if (untapAfter) untapOwnLands(state, actor, untapAfter)
       if (forced) advanceDiscardQueue(state)
       else finishCleanup(state)
       break

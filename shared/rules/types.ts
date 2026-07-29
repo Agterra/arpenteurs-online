@@ -302,6 +302,11 @@ export interface RulesGameState {
     player: PlayerId
     count: number
     queue: PlayerId[]
+    /**
+     * Frantic Search: "…then untap up to three lands." The untap must wait for the discard to be
+     * answered, so it rides along here (same pattern as pendingScry.thenDraw).
+     */
+    thenUntapLands?: number
   } | null
   /**
    * An active WARD trigger resolving (CR 702.21): the spell/ability's controller
@@ -490,6 +495,8 @@ export interface LegalActions {
   manaFilters: { objId: ObjId; payFrom: ManaColor[]; outputs: [ManaColor, ManaColor][] }[]
   declarableAttackerIds: ObjId[]
   declarableBlockerIds: ObjId[]
+  /** what each potential defender charges per attacker (Propaganda / Ghostly Prison) — 0 when free */
+  attackTaxPerCreature: Record<PlayerId, number>
   /** players your attackers may be sent at (alive opponents) */
   attackablePlayerIds: PlayerId[]
   /** planeswalkers your attackers may be sent at (opponents' planeswalkers) */

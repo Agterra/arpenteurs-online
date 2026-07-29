@@ -314,6 +314,13 @@ export interface CardDefinition {
    */
   opponentsCantActOnYourTurn?: boolean
   /**
+   * Propaganda / Ghostly Prison: "Creatures can't attack you unless their controller pays {N} for
+   * each creature they control that's attacking you." A generic mana cost paid as attackers are
+   * declared (CR 508.1g): the engine sums the tax across the defender's taxing permanents and
+   * deducts it from the attacking player's pool, refusing the declaration if they can't pay.
+   */
+  attackTax?: number
+  /**
    * A static cost reduction this PERMANENT gives your spells (Foundry Inspector: "artifact spells
    * you cast cost {1} less"; the Medallions: "[colour] spells you cast cost {1} less"). Summed over
    * every matching permanent you control as a spell is cast, applied to the GENERIC portion only,

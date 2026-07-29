@@ -41,6 +41,7 @@ import {
   drawCards,
   drawCardsX,
   drawPerControlledCreature,
+  drawThenDiscardThenUntap,
   earthquakeX,
   exileGraveyard,
   extraLandDrop,
@@ -3511,4 +3512,44 @@ export const STARTER_SET: CardDefinition[] = [
   filterLand('Sunken Ruins', 'U', 'B'),
   filterLand('Fire-Lit Thicket', 'R', 'G'),
   filterLand('Wooded Bastion', 'G', 'W'),
+
+  // --- Coverage batch CARD33: attack taxes + Frantic Search ---
+  {
+    name: 'Propaganda',
+    types: ['Enchantment'],
+    manaCost: '{2}{U}',
+    colors: ['U'],
+    // "Creatures can't attack you unless their controller pays {2} for each creature they control
+    //  that's attacking you."
+    attackTax: 2,
+  },
+  {
+    name: 'Ghostly Prison',
+    types: ['Enchantment'],
+    manaCost: '{2}{W}',
+    colors: ['W'],
+    // same text as Propaganda, in white
+    attackTax: 2,
+  },
+  {
+    name: 'Windborn Muse',
+    types: ['Creature'],
+    subtypes: ['Spirit'],
+    manaCost: '{3}{W}',
+    colors: ['W'],
+    power: 2,
+    toughness: 3,
+    keywords: ['flying'],
+    // "Flying. Creatures can't attack you unless their controller pays {2} for each creature they
+    //  control that's attacking you."
+    attackTax: 2,
+  },
+  {
+    name: 'Frantic Search',
+    types: ['Instant'],
+    manaCost: '{2}{U}',
+    colors: ['U'],
+    // "Draw two cards, then discard two cards. Untap up to three lands."
+    spell: { effect: drawThenDiscardThenUntap(2, 2, 3) },
+  },
 ]

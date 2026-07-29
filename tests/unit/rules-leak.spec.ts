@@ -71,6 +71,28 @@ let pwAttacked = 0
 /** One random-but-legal action for whoever must act; returns false when stuck. */
 function randomAction(state: RulesGameState, rnd: () => number): boolean {
   const pick = <T>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)]!
+  /** tap one mana source for `who`, paying a sacrifice cost when the source has one (best effort) */
+  const tapSourceFor = (who: PlayerId, src: ObjId) => {
+    const lg = computeLegal(state, who)
+    const colors = lg.manaSourceColors[src] ?? []
+    const sacCount = lg.manaSourceSacCost[src] ?? 0
+    let sacrifices: ObjId[] | undefined
+    if (sacCount) {
+      const mine = state.zones.perPlayer[who]!.battlefield.filter(
+        (id) => id !== src && getDef(state.objects[id]!.defName).types.includes('Creature'),
+      )
+      if (mine.length < sacCount) return
+      sacrifices = mine.slice(0, sacCount)
+    }
+    try {
+      applyRulesAction(state, who, {
+        type: 'r.tapMana',
+        objId: src,
+        ...(colors.length ? { color: pick(colors) } : {}),
+        ...(sacrifices ? { sacrifices } : {}),
+      })
+    } catch { /* summoning sick, already tapped, … — best effort */ }
+  }
 
   if (state.pending) {
     const p = state.pending.player
@@ -90,6 +112,10 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
     if (state.pending.kind === 'attackers') {
       // attack a random legal defender: an opponent player OR an opponent's planeswalker
+      // an attack tax (Propaganda / Ghostly Prison) is paid as attackers are declared: float what the
+      // chosen defenders charge, else declare nothing — otherwise the run aborts on CANT_PAY
+      const taxOf = (d: PlayerId | ObjId) =>
+        legal.attackTaxPerCreature[Object.hasOwn(state.players, d) ? (d as PlayerId) : (state.objects[d]?.controllerId ?? '')] ?? 0
       const pws = legal.attackablePlaneswalkerIds
       const foes = [...legal.attackablePlayerIds, ...pws]
       // planeswalkers are weighted: with 2–4 players and rarely more than one PW on the
@@ -102,6 +128,18 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
             .map((attackerId) => ({ attackerId, defenderId: defender() }))
         : []
       if (attacks.some((a) => legal.attackablePlaneswalkerIds.includes(a.defenderId))) pwAttacked++ // coverage guard
+      const totalTax = attacks.reduce((n, a) => n + taxOf(a.defenderId), 0)
+      if (totalTax > 0) {
+        // tap sources for the tax; if it still can't be covered, attack with nobody
+        for (const src of computeLegal(state, p).manaSourceIds) {
+          if (Object.values(state.players[p]!.manaPool).reduce((x, y) => x + y, 0) >= totalTax) break
+          tapSourceFor(p, src)
+        }
+        if (Object.values(state.players[p]!.manaPool).reduce((x, y) => x + y, 0) < totalTax) {
+          applyRulesAction(state, p, { type: 'r.attackers', attacks: [] })
+          return true
+        }
+      }
       applyRulesAction(state, p, { type: 'r.attackers', attacks })
       return true
     }
@@ -718,6 +756,10 @@ const FUZZ_DECK = [
   // batch CARD32: a filter land — its hybrid payment + three-way output choice is a mana shape no
   // other card has, and the fuzzer uses it whenever it has a payable colour in the pool.
   ...Array(3).fill('Graven Cairns'),
+  // batch CARD33: an attack tax, so the fuzzer must float mana to attack (or declare nobody), and
+  // Frantic Search, whose discard carries the untap-lands follow-up.
+  ...Array(2).fill('Ghostly Prison'),
+  ...Array(2).fill('Frantic Search'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

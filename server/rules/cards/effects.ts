@@ -990,6 +990,37 @@ export const gainLifePerSpellThisTurn = (): Effect => (ctx) => {
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n} life (spells cast this turn).`)
 }
 
+/**
+ * Frantic Search: draw `draw`, then discard `discard`, then untap up to `untap` of your lands. The
+ * untap rides on the discard decision (pendingDiscard.thenUntapLands) so it happens AFTER the cards
+ * are chosen. SIMPLIFICATION: the printed "untap up to three lands" can untap ANY lands; the engine
+ * untaps up to that many of the controller's own tapped lands, which is the only sensible choice.
+ */
+export const drawThenDiscardThenUntap = (draw: number, discard: number, untap: number): Effect => (ctx) => {
+  for (let i = 0; i < draw; i++) drawOne(ctx.state, ctx.controllerId)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws ${draw} cards.`)
+  const hand = ctx.state.zones.perPlayer[ctx.controllerId]!.hand
+  const toDiscard = Math.min(discard, hand.length)
+  if (toDiscard > 0) {
+    openDiscard(ctx.state, [ctx.controllerId], toDiscard, untap)
+    return
+  }
+  untapOwnLands(ctx.state, ctx.controllerId, untap)
+}
+
+/** Untap up to `n` of a player's own tapped lands (Frantic Search's rider). */
+export function untapOwnLands(state: EffectContext['state'], player: PlayerId, n: number) {
+  let done = 0
+  for (const id of state.zones.perPlayer[player]!.battlefield) {
+    if (done >= n) break
+    const obj = state.objects[id]!
+    if (!obj.tapped || !getDef(obj.defName).types.includes('Land')) continue
+    obj.tapped = false
+    done++
+  }
+  if (done) logLine(state, `${state.players[player]!.name} untaps ${done} land${done === 1 ? '' : 's'}.`)
+}
+
 /** Bloom Tender: for each COLOUR among permanents you control, add one mana of that colour. */
 export const addManaPerColorAmongPermanents = (): Effect => (ctx) => {
   const colors = new Set<ManaColor>()
