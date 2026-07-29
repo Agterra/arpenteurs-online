@@ -188,6 +188,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     kickable: [],
     overloadable: [],
     freeCastable: [],
+    castExtraCost: [],
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
@@ -498,6 +499,42 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       }
   }
 
+  // Castable cards that also demand a cast-time additional cost (sacrifice / discard). Only cards
+  // whose other costs are already payable are listed; the server re-validates the picks.
+  const castExtraCost: LegalActions['castExtraCost'] = []
+  const unpayableExtra = new Set<ObjId>()
+  for (const id of [...castableIds, ...freeCastable]) {
+    const ac = getDef(state.objects[id]!.defName).additionalCost
+    if (!ac) continue
+    // is the additional cost payable at all? (no creature to sacrifice → the spell is uncastable)
+    const sacCount = ac.sacrifice?.count ?? 0
+    const sacPool = sacCount
+      ? zoneArr(state, viewer, 'battlefield').filter((pid) => {
+          const d = getDef(state.objects[pid]!.defName)
+          return ac.sacrifice!.filter === 'creature' ? defIsCreature(d) : defIsCreature(d) || d.types.includes('Artifact')
+        }).length
+      : 0
+    const discardCount = ac.discard ?? 0
+    const handOthers = zoneArr(state, viewer, 'hand').filter((h) => h !== id).length
+    if (sacCount > sacPool || discardCount > handOthers) {
+      unpayableExtra.add(id)
+      continue
+    }
+    castExtraCost.push({
+      objId: id,
+      sacrifice: sacCount,
+      sacFilter: ac.sacrifice?.filter ?? 'creature',
+      discard: discardCount,
+    })
+  }
+  // a spell whose additional cost cannot be paid is not castable at all (CR 601.2h)
+  const castableFinal = castableIds.filter((id) => !unpayableExtra.has(id))
+  castableIds.length = 0
+  castableIds.push(...castableFinal)
+  const freeFinal = freeCastable.filter((id) => !unpayableExtra.has(id))
+  freeCastable.length = 0
+  freeCastable.push(...freeFinal)
+
   // Cards you can cycle right now: cycling is instant speed (any time you have priority),
   // so this is not gated on isMain; affordability from the pre-tap potential pool (the
   // server re-checks against the actual pool). Only implemented cards carry cyclingCost,
@@ -597,6 +634,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     kickable,
     overloadable,
     freeCastable,
+    castExtraCost,
     flashbackable,
     retraceable,
     escapable,

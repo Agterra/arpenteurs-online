@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**380 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**385 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -40,6 +40,7 @@
 - Beast Within
 - Benalish Cavalry
 - Benalish Hero
+- Big Score
 - Birds of Paradise
 - Birth of Meletis
 - Bitterblossom
@@ -93,6 +94,7 @@
 - Dark Ritual
 - Darksteel Myr
 - Day of Judgment
+- Deadly Dispute
 - Deadly Rollick
 - Deathcap Glade
 - Delver of Secrets
@@ -346,6 +348,7 @@
 - Thought Vessel
 - Thran Dynamo
 - Three Visits
+- Thrill of Possibility
 - Titanic Growth
 - Tomakul Honor Guard
 - Tome Scour
@@ -356,6 +359,7 @@
 - Tukatongue Thallid
 - Underground River
 - Undergrowth Stadium
+- Unexpected Windfall
 - Unholy Strength
 - Unsummon
 - Utter End
@@ -366,6 +370,7 @@
 - Vault of Champions
 - Verdant Catacombs
 - Vicious Conquistador
+- Village Rites
 - Vindicate
 - Viscera Seer
 - Volcanic Hammer

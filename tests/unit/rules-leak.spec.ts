@@ -402,8 +402,29 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
         targets.push(pick(cands))
       }
     }
+    // cast-time additional costs (Village Rites: sacrifice a creature; Thrill of Possibility:
+    // discard a card) — pay them, so the sacrifice/discard paths (and the dies triggers a sacrifice
+    // fires ABOVE the spell) are exercised rather than the cast just being skipped
+    const extra = legal.castExtraCost.find((c) => c.objId === objId)
+    let sacrifices: ObjId[] | undefined
+    let discards: ObjId[] | undefined
+    if (extra) {
+      if (extra.sacrifice) {
+        const pool = state.zones.perPlayer[actor]!.battlefield.filter((id) => {
+          const d = getDef(state.objects[id]!.defName)
+          return extra.sacFilter === 'creature' ? d.types.includes('Creature') : d.types.includes('Creature') || d.types.includes('Artifact')
+        })
+        if (pool.length < extra.sacrifice) return tryPass()
+        sacrifices = pool.slice(0, extra.sacrifice)
+      }
+      if (extra.discard) {
+        const hand = state.zones.perPlayer[actor]!.hand.filter((id) => id !== objId)
+        if (hand.length < extra.discard) return tryPass()
+        discards = hand.slice(0, extra.discard)
+      }
+    }
     try {
-      applyRulesAction(state, actor, { type: 'r.cast', objId, targets, x, mode: modeIdx })
+      applyRulesAction(state, actor, { type: 'r.cast', objId, targets, x, mode: modeIdx, sacrifices, discards })
     } catch {
       return tryPass() // e.g. pool short after random taps, or illegal modal target — passing is always legal
     }
@@ -597,6 +618,11 @@ const FUZZ_DECK = [
   // target choice (the branch added for Bojuka Bog), and Prismatic Vista (life + sac + fetch).
   ...Array(2).fill('Blood Artist'),
   ...Array(2).fill('Prismatic Vista'),
+  // batch CARD24: cast-time additional costs — the fuzzer pays them from `legal.castExtraCost`, so
+  // both the sacrifice (its dies triggers landing above the spell) and the discard (hand→graveyard,
+  // hidden→public) run under the leak assertions.
+  ...Array(2).fill('Village Rites'),
+  ...Array(2).fill('Thrill of Possibility'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

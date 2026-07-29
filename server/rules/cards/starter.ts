@@ -2735,4 +2735,54 @@ export const STARTER_SET: CardDefinition[] = [
       effect: destroyPermanentGrantToken({ name: 'Human', power: 1, toughness: 1, subtypes: ['Human'] }),
     },
   },
+
+  // --- Coverage batch CARD24: additional costs chosen as you cast (sacrifice / discard) ---
+  {
+    name: 'Village Rites',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "As an additional cost to cast this spell, sacrifice a creature. Draw two cards."
+    additionalCost: { sacrifice: { count: 1, filter: 'creature' } },
+    spell: { effect: drawCards(2) },
+  },
+  {
+    name: 'Deadly Dispute',
+    types: ['Instant'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    // "As an additional cost to cast this spell, sacrifice an artifact or creature. Draw two cards
+    //  and create a Treasure token."
+    additionalCost: { sacrifice: { count: 1, filter: 'artifactOrCreature' } },
+    spell: { effect: sequence(drawCards(2), createTreasures(1)) },
+  },
+  {
+    name: 'Thrill of Possibility',
+    types: ['Instant'],
+    manaCost: '{1}{R}',
+    colors: ['R'],
+    // "As an additional cost to cast this spell, discard a card. Draw two cards."
+    additionalCost: { discard: 1 },
+    spell: { effect: drawCards(2) },
+  },
+  {
+    name: 'Big Score',
+    types: ['Instant'],
+    manaCost: '{3}{R}',
+    colors: ['R'],
+    // "As an additional cost to cast this spell, discard a card. Draw two cards and create two
+    //  Treasure tokens."
+    additionalCost: { discard: 1 },
+    spell: { effect: sequence(drawCards(2), createTreasures(2)) },
+  },
+  {
+    name: 'Unexpected Windfall',
+    types: ['Instant'],
+    manaCost: '{2}{R}{R}',
+    colors: ['R'],
+    // "As an additional cost to cast this spell, discard a card. Draw two cards and create two
+    //  Treasure tokens."
+    additionalCost: { discard: 1 },
+    spell: { effect: sequence(drawCards(2), createTreasures(2)) },
+  },
 ]

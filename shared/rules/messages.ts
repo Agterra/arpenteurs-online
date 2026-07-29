@@ -40,6 +40,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
     evoke: z.boolean().optional(), // cast for the evoke cost → sacrifice on enter (CR 702.74)
     overload: z.boolean().optional(), // cast for the overload cost → untargeted "each" body (CR 702.96)
     free: z.boolean().optional(), // cast without paying its mana cost (the "if you control a commander" cycle)
+    // additional costs chosen as the spell is cast: permanents sacrificed / cards discarded
+    sacrifices: z.array(Id).max(20).optional(),
+    discards: z.array(Id).max(20).optional(),
     faceDown: z.boolean().optional(), // cast face down as a 2/2 for {3} (morph, CR 702.37)
   }),
   z.object({

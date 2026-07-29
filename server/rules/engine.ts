@@ -1874,6 +1874,33 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         const hasCommander = zoneArr(state, actor, 'battlefield').some((id) => state.objects[id]!.isCommander)
         if (!hasCommander) throw new RulesError('NO_COMMANDER', 'You control no commander')
       }
+      // "As an additional cost to cast this spell, sacrifice a creature / discard a card."
+      // Validated here (before ANY mutation); paid below, once the mana payment is confirmed.
+      const extra = !adv && !splitHalf ? def.additionalCost : undefined
+      const sacIds = extra?.sacrifice ? [...new Set(msg.sacrifices ?? [])] : []
+      const discardIds = extra?.discard ? [...new Set(msg.discards ?? [])] : []
+      if (extra?.sacrifice) {
+        if (sacIds.length !== extra.sacrifice.count)
+          throw new RulesError('BAD_SACRIFICE', `Sacrifice exactly ${extra.sacrifice.count}`)
+        for (const id of sacIds) {
+          const o = state.objects[id]
+          const d = o ? getDef(o.defName) : null
+          const ok =
+            !!o && !!d && o.zone === 'battlefield' && o.controllerId === actor &&
+            (extra.sacrifice.filter === 'creature'
+              ? defIsCreature(d)
+              : defIsCreature(d) || d.types.includes('Artifact'))
+          if (!ok) throw new RulesError('BAD_SACRIFICE', 'Not a legal permanent to sacrifice')
+        }
+      }
+      if (extra?.discard) {
+        if (discardIds.length !== extra.discard) throw new RulesError('BAD_DISCARD', `Discard exactly ${extra.discard}`)
+        const hand = zoneArr(state, actor, 'hand')
+        for (const id of discardIds) {
+          if (id === obj.id) throw new RulesError('BAD_DISCARD', "That's the spell you're casting")
+          if (!hand.includes(id)) throw new RulesError('BAD_DISCARD', 'Not a card in your hand')
+        }
+      }
       // "As an additional cost to cast this spell, pay X life." (Toxic Deluge) — X is chosen by the
       // caster and is NOT added to the mana cost; validated here (CR 119.4), paid below with the
       // rest of the costs so a failed cast never drains life.
@@ -1941,6 +1968,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         state.players[actor]!.life -= lifeX
         logLine(state, `${name(state, actor)} pays ${lifeX} life (additional cost).`)
       }
+      // discards are part of the cost, so they happen before the spell is on the stack
+      for (const id of discardIds) {
+        logLine(state, `${name(state, actor)} discards ${objName(state, id)} (additional cost).`)
+        moveToGraveyard(state, id)
+      }
       if (retraceLand) {
         moveToGraveyard(state, retraceLand.id) // discard the land (hand→graveyard) as the retrace cost
         logLine(state, `${name(state, actor)} discards ${getDef(retraceLand.defName).name} (retrace).`)
@@ -1982,6 +2014,12 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           ? `${name(state, actor)} casts a face-down creature.` // no name — it's face down (morph)
           : `${name(state, actor)} casts ${adv ? adv.name : splitHalf ? splitHalf.name : def.name}${adv ? ' (adventure)' : fromFlashback ? ' (flashback)' : fromRetrace ? ' (retrace)' : fromEscape ? ' (escape)' : fromForetell ? ' (foretold)' : fromCommand ? ' from the command zone' : ''}${targetNames.length ? ` targeting ${targetNames.join(', ')}` : ''}.`,
       )
+      // the sacrifice is paid AFTER the spell is on the stack, so its dies triggers land above it
+      // and resolve first (CR 603.3b) — the same ordering as an activated ability's sac cost
+      for (const id of sacIds) {
+        logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)} (additional cost).`)
+        moveToGraveyard(state, id)
+      }
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, obj.id, msg.targets, actor)
       // cascade (CR 702.85): "when you cast this spell" — trigger goes on the stack above it

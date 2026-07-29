@@ -253,6 +253,13 @@ export interface CardDefinition {
    */
   additionalLifeCostX?: boolean
   /**
+   * "As an additional cost to cast this spell, sacrifice a creature / discard a card." The caster
+   * chooses what to pay as they cast it (`r.cast.sacrifices` / `r.cast.discards`); the engine
+   * validates before any mutation and pays it with the other costs. A sacrifice hits the graveyard
+   * AFTER the spell is on the stack, so its dies triggers resolve above the spell (CR 603.3b).
+   */
+  additionalCost?: { sacrifice?: { count: number; filter: 'creature' | 'artifactOrCreature' }; discard?: number }
+  /**
    * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
    * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the
    * controller's draw steps (→ the next chapter), and sacrifices it after the final chapter's

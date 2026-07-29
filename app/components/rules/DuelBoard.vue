@@ -101,6 +101,11 @@ const equipping = ref<ObjId | null>(null)
 // forced-sacrifice (edict) selection + sacrifice-as-cost (sac outlet) picker
 const selSacrifice = ref<Set<ObjId>>(new Set())
 const costSac = ref<{ objId: ObjId; abilityIndex: number; count: number } | null>(null)
+// cast-time additional cost (Village Rites / Thrill of Possibility): the permanents to sacrifice
+// and/or the cards to discard, collected before the mana payment panel opens
+const castExtra = ref<{ card: RulesClientCard; targets: (ObjId | PlayerId)[]; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature'; discard: number; free: boolean } | null>(null)
+const castExtraSacPick = ref<Set<ObjId>>(new Set())
+const castExtraDiscardPick = ref<Set<ObjId>>(new Set())
 const costSacPick = ref<Set<ObjId>>(new Set())
 const blockPairs = ref<{ blockerId: ObjId; attackerId: ObjId }[]>([])
 const pendingBlocker = ref<ObjId | null>(null)
@@ -122,6 +127,7 @@ const casting = ref<{
   alt?: AltKind
   escapeCount?: number // escape: how many other graveyard cards to exile as the cost
   lifeX?: boolean // X is paid in LIFE as an additional cost (Toxic Deluge) — stepper, no mana added
+  extraPicks?: { sacrifices: ObjId[]; discards: ObjId[] } // cast-time sacrifice / discard picks
   buybackCost?: string // enables the buyback toggle
   buyback?: boolean // whether the player chose to pay buyback
 } | null>(null)
@@ -260,6 +266,8 @@ function confirmCast() {
       evoke: c.alt === 'evoke' || undefined,
       overload: c.alt === 'overload' || undefined,
       free: c.alt === 'freeCmd' || undefined,
+      sacrifices: c.extraPicks?.sacrifices.length ? c.extraPicks.sacrifices : undefined,
+      discards: c.extraPicks?.discards.length ? c.extraPicks.discards : undefined,
       retraceLand: c.alt === 'retrace' ? firstLandInHand() : undefined,
       escapeExile: c.alt === 'escape' ? firstNOtherInGraveyard(c.cardId, c.escapeCount ?? 0) : undefined,
     })
@@ -306,7 +314,7 @@ function beginAltCast(card: RulesClientCard, kind: AltKind, cost: string, escape
   graveyardTargeting.value = null
   const spec = altTargetClass(kind, card.defName ?? '')
   if (spec) targeting.value = { objId: card.id, spec, alt: kind, altCost: cost }
-  else {
+  else if (!(kind === 'freeCmd' && beginCastExtraCost(card, [], true))) {
     beginPayment(card, [], null, kind, cost)
     if (casting.value) casting.value.escapeCount = escapeCount
   }
@@ -359,7 +367,7 @@ function startCast(card: RulesClientCard) {
   if (gy) return void (graveyardTargeting.value = { objId: card.id, creatureOnly: gy === 'creature' }) // pick a card from your graveyard
   const spec = TARGETED_SPELLS[name]
   if (spec) targeting.value = { objId: card.id, spec }
-  else beginPayment(card, [])
+  else if (!beginCastExtraCost(card, [])) beginPayment(card, [])
 }
 /** cards in your own graveyard eligible for the active recursion spell. */
 const graveyardTargets = computed<ObjId[]>(() => {
@@ -432,6 +440,13 @@ function onHandClick(id: ObjId) {
   const card = cardOf(id)
   const l = legal.value
   if (!card || !l) return
+  if (castExtra.value?.discard) {
+    const next = new Set(castExtraDiscardPick.value)
+    if (next.has(id)) next.delete(id)
+    else if (id !== castExtra.value.card.id && next.size < castExtra.value.discard) next.add(id)
+    castExtraDiscardPick.value = next
+    return
+  }
   if (l.needsPutBack) {
     const i = selPutBack.value.indexOf(id)
     if (i >= 0) selPutBack.value = selPutBack.value.filter((x) => x !== id)
@@ -460,6 +475,9 @@ function onBattlefieldClick(id: ObjId) {
   const card = cardOf(id)
   const l = legal.value
   if (!card || !l || !st.value) return
+
+  // collecting a cast-time sacrifice (Village Rites / Deadly Dispute) takes precedence
+  if (castExtra.value?.sacrifice) return void toggleCastExtraSac(id)
 
   if (multiTargeting.value) {
     // collect the ordered fight targets; when both are chosen, move to payment
@@ -640,6 +658,37 @@ type Activation = {
   lifeCost: number
 }
 const activating = ref<Activation | null>(null)
+const extraCostOf = (id: ObjId) => legal.value?.castExtraCost.find((c) => c.objId === id) ?? null
+/** open the additional-cost picker; returns false when the card needs none */
+function beginCastExtraCost(card: RulesClientCard, targets: (ObjId | PlayerId)[], free = false): boolean {
+  const ec = extraCostOf(card.id)
+  if (!ec || (!ec.sacrifice && !ec.discard)) return false
+  castExtra.value = { card, targets, sacrifice: ec.sacrifice, sacFilter: ec.sacFilter, discard: ec.discard, free }
+  castExtraSacPick.value = new Set()
+  castExtraDiscardPick.value = new Set()
+  return true
+}
+function cancelCastExtra() {
+  castExtra.value = null
+  castExtraSacPick.value = new Set()
+  castExtraDiscardPick.value = new Set()
+}
+const castExtraReady = computed(
+  () =>
+    !!castExtra.value &&
+    castExtraSacPick.value.size === castExtra.value.sacrifice &&
+    castExtraDiscardPick.value.size === castExtra.value.discard,
+)
+/** picks collected → carry on into the normal payment panel, remembering them */
+function confirmCastExtra() {
+  const c = castExtra.value
+  if (!c || !castExtraReady.value) return
+  const picks = { sacrifices: [...castExtraSacPick.value], discards: [...castExtraDiscardPick.value] }
+  cancelCastExtra()
+  beginPayment(c.card, c.targets, null, c.free ? 'freeCmd' : undefined, c.free ? '' : undefined)
+  if (casting.value) casting.value.extraPicks = picks
+}
+
 const activationFor = (id: ObjId): Activation | null => legal.value?.activations.find((a) => a.objId === id) ?? null
 function startActivate(id: ObjId) {
   const a = activationFor(id)
@@ -843,6 +892,19 @@ function confirmSacrifice() {
 function beginCostSacrifice(objId: ObjId, abilityIndex: number, count: number) {
   costSac.value = { objId, abilityIndex, count }
   costSacPick.value = new Set()
+}
+function toggleCastExtraSac(id: ObjId) {
+  const c = castExtra.value
+  if (!c?.sacrifice) return
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield' || card.controllerId !== you.value) return
+  const line = display.value[card.defName ?? '']?.typeLine ?? ''
+  const ok = c.sacFilter === 'creature' ? line.includes('Creature') : line.includes('Creature') || line.includes('Artifact')
+  if (!ok) return
+  const next = new Set(castExtraSacPick.value)
+  if (next.has(id)) next.delete(id)
+  else if (next.size < c.sacrifice) next.add(id)
+  castExtraSacPick.value = next
 }
 function toggleCostSac(id: ObjId) {
   const next = new Set(costSacPick.value)
@@ -1431,7 +1493,7 @@ onBeforeUnmount(() => {
                   :card="st.cards[id]!"
                   :display="display[st.cards[id]!.defName ?? '']"
                   :glow="bottomingActive || (!!legal && (legal.needsDiscard || legal.needsPutBack))"
-                  :selected="selDiscard.has(id) || bottoming.has(id) || selPutBack.includes(id)"
+                  :selected="selDiscard.has(id) || bottoming.has(id) || selPutBack.includes(id) || castExtraDiscardPick.has(id)"
                   manual
                   @click="onHandClick(id)"
                   @menu="openMenu($event, id)"
@@ -1759,6 +1821,30 @@ onBeforeUnmount(() => {
             <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
               Pay ward
             </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- cast-time additional cost: sacrifice and/or discard, then on to the mana payment -->
+      <div v-if="castExtra" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-w-md flex-col rounded-lg border border-rose-400 bg-default p-4 shadow-xl">
+          <p class="mb-1 text-sm font-semibold">
+            {{ display[castExtra.card.defName ?? '']?.name ?? 'Spell' }} — additional cost
+          </p>
+          <p class="mb-3 text-xs text-dimmed">
+            <span v-if="castExtra.sacrifice">
+              Click {{ castExtra.sacrifice }}
+              {{ castExtra.sacFilter === 'creature' ? 'creature' : 'artifact or creature' }} you control
+              ({{ castExtraSacPick.size }}/{{ castExtra.sacrifice }}).
+            </span>
+            <span v-if="castExtra.discard">
+              Click {{ castExtra.discard }} card{{ castExtra.discard === 1 ? '' : 's' }} in your hand to discard
+              ({{ castExtraDiscardPick.size }}/{{ castExtra.discard }}).
+            </span>
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton size="sm" variant="ghost" color="neutral" @click="cancelCastExtra">Cancel</UButton>
+            <UButton size="sm" :disabled="!castExtraReady" @click="confirmCastExtra">Pay and continue</UButton>
           </div>
         </div>
       </div>

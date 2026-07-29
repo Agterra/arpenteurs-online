@@ -499,6 +499,12 @@ export interface LegalActions {
   overloadable: { objId: ObjId; cost: string }[]
   /** hand cards castable for FREE right now because you control a commander (Fierce Guardianship) */
   freeCastable: ObjId[]
+  /**
+   * Castable cards that also demand an additional cost chosen at cast time (Village Rites: sacrifice
+   * a creature; Thrill of Possibility: discard a card). The client collects the picks and passes
+   * them to r.cast as `sacrifices` / `discards`.
+   */
+  castExtraCost: { objId: ObjId; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature'; discard: number }[]
   /** a ward trigger is resolving and YOU must decide to pay or let your spell/ability be countered (CR 702.21) */
   needsWard: boolean
   /** the ward cost you'd pay, and whether your current mana pool covers it */
