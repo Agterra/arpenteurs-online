@@ -226,6 +226,22 @@ export function putCounters(state: RulesGameState, objId: ObjId, kind: string, n
   return total
 }
 
+/**
+ * The ONE place a player's life total changes. "Your life total can't change" (Teferi's Protection)
+ * is enforced here, so no gain, loss or damage can slip past it; the attempt is logged so players can
+ * see why nothing happened. Returns the delta actually applied.
+ */
+export function changeLife(state: RulesGameState, player: PlayerId, delta: number): number {
+  const p = state.players[player]
+  if (!p || delta === 0) return 0
+  if (p.lifeCantChange) {
+    logLine(state, `${p.name}'s life total can't change.`)
+    return 0
+  }
+  p.life += delta
+  return delta
+}
+
 export function moveToGraveyard(state: RulesGameState, objId: ObjId) {
   const obj = state.objects[objId]
   if (obj?.isCommander) {

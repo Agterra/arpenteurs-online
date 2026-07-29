@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**590 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**592 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -508,6 +508,7 @@
 - Talisman of Resilience
 - Talisman of Unity
 - Teferi's Honor Guard
+- Teferi's Protection
 - Temple Garden
 - Temple of Abandon
 - Temple of Deceit
@@ -522,6 +523,7 @@
 - Temple of Triumph
 - Terminate
 - Terramorphic Expanse
+- The One Ring
 - The Ozolith
 - Thought Scour
 - Thought Vessel

@@ -19,6 +19,7 @@ import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, de
 import type { Keyword, ManaColor } from '#shared/rules/types'
 import { handCardMatches, proliferateTargets, untapOwnLands } from './cards/effects'
 import {
+  changeLife,
   putCounters,
   alivePlayers,
   apnapOrder,
@@ -808,6 +809,12 @@ function beginStep(state: RulesGameState) {
       p.extraLandsThisTurn = 0
       p.spellsThisTurn = 0
       p.createdTokenThisTurn = false // Idol of Oblivion: "only if you created a token this turn"
+      // "until your next turn" — Teferi's Protection / The One Ring's shield ends as that turn begins
+      if (p.protectedFromEverything || p.lifeCantChange) {
+        p.protectedFromEverything = false
+        p.lifeCantChange = false
+        logLine(state, `${p.name}'s protection from everything ends.`)
+      }
       // CR 502.1 — phasing happens FIRST, before permanents untap
       runPhasing(state, ap)
       for (const obj of Object.values(state.objects)) {
@@ -1059,6 +1066,12 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
     const infect = hasKw(state, hit.source, 'infect')
     if (Object.hasOwn(state.players, hit.target)) {
       const victim = state.players[hit.target as PlayerId]!
+      // "you gain protection from everything" (Teferi's Protection, The One Ring): all damage to that
+      // player is prevented — CR 702.16e — so nothing is dealt and no lifelink is gained
+      if (victim.protectedFromEverything) {
+        logLine(state, `${victim.name} has protection from everything — ${hit.amount} damage prevented.`)
+        continue
+      }
       dealt = true
       if (infect) {
         // infect deals damage to players as poison counters, not life loss (CR 702.90b) — and
@@ -1066,11 +1079,11 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
         victim.poison += hit.amount
         logLine(state, `${victim.name} gets ${hit.amount} poison counter${hit.amount === 1 ? '' : 's'} (${victim.poison} total).`)
       } else if (hit.fromCommander) {
-        victim.life -= hit.amount
+        changeLife(state, hit.target as PlayerId, -hit.amount)
         victim.commanderDamage[hit.fromCommander] = (victim.commanderDamage[hit.fromCommander] ?? 0) + hit.amount
         logLine(state, `${victim.name} takes ${hit.amount} commander damage (${victim.commanderDamage[hit.fromCommander]} total).`)
       } else {
-        victim.life -= hit.amount
+        changeLife(state, hit.target as PlayerId, -hit.amount)
         logLine(state, `${victim.name} takes ${hit.amount} combat damage.`)
       }
     } else if (isCreatureOnBattlefield(state, hit.target)) {
@@ -1103,7 +1116,7 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
     if (dealt && hit.amount > 0 && hasKw(state, hit.source, 'lifelink')) {
       const controller = state.objects[hit.source]?.controllerId
       if (controller && state.players[controller]) {
-        state.players[controller]!.life += hit.amount
+        changeLife(state, controller, hit.amount)
         logLine(state, `${state.players[controller]!.name} gains ${hit.amount} life (lifelink).`)
       }
     }
@@ -1444,6 +1457,7 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     // suspend (CR 702.62e): a creature cast from suspend enters with haste
     if (item.suspendHaste && defIsCreature(def)) obj.summoningSick = false
     moveTo(state, obj.id, 'battlefield') // moveTo initialises loyalty for a planeswalker (CR 306.5b)
+    obj.enteredByCast = true // The One Ring's ETB reads this ("if you cast it")
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
     // (entersTapped is applied by moveTo for every entry path)
     fireEntersTriggers(state, obj.id) // a face-down creature has no own ETB (guarded in fireEntersTriggers)
@@ -2084,7 +2098,11 @@ export function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId 
     // protection from [colour]: can't be targeted by a source of that colour (any controller — CR 702.16e)
     if (protectionColorsOf(state, obj).some((c) => srcColors.includes(c))) return false
   }
+  // "protection from everything": an OPPONENT's spell or ability can't target that player (CR 702.16e)
+  const playerShielded =
+    isPlayer && t !== byController && (state.players[t as PlayerId]!.protectedFromEverything ?? false)
   if (spec.kind === 'player') {
+    if (playerShielded) return false
     if (spec.filter?.controller === 'opponent') return isPlayer && t !== byController
     if (spec.filter?.controller === 'you') return isPlayer && t === byController
     return isPlayer
@@ -2103,7 +2121,7 @@ export function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId 
   // anyTarget = "any target" (CR 115.4): a creature, a player, OR a planeswalker. A filter applies to
   // the permanent side only, which is how "target player or planeswalker" is expressed (Boros Charm:
   // anyTarget + excludeTypes ['Creature']).
-  if (isPlayer) return true
+  if (isPlayer) return !playerShielded
   if (isCreature || isPlaneswalkerOnBattlefield(state, t))
     return matchesFilter(state, state.objects[t as ObjId]!, spec.filter, byController)
   return false
@@ -2312,7 +2330,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       if (manaCost.tap) obj.tapped = true
       if (manaLifeCost) {
-        state.players[actor]!.life -= manaLifeCost
+        changeLife(state, actor, -manaLifeCost)
         logLine(state, `${name(state, actor)} pays ${manaLifeCost} life for ${objName(state, obj.id)}.`)
       }
       if (ability.chooseColor && ability.manaEqualToDevotion) {
@@ -2346,7 +2364,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (manaSacIds.length) checkSBA(state)
       // a mana ability that hurts (Ancient Tomb, City of Brass, the pain lands)
       if (ability.damageOnTapForMana) {
-        state.players[actor]!.life -= ability.damageOnTapForMana
+        changeLife(state, actor, -ability.damageOnTapForMana)
         logLine(state, `${objName(state, obj.id)} deals ${ability.damageOnTapForMana} damage to ${name(state, actor)}.`)
       }
       // "Sacrifice this token" as part of a MANA ability's cost (a Treasure). Mana abilities never
@@ -2444,7 +2462,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       })
       if (ability.cost.tap) obj.tapped = true
       if (lifeCost) {
-        state.players[actor]!.life -= lifeCost
+        changeLife(state, actor, -lifeCost)
         logLine(state, `${name(state, actor)} pays ${lifeCost} life.`)
       }
       const abilityStackId = mintCardId()
@@ -2689,7 +2707,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const spent = spendSpellMana(state, actor, payment.deduct, def)
       for (const c of convokeCreatures) c.tapped = true // convoke is paid by tapping (CR 702.51c)
       if (lifeX) {
-        state.players[actor]!.life -= lifeX
+        changeLife(state, actor, -lifeX)
         logLine(state, `${name(state, actor)} pays ${lifeX} life (additional cost).`)
       }
       // discards are part of the cost, so they happen before the spell is on the stack
@@ -3437,7 +3455,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const paid = msg.pay && state.players[actor]!.life >= pec.life
       if (obj && obj.zone === 'battlefield') {
         if (paid) {
-          state.players[actor]!.life -= pec.life
+          changeLife(state, actor, -pec.life)
           logLine(state, `${name(state, actor)} pays ${pec.life} life — ${objName(state, obj.id)} enters untapped.`)
         } else {
           obj.tapped = true

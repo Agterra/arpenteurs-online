@@ -998,6 +998,10 @@ const FUZZ_DECK = [
   // batch CARD53: two of the Eldraine cycle — Witch's Cottage moves a card graveyard→LIBRARY TOP (the
   // leak-critical public→hidden re-mint) when it enters untapped, and Dwarven Mine's untapped ETB makes
   // a token; both also exercise the subtype-counting enters-tapped condition on every entry path.
+  // batch CARD54: The One Ring — its cast-only ETB shields its controller from targeting and damage for
+  // a full turn cycle (so the fuzzer's spells must respect an untargetable player), and its burden
+  // counters make it draw ever more cards while bleeding life.
+  ...Array(2).fill('The One Ring'),
   ...Array(3).fill("Witch's Cottage"),
   ...Array(2).fill('Dwarven Mine'),
   ...Array(2).fill('Animate Dead'),

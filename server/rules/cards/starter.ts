@@ -17,6 +17,7 @@ import {
   addManaPerColorAmongPermanents,
   addManaPerLandSubtype,
   addManaPerOpponentTappedLand,
+  burdenCounterThenDraw,
   chaosWarpTarget,
   chooseFromHand,
   countersOnEachCreatureOfTarget,
@@ -80,6 +81,7 @@ import {
   lookTransformIfInstantSorcery,
   loseAllAbilities,
   loseLife,
+  loseLifePerBurdenCounter,
   loseTheGame,
   makeUnblockable,
   mill,
@@ -88,9 +90,11 @@ import {
   moveAllCountersToTarget,
   moveLastCountersToSelf,
   noop,
+  phaseOutAllYouControl,
   playersDiscard,
   playersSacrifice,
   proliferate,
+  protectionFromEverything,
   pump,
   pumpControlled,
   pumpSelf,
@@ -4592,5 +4596,34 @@ export const STARTER_SET: CardDefinition[] = [
       condition: (state, _c, sourceId) => !state.objects[sourceId]?.tapped,
       effect: createToken(FOOD),
     },
+  },
+  // --- Coverage batch CARD54: "protection from everything" + phasing ---
+  {
+    name: "Teferi's Protection",
+    types: ['Instant'],
+    manaCost: '{2}{W}',
+    colors: ['W'],
+    // "Until your next turn, your life total can't change and you gain protection from everything.
+    //  All permanents you control phase out."
+    spell: {
+      effect: sequence(protectionFromEverything({ lifeCantChange: true }), phaseOutAllYouControl()),
+    },
+  },
+  {
+    name: 'The One Ring',
+    types: ['Artifact'],
+    supertypes: ['Legendary'],
+    manaCost: '{4}',
+    keywords: ['indestructible'],
+    // "Indestructible / When this artifact enters, if you cast it, you gain protection from everything
+    //  until your next turn. / At the beginning of your upkeep, you lose 1 life for each burden counter
+    //  on this artifact. / {T}: Put a burden counter on this artifact, then draw a card for each burden
+    //  counter on it."
+    enters: {
+      condition: (state, _c, sourceId) => !!state.objects[sourceId]?.enteredByCast,
+      effect: protectionFromEverything(),
+    },
+    upkeep: { effect: loseLifePerBurdenCounter() },
+    abilities: [{ kind: 'activated', cost: { tap: true }, effect: burdenCounterThenDraw() }],
   },
 ]

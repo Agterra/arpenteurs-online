@@ -6,7 +6,7 @@
 import type { Ability, EffectContext, Effect } from './dsl'
 import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { parseManaCost } from '#shared/utils/manaCost'
-import { putCounters, apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
+import { changeLife, putCounters, apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
 import { getDef, defKey, registerCopyToken, registerImplementedToken } from './registry'
 import { mintCardId, randomIndex } from '../../game/rng'
 // currentPower is safe to import: characteristics is already in this module's
@@ -56,7 +56,7 @@ const protectedFromColors = (ctx: EffectContext, obj: { id: ObjId; defName: stri
 export const dealDamage = (n: number): Effect => (ctx) => {
   for (const t of ctx.targets) {
     if (isPlayerId(ctx, t)) {
-      ctx.state.players[t]!.life -= n
+      changeLife(ctx.state, t, -(n))
       logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to ${ctx.state.players[t]!.name}.`)
     } else if (isCreatureOnBattlefield(ctx.state, t)) {
       ctx.state.objects[t]!.damageMarked += n
@@ -190,11 +190,11 @@ export const fight = (): Effect => (ctx) => {
   logLine(ctx.state, `${getDef(oa.defName).name} and ${getDef(ob.defName).name} fight.`)
   // lifelink applies to ANY damage a source deals (CR 702.15e), including fight damage
   if (aDealsToB && kwA.includes('lifelink')) {
-    ctx.state.players[oa.controllerId]!.life += pa
+    changeLife(ctx.state, oa.controllerId, pa)
     logLine(ctx.state, `${ctx.state.players[oa.controllerId]!.name} gains ${pa} life (lifelink).`)
   }
   if (bDealsToA && kwB.includes('lifelink')) {
-    ctx.state.players[ob.controllerId]!.life += pb
+    changeLife(ctx.state, ob.controllerId, pb)
     logLine(ctx.state, `${ctx.state.players[ob.controllerId]!.name} gains ${pb} life (lifelink).`)
   }
 }
@@ -272,7 +272,7 @@ export const gainLifeEqualToPowerForController = (): Effect => (ctx) => {
     if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
     const obj = ctx.state.objects[t]!
     const power = Math.max(0, currentPower(ctx.state, obj))
-    ctx.state.players[obj.controllerId]!.life += power
+    changeLife(ctx.state, obj.controllerId, power)
     logLine(ctx.state, `${ctx.state.players[obj.controllerId]!.name} gains ${power} life.`)
   }
 }
@@ -358,7 +358,7 @@ export const destroyLoseLifeEqualToMV = (): Effect => (ctx) => {
       logLine(ctx.state, `${def.name} is destroyed.`)
       moveToGraveyard(ctx.state, t)
     }
-    ctx.state.players[ctx.controllerId]!.life -= mv
+    changeLife(ctx.state, ctx.controllerId, -(mv))
     logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${mv} life.`)
   }
 }
@@ -377,7 +377,7 @@ export const reanimate = (): Effect => (ctx) => {
     moveTo(ctx.state, t, 'battlefield')
     logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} reanimates ${def.name}.`)
     fireEntersTriggers(ctx.state, t)
-    ctx.state.players[ctx.controllerId]!.life -= mv
+    changeLife(ctx.state, ctx.controllerId, -(mv))
     logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${mv} life.`)
   }
 }
@@ -627,7 +627,7 @@ export const targetPlayerDrawDrain = (draw: number, life: number): Effect => (ct
   for (const t of ctx.targets) {
     if (!isPlayerId(ctx, t)) continue
     for (let i = 0; i < draw; i++) drawOne(ctx.state, t)
-    ctx.state.players[t]!.life -= life
+    changeLife(ctx.state, t, -(life))
     logLine(ctx.state, `${ctx.state.players[t]!.name} draws ${draw} and loses ${life} life.`)
   }
 }
@@ -879,7 +879,7 @@ export const gainAndDrawEqualToLands = (): Effect => (ctx) => {
   const x = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.filter((id) =>
     getDef(ctx.state.objects[id]!.defName).types.includes('Land'),
   ).length
-  ctx.state.players[ctx.controllerId]!.life += x
+  changeLife(ctx.state, ctx.controllerId, x)
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${x} life.`)
   for (let i = 0; i < x; i++) drawOne(ctx.state, ctx.controllerId)
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws ${x} card${x === 1 ? '' : 's'}.`)
@@ -896,13 +896,13 @@ export const addLoyaltyToOtherPlaneswalkers = (n: number): Effect => (ctx) => {
 
 /** Controller gains N life. */
 export const gainLife = (n: number): Effect => (ctx) => {
-  ctx.state.players[ctx.controllerId]!.life += n
+  changeLife(ctx.state, ctx.controllerId, n)
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n} life.`)
 }
 
 /** Controller loses N life (payment / drawback). */
 export const loseLife = (n: number): Effect => (ctx) => {
-  ctx.state.players[ctx.controllerId]!.life -= n
+  changeLife(ctx.state, ctx.controllerId, -(n))
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${n} life.`)
 }
 
@@ -911,7 +911,7 @@ export const eachOpponentLoses = (n: number): Effect => (ctx) => {
   for (const pid of ctx.state.turnOrder) {
     if (pid === ctx.controllerId) continue
     const p = ctx.state.players[pid]!
-    if (!p.hasLost) p.life -= n
+    if (!p.hasLost) changeLife(ctx.state, pid, -n)
   }
   logLine(ctx.state, `Each opponent loses ${n} life.`)
 }
@@ -926,7 +926,7 @@ export const dealToEachOpponent = (n: number): Effect => (ctx) => {
   for (const pid of ctx.state.turnOrder) {
     if (pid === ctx.controllerId) continue
     const p = ctx.state.players[pid]!
-    if (!p.hasLost) p.life -= n
+    if (!p.hasLost) changeLife(ctx.state, pid, -n)
   }
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each opponent.`)
 }
@@ -935,7 +935,7 @@ export const dealToEachOpponent = (n: number): Effect => (ctx) => {
 export const dealToEachPlayer = (n: number): Effect => (ctx) => {
   for (const pid of ctx.state.turnOrder) {
     const p = ctx.state.players[pid]!
-    if (!p.hasLost) p.life -= n
+    if (!p.hasLost) changeLife(ctx.state, pid, -n)
   }
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each player.`)
 }
@@ -987,8 +987,8 @@ export const addManaPerLandSubtype = (color: ManaColor, subtype: string): Effect
 export const drainTargetPlayer = (n: number): Effect => (ctx) => {
   for (const t of ctx.targets) {
     if (!isPlayerId(ctx, t)) continue
-    ctx.state.players[t]!.life -= n
-    ctx.state.players[ctx.controllerId]!.life += n
+    changeLife(ctx.state, t, -(n))
+    changeLife(ctx.state, ctx.controllerId, n)
     logLine(ctx.state, `${ctx.state.players[t]!.name} loses ${n} life; ${ctx.state.players[ctx.controllerId]!.name} gains ${n}.`)
   }
 }
@@ -1003,10 +1003,10 @@ export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) =
   let gained = 0
   for (const pid of ctx.state.turnOrder) {
     if (pid === ctx.controllerId || ctx.state.players[pid]!.hasLost) continue
-    ctx.state.players[pid]!.life -= x
+    changeLife(ctx.state, pid, -(x))
     gained += x
   }
-  ctx.state.players[ctx.controllerId]!.life += gained
+  changeLife(ctx.state, ctx.controllerId, gained)
   logLine(
     ctx.state,
     `Each opponent loses ${x} life (devotion to {${color}}); ${ctx.state.players[ctx.controllerId]!.name} gains ${gained}.`,
@@ -1054,7 +1054,7 @@ export const destroyPermanentControllerGains = (life: number): Effect => (ctx) =
       logLine(ctx.state, `${nm} is destroyed.`)
       moveToGraveyard(ctx.state, t)
     }
-    ctx.state.players[owner]!.life += life
+    changeLife(ctx.state, owner, life)
     logLine(ctx.state, `${ctx.state.players[owner]!.name} gains ${life} life.`)
   }
 }
@@ -1070,7 +1070,7 @@ export const drawPerControlledCreature = (): Effect => (ctx) => {
 export const gainLifePerBigCreature = (power: number, life: number): Effect => (ctx) => {
   const n = battlefieldCreatures(ctx.state, ctx.controllerId).filter((c) => currentPower(ctx.state, c) >= power).length
   if (!n) return
-  ctx.state.players[ctx.controllerId]!.life += n * life
+  changeLife(ctx.state, ctx.controllerId, n * life)
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n * life} life (ferocious).`)
 }
 
@@ -1078,7 +1078,7 @@ export const gainLifePerBigCreature = (power: number, life: number): Effect => (
 export const gainLifePerSpellThisTurn = (): Effect => (ctx) => {
   const n = ctx.state.players[ctx.controllerId]!.spellsThisTurn ?? 0
   if (!n) return
-  ctx.state.players[ctx.controllerId]!.life += n
+  changeLife(ctx.state, ctx.controllerId, n)
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n} life (spells cast this turn).`)
 }
 
@@ -1506,7 +1506,7 @@ export const untapSelf = (): Effect => (ctx) => {
 
 /** "…it deals N damage to you" (Mana Vault's draw-step trigger). */
 export const damageToController = (n: number): Effect => (ctx) => {
-  ctx.state.players[ctx.controllerId]!.life -= n
+  changeLife(ctx.state, ctx.controllerId, -(n))
   logLine(
     ctx.state,
     `${getDef(ctx.state.objects[ctx.sourceId]?.defName ?? '').name} deals ${n} damage to ${ctx.state.players[ctx.controllerId]!.name}.`,
@@ -1648,6 +1648,55 @@ export const graveyardCardOnTopOfLibrary = (): Effect => (ctx) => {
   }
 }
 
+/**
+ * "You gain protection from everything until your next turn" (The One Ring), optionally with "your life
+ * total can't change" (Teferi's Protection). Both flags are cleared at the player's next untap step.
+ */
+export const protectionFromEverything = (opts?: { lifeCantChange?: boolean }): Effect => (ctx) => {
+  const p = ctx.state.players[ctx.controllerId]!
+  p.protectedFromEverything = true
+  if (opts?.lifeCantChange) p.lifeCantChange = true
+  logLine(
+    ctx.state,
+    `${p.name} gains protection from everything until their next turn${opts?.lifeCantChange ? ' and their life total cannot change' : ''}.`,
+  )
+}
+
+/**
+ * "All permanents you control phase out" (Teferi's Protection) — CR 702.26. They phase back in at the
+ * start of that player's next untap step, which `runPhasing` already handles for anything phased out
+ * without a `phasedOutBy` host.
+ */
+export const phaseOutAllYouControl = (): Effect => (ctx) => {
+  const ids = [...ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield]
+  for (const id of ids) {
+    const obj = ctx.state.objects[id]
+    if (!obj || obj.phasedOut) continue
+    obj.phasedOut = true
+    obj.phasedOutBy = undefined // phases in on its own at its controller's next untap step
+  }
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name}'s ${ids.length} permanents phase out.`)
+}
+
+/**
+ * The One Ring: "{T}: Put a burden counter on this artifact, then draw a card for each burden counter
+ * on it." The counter goes through putCounters (so a doubler applies), and the draw count is read AFTER.
+ */
+export const burdenCounterThenDraw = (): Effect => (ctx) => {
+  putCounters(ctx.state, ctx.sourceId, 'burden', 1)
+  const n = ctx.state.objects[ctx.sourceId]?.counters['burden'] ?? 0
+  for (let i = 0; i < n; i++) drawOne(ctx.state, ctx.controllerId)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} draws ${n} card${n === 1 ? '' : 's'} (burden counters).`)
+}
+
+/** The One Ring's upkeep: "you lose 1 life for each burden counter on this artifact." */
+export const loseLifePerBurdenCounter = (): Effect => (ctx) => {
+  const n = ctx.state.objects[ctx.sourceId]?.counters['burden'] ?? 0
+  if (!n) return
+  changeLife(ctx.state, ctx.controllerId, -n)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} loses ${n} life (burden counters).`)
+}
+
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */
 export const noop = (): Effect => () => {}
 
@@ -1696,10 +1745,10 @@ export const drainEachOpponentX = (): Effect => (ctx) => {
   let gained = 0
   for (const pid of ctx.state.turnOrder) {
     if (pid === ctx.controllerId || ctx.state.players[pid]!.hasLost) continue
-    ctx.state.players[pid]!.life -= x
+    changeLife(ctx.state, pid, -(x))
     gained += x
   }
-  ctx.state.players[ctx.controllerId]!.life += gained
+  changeLife(ctx.state, ctx.controllerId, gained)
   logLine(ctx.state, `Each opponent loses ${x} life; ${ctx.state.players[ctx.controllerId]!.name} gains ${gained}.`)
 }
 
@@ -1743,7 +1792,7 @@ export const earthquakeX = (): Effect => (ctx) => {
   }
   for (const pid of ctx.state.turnOrder) {
     const p = ctx.state.players[pid]!
-    if (!p.hasLost) p.life -= n
+    if (!p.hasLost) changeLife(ctx.state, pid, -n)
   }
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each non-flying creature and each player.`)
 }

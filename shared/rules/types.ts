@@ -249,6 +249,14 @@ export interface PlayerRState {
   landsPlayedThisTurn: number
   /** "Activate only if you created a token this turn." (Idol of Oblivion) — reset at your untap step */
   createdTokenThisTurn?: boolean
+  /**
+   * "You gain protection from everything" (Teferi's Protection, The One Ring) — until this player's
+   * NEXT turn, so it is cleared at their untap step. While it holds, an opponent's spell or ability
+   * can't target them and damage to them is prevented (CR 702.16).
+   */
+  protectedFromEverything?: boolean
+  /** "Your life total can't change" (Teferi's Protection) — enforced in changeLife, same window */
+  lifeCantChange?: boolean
   /** noncreature spells this player has cast this turn (Esper Sentinel's "first each turn") */
   noncreatureSpellsThisTurn?: number
   /** extra land drops granted this turn (Explore) — added on top of the one-per-turn allowance */
@@ -535,7 +543,9 @@ export interface RulesClientCard {
    */
   lastCounters?: Record<string, number>
   /** the host this Aura/Equipment was attached to as it left the battlefield (Animate Dead) */
-  lastAttachedTo?: ObjId | null
+  lastAttachedTo?: ObjId
+  /** true when this permanent entered by RESOLVING as a spell — The One Ring's "if you cast it" */
+  enteredByCast?: boolean | null
   /** host this Aura/Equipment is attached to (null/absent = unattached) */
   attachedTo?: ObjId | null
   /** true = an assisted-table fallback (printed body known, rules player-run) */
