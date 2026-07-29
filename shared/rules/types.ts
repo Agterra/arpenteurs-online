@@ -680,6 +680,8 @@ export interface LegalActions {
   castExileIds: ObjId[]
   /** LANDS exiled by an impulse effect that you may play right now (they use your land drop) */
   playableExileLandIds: ObjId[]
+  /** hand cards whose modal-DFC LAND back face you may play right now (CR 712.4) */
+  playableBackLandIds: ObjId[]
   /** castable cards with a buyback cost — the client offers a "buyback" toggle (CR 702.27) */
   buybackable: { objId: ObjId; cost: string }[]
 }

@@ -402,6 +402,8 @@ const overloadCostOf = (id: ObjId): string | null => legal.value?.overloadable.f
 const canCastFree = (id: ObjId): boolean => legal.value?.freeCastable.includes(id) ?? false
 const adventureOf = (id: ObjId) => legal.value?.adventurable.find((f) => f.objId === id) ?? null
 const canCastFromExile = (id: ObjId): boolean => legal.value?.castExileIds.includes(id) ?? false
+/** a hand card whose modal-DFC land back face can be played right now */
+const canPlayBackLand = (id: ObjId): boolean => legal.value?.playableBackLandIds.includes(id) ?? false
 /** graveyard cards with a flashback or retrace cast available right now (shown in a small strip). */
 const gyAltIds = computed<ObjId[]>(() => {
   const fb = legal.value?.flashbackable.map((f) => f.objId) ?? []
@@ -1781,6 +1783,13 @@ onBeforeUnmount(() => {
                   @menu="openMenu($event, id)"
                   @preview="hoverDisplay = $event"
                 />
+                <!-- modal DFC: play the LAND back face instead of casting the front (CR 712.4) -->
+                <UButton
+                  v-if="canPlayBackLand(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-mountain"
+                  @click.stop="send({ type: 'r.playLand', objId: id, back: true })"
+                >Play land side</UButton>
                 <UButton
                   v-if="channelOf(id)"
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"

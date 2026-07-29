@@ -13,7 +13,8 @@ const Id = z.string().min(1).max(64)
 
 export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.pass') }),
-  z.object({ type: z.literal('r.playLand'), objId: Id }),
+  // `back: true` plays the LAND back face of a modal double-faced card instead of casting its front
+  z.object({ type: z.literal('r.playLand'), objId: Id, back: z.boolean().optional() }),
   z.object({
     type: z.literal('r.tapMana'),
     objId: Id,

@@ -50,6 +50,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'fierce guardianship': 'spell', // noncreature spell (also castable free — see ALT_TARGET_CLASS)
   "dovin's veto": 'spell', // noncreature spell; itself uncounterable
   "assassin's trophy": 'permanent', // any permanent an opponent controls; they may fetch a basic
+  'fell the profane': 'permanent', // creature or planeswalker; its back face is a land you play
   vindicate: 'permanent',
   'beast within': 'permanent',
   'generous gift': 'permanent',
@@ -165,6 +166,7 @@ export const MULTI_TARGET_SPELLS: Record<string, FightSlot[]> = {
  * offered as your-graveyard-only; the server accepts any graveyard.
  */
 export const GRAVEYARD_SPELLS: Record<string, 'creature' | 'any'> = {
+  'bala ged recovery': 'any', // any card from your graveyard; its back face is a land you play
   'raise dead': 'creature',
   regrowth: 'any',
   reanimate: 'creature',

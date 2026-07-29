@@ -430,6 +430,15 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
   }
 
+  // MODAL DFC (CR 712.4): sometimes play the LAND back face of a hand card instead of casting its
+  // front — the object changes face as it leaves the hidden hand for the public battlefield
+  if (legal.playableBackLandIds.length && rnd() < 0.4) {
+    try {
+      applyRulesAction(state, actor, { type: 'r.playLand', objId: pick(legal.playableBackLandIds), back: true })
+      return true
+    } catch { /* land drop spent */ }
+  }
+
   // IMPULSE DRAW: play a card exiled by Jeska's Will / Reckless Impulse straight out of exile — a
   // land uses the land drop, anything else is cast for its printed cost from a PUBLIC zone
   if ((legal.playableExileLandIds.length || legal.castExileIds.length) && rnd() < 0.6) {
@@ -947,6 +956,9 @@ const FUZZ_DECK = [
   // batch CARD44: a type-choosing land whose second ability makes RESTRICTED mana — the fuzzer must
   // answer the as-enters choice, and its mana must never pay for something that doesn't match (the
   // engine keeps it out of the open pool entirely).
+  // batch CARD45: a modal DFC — the fuzzer plays its land back face about as often as it casts the
+  // front, so the hidden-hand → public-battlefield move happens under BOTH faces.
+  ...Array(3).fill('Bala Ged Recovery'),
   ...Array(3).fill('Unclaimed Territory'),
   ...Array(2).fill('Sword of Feast and Famine'),
   ...Array(2).fill('Professional Face-Breaker'),

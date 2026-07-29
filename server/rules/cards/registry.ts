@@ -27,6 +27,16 @@ export function registerSet(defs: CardDefinition[]) {
       def.back.isBackFace = true
       registry.set(backKey, def.back)
     }
+    // MODAL DFC (CR 712.4): same registration + cross-link, but the back face is a LAND that is
+    // PLAYED instead of casting the front (r.playLand with `back`), not transformed into
+    if (def.modalBack) {
+      const backKey = norm(def.modalBack.name)
+      if (registry.has(backKey)) throw new Error(`Duplicate card definition for "${def.modalBack.name}"`)
+      def.transformsTo = def.modalBack.name
+      def.modalBack.transformsTo = def.name
+      def.modalBack.isBackFace = true
+      registry.set(backKey, def.modalBack)
+    }
   }
 }
 registerSet(STARTER_SET)

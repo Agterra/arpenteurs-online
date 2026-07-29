@@ -4155,4 +4155,65 @@ export const STARTER_SET: CardDefinition[] = [
       },
     ],
   },
+  // --- Coverage batch CARD45: MODAL double-faced cards with a LAND back face (CR 712.4) ---
+  {
+    name: 'Fell the Profane',
+    types: ['Instant'],
+    manaCost: '{2}{B}{B}',
+    colors: ['B'],
+    // "Destroy target creature or planeswalker." // back: "Fell Mire — As this land enters, you may
+    //  pay 3 life. If you don't, it enters tapped. / {T}: Add {B}."
+    spell: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Creature', 'Planeswalker'] } }],
+      effect: destroyPermanent(),
+    },
+    modalBack: {
+      name: 'Fell Mire',
+      types: ['Land'],
+      entersTappedUnlessPayLife: 3,
+      abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['B'], effect: addMana('B') }],
+    },
+  },
+  {
+    name: 'Bala Ged Recovery',
+    types: ['Sorcery'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    // "Return target card from your graveyard to your hand." // back: "Bala Ged Sanctuary — This land
+    //  enters tapped. / {T}: Add {G}."
+    spell: {
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { controller: 'you' } }],
+      effect: returnFromGraveyard(),
+    },
+    modalBack: {
+      name: 'Bala Ged Sanctuary',
+      types: ['Land'],
+      entersTapped: true,
+      abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') }],
+    },
+  },
+  {
+    name: 'Witch Enchanter',
+    types: ['Creature'],
+    subtypes: ['Human', 'Warlock'],
+    manaCost: '{3}{W}',
+    colors: ['W'],
+    power: 3,
+    toughness: 3,
+    // "When this creature enters, destroy target artifact or enchantment an opponent controls."
+    //  // back: "Witch-Blessed Meadow — As this land enters, you may pay 3 life. If you don't, it
+    //  enters tapped. / {T}: Add {W}."
+    enters: {
+      targets: [
+        { kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Enchantment'], controller: 'opponent' }, optional: true },
+      ],
+      effect: destroyPermanent(),
+    },
+    modalBack: {
+      name: 'Witch-Blessed Meadow',
+      types: ['Land'],
+      entersTappedUnlessPayLife: 3,
+      abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W'], effect: addMana('W') }],
+    },
+  },
 ]

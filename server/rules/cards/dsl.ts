@@ -519,6 +519,13 @@ export interface CardDefinition {
    * the current face automatically. A DFC reverts to its front face when it leaves the battlefield.
    */
   back?: CardDefinition
+  /**
+   * MODAL double-faced card (CR 712.4): the front face is a spell/creature, the back face is a LAND
+   * you may PLAY instead of casting the front — no transforming involved, the choice is made as the
+   * card leaves your hand. Registered and cross-linked exactly like `back`, so a back-face land that
+   * leaves the battlefield reverts to its front face (CR 712.13) through the same code path.
+   */
+  modalBack?: CardDefinition
   /** engine-set: the OTHER face's registered name (both faces get one). */
   transformsTo?: string
   /** engine-set on the back face — used to revert to the front when leaving the battlefield. */

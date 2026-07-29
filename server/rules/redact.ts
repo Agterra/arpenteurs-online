@@ -263,6 +263,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     adventurable: [],
     castExileIds: [],
     playableExileLandIds: [],
+    playableBackLandIds: [],
     buybackable: [],
   }
   if (state.status !== 'active' || state.players[viewer]?.hasLost) return none
@@ -800,6 +801,15 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     if (affordable(def.manaCost)) castExileIds.push(id)
   }
 
+  // MODAL DFC (CR 712.4): hand cards whose LAND back face you may play right now — same timing and
+  // land-drop rules as any land, and the front face stays castable through the normal path
+  const playableBackLandIds: ObjId[] = []
+  if (isMain && landDropAllowance(state, viewer) > state.players[viewer]!.landsPlayedThisTurn) {
+    for (const id of zoneArr(state, viewer, 'hand')) {
+      if (getDef(state.objects[id]!.defName).modalBack) playableBackLandIds.push(id)
+    }
+  }
+
   // castable cards with buyback → the client offers a "buyback" toggle (like kicker)
   const buybackable: LegalActions['buybackable'] = []
   for (const id of castableIds) {
@@ -835,6 +845,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     adventurable,
     castExileIds,
     playableExileLandIds,
+    playableBackLandIds,
     buybackable,
   }
 }

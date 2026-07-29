@@ -13,7 +13,7 @@ import { STEPS } from '#shared/rules/types'
 import type { RulesMsgT } from '#shared/rules/messages'
 import { parseManaCost, planPayment } from '#shared/utils/manaCost'
 import { emptyPool } from '#shared/rules/types'
-import { getDef, isTokenDefName, registerToken } from './cards/registry'
+import { defKey, getDef, isTokenDefName, registerToken } from './cards/registry'
 import { mintCardId, shuffleInPlace } from '../game/rng'
 import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, defIsSaga, type CardDefinition, type Cost, type TargetSpec, type TargetFilter } from './cards/dsl'
 import type { Keyword, ManaColor } from '#shared/rules/types'
@@ -2077,6 +2077,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // a land exiled by an impulse effect is PLAYED from exile (it still uses the land drop)
       const impulseLand = isImpulsePlayable(state, actor, msg.objId) ? state.objects[msg.objId]! : null
       const obj = impulseLand ?? requireInHand(state, actor, msg.objId)
+      // MODAL DFC (CR 712.4): playing the back face turns the card into that face as it leaves the
+      // hand; it then enters through the normal land path (so entersTapped / pay-life still apply)
+      if (msg.back) {
+        const modalBack = getDef(obj.defName).modalBack
+        if (!modalBack) throw new RulesError('NOT_A_LAND', 'That card has no land back face')
+        obj.defName = defKey(modalBack.name)
+      }
       if (!defIsLand(getDef(obj.defName))) throw new RulesError('NOT_A_LAND', 'That is not a land')
       moveTo(state, obj.id, 'battlefield')
       // (entersTapped is applied by moveTo for every entry path)

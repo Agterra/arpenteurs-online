@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**559 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**562 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -45,6 +45,7 @@
 - Azorius Signet
 - Azusa, Lost but Seeking
 - Badlands
+- Bala Ged Recovery
 - Baleful Strix
 - Barktooth Warbeard
 - Barren Moor
@@ -174,6 +175,7 @@
 - Farewell
 - Farseek
 - Feed the Swarm
+- Fell the Profane
 - Fellwar Stone
 - Fencing Ace
 - Fervor
@@ -552,6 +554,7 @@
 - Windborn Muse
 - Windfall
 - Windswept Heath
+- Witch Enchanter
 - Withering Torment
 - Woe Strider
 - Wooded Bastion
