@@ -88,7 +88,7 @@ const POOL_COLORS: ManaColor[] = ['W', 'U', 'B', 'R', 'G', 'C']
 // ---------- interaction state ----------
 
 /** which alternative cast is being paid for (extra r.cast flag / other zone / other action) */
-type AltKind = 'flashback' | 'retrace' | 'escape' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend' | 'overload'
+type AltKind = 'flashback' | 'retrace' | 'escape' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend' | 'overload' | 'freeCmd'
 
 const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number; alt?: AltKind; altCost?: string } | null>(null)
 const attackAssign = ref<{ attackerId: ObjId; defenderId: PlayerId }[]>([])
@@ -259,6 +259,7 @@ function confirmCast() {
       bestow: c.alt === 'bestow' || undefined,
       evoke: c.alt === 'evoke' || undefined,
       overload: c.alt === 'overload' || undefined,
+      free: c.alt === 'freeCmd' || undefined,
       retraceLand: c.alt === 'retrace' ? firstLandInHand() : undefined,
       escapeExile: c.alt === 'escape' ? firstNOtherInGraveyard(c.cardId, c.escapeCount ?? 0) : undefined,
     })
@@ -286,6 +287,8 @@ const cycleCost = (id: ObjId): string | null => legal.value?.cyclable.find((c) =
 // alternative-cast target class per card (the redacted client doesn't carry DSL target specs,
 // so — like TARGETED_SPELLS — the alt-cast targets are curated by card name)
 const ALT_TARGET_CLASS: Record<string, TargetClass> = {
+  'fierce guardianship': 'spell', // free cast (commander) → still counters a noncreature spell
+  'deadly rollick': 'creature', // free cast (commander) → still exiles a creature
   firebolt: 'any', // flashback → 2 damage to any target
   "raven's crime": 'player', // retrace → target player discards
   'murderous rider': 'creature', // adventure (Swift End) → destroy target creature
@@ -320,6 +323,7 @@ const evokeCostOf = (id: ObjId): string | null => legal.value?.evokable.find((f)
 const bestowCostOf = (id: ObjId): string | null => legal.value?.bestowable.find((f) => f.objId === id)?.cost ?? null
 const suspendCostOf = (id: ObjId): string | null => legal.value?.suspendable.find((f) => f.objId === id)?.cost ?? null
 const overloadCostOf = (id: ObjId): string | null => legal.value?.overloadable.find((f) => f.objId === id)?.cost ?? null
+const canCastFree = (id: ObjId): boolean => legal.value?.freeCastable.includes(id) ?? false
 const adventureOf = (id: ObjId) => legal.value?.adventurable.find((f) => f.objId === id) ?? null
 const canCastFromExile = (id: ObjId): boolean => legal.value?.castExileIds.includes(id) ?? false
 /** graveyard cards with a flashback or retrace cast available right now (shown in a small strip). */
@@ -1455,6 +1459,12 @@ onBeforeUnmount(() => {
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   @click.stop="beginAltCast(cardOf(id)!, 'bestow', bestowCostOf(id)!)"
                 >Bestow {{ bestowCostOf(id) }}</UButton>
+                <UButton
+                  v-if="canCastFree(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-crown"
+                  @click.stop="beginAltCast(cardOf(id)!, 'freeCmd', '')"
+                >Cast free</UButton>
                 <UButton
                   v-if="overloadCostOf(id)"
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"

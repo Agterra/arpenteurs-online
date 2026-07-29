@@ -369,6 +369,17 @@ export interface CardDefinition {
    */
   entersTappedUnlessControlLandType?: string[]
   /**
+   * The battle lands: "This land enters tapped unless you control two or more basic lands."
+   * Counted on any battlefield entry, like the check lands' subtype condition.
+   */
+  entersTappedUnlessBasicsAtLeast?: number
+  /**
+   * "If you control a commander, you may cast this spell without paying its mana cost."
+   * (the free-spell cycle: Fierce Guardianship, Deadly Rollick, …). Cast via `r.cast.free`; the
+   * engine verifies a commander permanent is on the caster's battlefield and skips the mana entirely.
+   */
+  freeIfCommander?: boolean
+  /**
    * As-enters replacement CHOICE (CR 614.12) — the shocklands' "As this land enters, you may pay N
    * life. If you don't, it enters tapped." Set to the life amount. The engine opens an
    * `entersChoice` pending for its controller on ANY battlefield entry (played, fetched, moved),

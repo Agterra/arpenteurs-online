@@ -1867,6 +1867,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         cost.generic += bc.generic
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += bc.colored[c]
       }
+      // "If you control a commander, you may cast this spell without paying its mana cost."
+      const castingFree = !adv && !splitHalf && !!msg.free
+      if (castingFree) {
+        if (!def.freeIfCommander) throw new RulesError('NO_FREE_CAST', 'That spell has no free cast')
+        const hasCommander = zoneArr(state, actor, 'battlefield').some((id) => state.objects[id]!.isCommander)
+        if (!hasCommander) throw new RulesError('NO_COMMANDER', 'You control no commander')
+      }
       // "As an additional cost to cast this spell, pay X life." (Toxic Deluge) — X is chosen by the
       // caster and is NOT added to the mana cost; validated here (CR 119.4), paid below with the
       // rest of the costs so a failed cast never drains life.
@@ -1919,6 +1926,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           if (id === obj.id || !g || g.zone !== 'graveyard' || g.ownerId !== actor)
             throw new RulesError('BAD_ESCAPE', 'Escape exiles other cards from your graveyard')
         }
+      }
+      // a free cast (commander alternative cost) pays no mana at all
+      if (castingFree) {
+        cost.generic = 0
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] = 0
       }
       const payment = planPayment(cost, state.players[actor]!.manaPool)
       if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)

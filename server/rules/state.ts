@@ -87,6 +87,17 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
       })
       if (!has) obj.tapped = true
     }
+    // battle lands: "enters tapped unless you control two or more BASIC lands"
+    const needBasics = def.entersTappedUnlessBasicsAtLeast
+    if (needBasics) {
+      const basics = zoneArr(state, obj.controllerId, 'battlefield').filter((id) => {
+        const other = state.objects[id]
+        if (!other || other.id === obj.id) return false
+        const d = getDef(other.defName)
+        return d.types.includes('Land') && (d.supertypes ?? []).includes('Basic')
+      }).length
+      if (basics < needBasics) obj.tapped = true
+    }
   }
   const holder = zone === 'battlefield' ? obj.controllerId : obj.ownerId
   const arr = zoneArr(state, holder, zone)

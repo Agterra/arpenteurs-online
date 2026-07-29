@@ -495,6 +495,8 @@ export interface LegalActions {
   kickable: { objId: ObjId; cost: string }[]
   /** hand cards castable for their OVERLOAD cost right now (untargeted "each" body) — CR 702.96 */
   overloadable: { objId: ObjId; cost: string }[]
+  /** hand cards castable for FREE right now because you control a commander (Fierce Guardianship) */
+  freeCastable: ObjId[]
   /** a ward trigger is resolving and YOU must decide to pay or let your spell/ability be countered (CR 702.21) */
   needsWard: boolean
   /** the ward cost you'd pay, and whether your current mana pool covers it */

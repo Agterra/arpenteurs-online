@@ -583,6 +583,11 @@ const FUZZ_DECK = [
   // re-mints the history-aware assertion checks) and Brainstorm (draw 3, put 2 back on top).
   ...Array(3).fill('Chaos Warp'),
   ...Array(3).fill('Brainstorm'),
+  // batch CARD21: a Talisman (two mana abilities, the coloured one costing 1 life), a battle land
+  // (its basics condition is checked on every entry) and Sakura-Tribe Elder (sac-self fetch).
+  ...Array(2).fill('Talisman of Indulgence'),
+  ...Array(2).fill('Smoldering Marsh'),
+  ...Array(2).fill('Sakura-Tribe Elder'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

@@ -171,6 +171,40 @@ const scryland = (name: string, a: ManaColor, b: ManaColor): CardDefinition => (
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
 })
 
+/**
+ * A Talisman: "{T}: Add {C}." and "{T}: Add {a} or {b}. This artifact deals 1 damage to you." — the
+ * pain-land shape on an artifact (two mana abilities; r.tapMana picks by the colour asked for).
+ */
+const talisman = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Artifact'],
+  manaCost: '{2}',
+  abilities: [
+    { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+    {
+      kind: 'activated',
+      cost: { tap: true },
+      isMana: true,
+      produces: [a, b],
+      chooseColor: true,
+      damageOnTapForMana: 1,
+      effect: addMana(a),
+    },
+  ],
+})
+
+/**
+ * A battle land (Battle for Zendikar duals): "enters tapped unless you control two or more basic
+ * lands", with the two real basic land types so a fetch land can find it.
+ */
+const battleLand = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  subtypes,
+  entersTappedUnlessBasicsAtLeast: 2,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
 /** A Signet: "{1}, {T}: Add {a}{b}." — fixed dual-colour ramp + fixing (not a choice). */
 const signet = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
   name,
@@ -2482,5 +2516,61 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Draw three cards, then put two cards from your hand on top of your library in any order."
     spell: { effect: sequence(drawCards(3), putBackOnTop(2)) },
+  },
+
+  // --- Coverage batch CARD21: the Talismans, the battle lands, a sac-fetch creature and the
+  //     "free if you control a commander" spells ---
+  talisman('Talisman of Dominance', 'U', 'B'),
+  talisman('Talisman of Creativity', 'U', 'R'),
+  talisman('Talisman of Indulgence', 'B', 'R'),
+  talisman('Talisman of Hierarchy', 'W', 'B'),
+  talisman('Talisman of Progress', 'W', 'U'),
+  talisman('Talisman of Conviction', 'R', 'W'),
+  talisman('Talisman of Curiosity', 'G', 'U'),
+  talisman('Talisman of Resilience', 'B', 'G'),
+  talisman('Talisman of Impulse', 'R', 'G'),
+  talisman('Talisman of Unity', 'G', 'W'),
+  battleLand('Cinder Glade', 'R', 'G', ['Mountain', 'Forest']),
+  battleLand('Sunken Hollow', 'U', 'B', ['Island', 'Swamp']),
+  battleLand('Smoldering Marsh', 'B', 'R', ['Swamp', 'Mountain']),
+  battleLand('Canopy Vista', 'G', 'W', ['Forest', 'Plains']),
+  battleLand('Prairie Stream', 'W', 'U', ['Plains', 'Island']),
+  {
+    name: 'Sakura-Tribe Elder',
+    types: ['Creature'],
+    subtypes: ['Snake', 'Shaman'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    power: 1,
+    toughness: 1,
+    // "Sacrifice this creature: Search your library for a basic land card, put that card onto the
+    //  battlefield tapped, then shuffle." (no {T}, so it works the turn it lands)
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { sacrificeSelf: true },
+        effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', tapped: true, count: 1 }),
+      },
+    ],
+  },
+  {
+    name: 'Fierce Guardianship',
+    types: ['Instant'],
+    manaCost: '{2}{U}',
+    colors: ['U'],
+    // "If you control a commander, you may cast this spell without paying its mana cost.
+    //  Counter target noncreature spell."
+    freeIfCommander: true,
+    spell: { targets: [{ kind: 'spell', count: 1, filter: { excludeTypes: ['Creature'] } }], effect: counterTarget() },
+  },
+  {
+    name: 'Deadly Rollick',
+    types: ['Instant'],
+    manaCost: '{3}{B}',
+    colors: ['B'],
+    // "If you control a commander, you may cast this spell without paying its mana cost.
+    //  Exile target creature."
+    freeIfCommander: true,
+    spell: { targets: [{ kind: 'creature', count: 1 }], effect: exileTarget() },
   },
 ]

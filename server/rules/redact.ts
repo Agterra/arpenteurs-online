@@ -187,6 +187,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     cyclable: [],
     kickable: [],
     overloadable: [],
+    freeCastable: [],
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
@@ -483,6 +484,20 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     if (planPayment(parseManaCost(def.overload.cost), potential).covered) overloadable.push({ objId: id, cost: def.overload.cost })
   }
 
+  // Free casts: "if you control a commander, you may cast this without paying its mana cost" — no
+  // mana needed at all, so the only gates are controlling a commander and the spell's own timing.
+  const freeCastable: ObjId[] = []
+  {
+    const hasCommander = zoneArr(state, viewer, 'battlefield').some((id) => state.objects[id]!.isCommander)
+    if (hasCommander)
+      for (const id of zoneArr(state, viewer, 'hand')) {
+        const def = getDef(state.objects[id]!.defName)
+        if (!def.freeIfCommander) continue
+        if (!def.types.includes('Instant') && !isMain) continue
+        freeCastable.push(id)
+      }
+  }
+
   // Cards you can cycle right now: cycling is instant speed (any time you have priority),
   // so this is not gated on isMain; affordability from the pre-tap potential pool (the
   // server re-checks against the actual pool). Only implemented cards carry cyclingCost,
@@ -581,6 +596,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     cyclable,
     kickable,
     overloadable,
+    freeCastable,
     flashbackable,
     retraceable,
     escapable,

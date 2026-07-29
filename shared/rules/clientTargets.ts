@@ -31,6 +31,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'grasp of darkness': 'creature',
   'swords to plowshares': 'creature',
   'path to exile': 'creature',
+  'deadly rollick': 'creature', // exile target creature (also castable free)
   'gird for battle': 'creature',
   unsummon: 'creature',
   'flame slash': 'creature',
@@ -43,6 +44,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   negate: 'spell',
   "an offer you can't refuse": 'spell',
   'swan song': 'spell', // enchantment / instant / sorcery only (the server enforces the filter)
+  'fierce guardianship': 'spell', // noncreature spell (also castable free — see ALT_TARGET_CLASS)
   vindicate: 'permanent',
   'beast within': 'permanent',
   'generous gift': 'permanent',

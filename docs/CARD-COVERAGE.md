@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**332 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**350 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -63,12 +63,14 @@
 - Brushland
 - Burst Lightning
 - Cancel
+- Canopy Vista
 - Capsize
 - Cathars' Crusade
 - Caves of Koilos
 - Centaur Courser
 - Chaos Warp
 - Char
+- Cinder Glade
 - City of Brass
 - Clifftop Retreat
 - Cloudblazer
@@ -88,6 +90,7 @@
 - Dark Ritual
 - Darksteel Myr
 - Day of Judgment
+- Deadly Rollick
 - Delver of Secrets
 - Demonic Tutor
 - Diabolic Edict
@@ -118,6 +121,7 @@
 - Fencing Ace
 - Fervor
 - Field Marshal
+- Fierce Guardianship
 - Fiery Temper
 - Firebolt
 - Flame Rift
@@ -226,6 +230,7 @@
 - Polluted Delta
 - Pongify
 - Pounce
+- Prairie Stream
 - Prey Upon
 - Prickly Boggart
 - Prodigal Sorcerer
@@ -251,6 +256,7 @@
 - Rogue's Passage
 - Rootbound Crag
 - Sacred Foundry
+- Sakura-Tribe Elder
 - Savannah Lions
 - Scalding Tarn
 - Search for Tomorrow
@@ -267,6 +273,7 @@
 - Simic Guildgate
 - Simic Signet
 - Skullclamp
+- Smoldering Marsh
 - Smothering Tithe
 - Sol Ring
 - Solemn Simulacrum
@@ -279,12 +286,23 @@
 - Strangleroot Geist
 - Sulfur Falls
 - Sulfurous Springs
+- Sunken Hollow
 - Sunpetal Grove
 - Swamp
 - Swan Song
 - Swiftfoot Boots
 - Sword of Vengeance
 - Swords to Plowshares
+- Talisman of Conviction
+- Talisman of Creativity
+- Talisman of Curiosity
+- Talisman of Dominance
+- Talisman of Hierarchy
+- Talisman of Impulse
+- Talisman of Indulgence
+- Talisman of Progress
+- Talisman of Resilience
+- Talisman of Unity
 - Teferi's Honor Guard
 - Temple Garden
 - Temple of Abandon
