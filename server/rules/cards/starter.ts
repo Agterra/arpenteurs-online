@@ -4626,4 +4626,52 @@ export const STARTER_SET: CardDefinition[] = [
     upkeep: { effect: loseLifePerBurdenCounter() },
     abilities: [{ kind: 'activated', cost: { tap: true }, effect: burdenCounterThenDraw() }],
   },
+  // --- Coverage batch CARD55: Urza's Saga (a Saga that grants ITSELF abilities) + Storm-Kiln Artist ---
+  {
+    name: "Urza's Saga",
+    types: ['Enchantment', 'Land'],
+    subtypes: ['Urza\u2019s Saga'],
+    // "I — This Saga gains '{T}: Add {C}.' / II — This Saga gains '{2}, {T}: Create a 0/0 colorless
+    //  Construct artifact creature token with "This token gets +1/+1 for each artifact you control."' /
+    //  III — Search your library for an artifact card with mana cost {0} or {1}, put it onto the
+    //  battlefield, then shuffle."
+    //  The two granted abilities are declared here and gated on the lore counter that chapter adds
+    //  (see requiresLoreAtLeast); chapters I and II therefore have no effect body of their own.
+    saga: {
+      chapters: [
+        { effect: noop() },
+        { effect: noop() },
+        { effect: searchLibrary({ filter: { types: ['Artifact'], maxManaValue: 1 }, dest: 'battlefield', count: 1 }) },
+      ],
+    },
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], requiresLoreAtLeast: 1, effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true },
+        requiresLoreAtLeast: 2,
+        effect: createToken({
+          name: 'Construct',
+          types: ['Artifact', 'Creature'],
+          subtypes: ['Construct'],
+          power: 0,
+          toughness: 0,
+          dynamicPT: { per: 'artifactsYouControl', power: 1, toughness: 1 },
+        }),
+      },
+    ],
+  },
+  {
+    name: 'Storm-Kiln Artist',
+    types: ['Creature'],
+    subtypes: ['Dwarf', 'Shaman'],
+    manaCost: '{3}{R}',
+    colors: ['R'],
+    power: 2,
+    toughness: 3,
+    // "This creature gets +1/+0 for each artifact you control. / Magecraft — Whenever you cast or copy an
+    //  instant or sorcery spell, create a Treasure token." (copying is out of scope — nothing copies yet)
+    dynamicPT: { per: 'artifactsYouControl', power: 1, toughness: 0 },
+    castSpell: { watch: { selfOnly: true, typesOnly: ['Instant', 'Sorcery'] }, effect: createTreasures(1) },
+  },
 ]

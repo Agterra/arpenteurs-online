@@ -1461,11 +1461,7 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
     // (entersTapped is applied by moveTo for every entry path)
     fireEntersTriggers(state, obj.id) // a face-down creature has no own ETB (guarded in fireEntersTriggers)
-    // Saga (CR 714.2b/3): a lore counter is added as it enters → chapter I triggers
-    if (defIsSaga(def)) {
-      obj.counters.lore = 1
-      queueSagaChapter(state, obj.id, 1)
-    }
+    // (a Saga's first lore counter + chapter I are added by moveTo, on every entry path)
     // Evoke (CR 702.74): sacrifice it as it enters. Its ETB triggers were just queued above and
     // resolve independently (they don't need the source on the battlefield), so e.g. Mulldrifter
     // still draws two cards even though it's already dying.
@@ -1623,6 +1619,11 @@ export function queueTriggeredAbility(
   state.pending = { kind: 'trigger', player: controllerId }
   state.pendingTrigger = { sourceId, defName: obj.defName, controllerId, trigger: kind }
   logLine(state, `${def.name}'s ${label} ability triggers — ${name(state, controllerId)} chooses a target.`)
+}
+
+/** Chapter I of a Saga that has just entered (CR 714.2b) — called from moveTo on every entry path. */
+export function queueSagaChapterOnEntry(state: RulesGameState, objId: ObjId) {
+  queueSagaChapter(state, objId, 1)
 }
 
 /**
@@ -2224,6 +2225,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (!obj || obj.zone !== 'battlefield' || obj.phasedOut || obj.controllerId !== actor)
         throw new RulesError('NOT_YOURS', "You don't control that permanent")
       if (state.loseAbilities.includes(obj.id)) throw new RulesError('NO_MANA_ABILITY', 'That permanent has lost all abilities')
+      // Urza's Saga: its "{T}: Add {C}" only exists from chapter I onwards
+      const loreNow = obj.counters.lore ?? 0
+      const loreGate = (getDef(obj.defName).abilities ?? []).filter(
+        (a) => a.kind === 'activated' && a.isMana && (a.requiresLoreAtLeast == null || loreNow >= a.requiresLoreAtLeast),
+      )
+      if (!loreGate.length && (getDef(obj.defName).abilities ?? []).some((a) => a.requiresLoreAtLeast != null))
+        throw new RulesError('NO_MANA_ABILITY', 'That ability has not been granted yet')
       // a permanent can have SEVERAL mana abilities (the pain lands: "{T}: Add {C}" and "{T}: Add
       // {a} or {b}, deals 1 damage to you") — pick the one that can produce the requested colour,
       // else the first (so every existing single-ability call site is unchanged)
@@ -2392,6 +2400,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('NO_ABILITY', 'No such activated ability')
       if (ability.requiresCreatedToken && !state.players[actor]!.createdTokenThisTurn)
         throw new RulesError('NO_ABILITY', 'You have not created a token this turn')
+      // a Saga chapter's self-granted ability exists only once that chapter has been reached
+      if (ability.requiresLoreAtLeast != null && (obj.counters.lore ?? 0) < ability.requiresLoreAtLeast)
+        throw new RulesError('NO_ABILITY', 'That ability has not been granted yet')
       if (ability.cost.tap) {
         if (obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
         // a creature's {T} ability needs it to have been under control since your

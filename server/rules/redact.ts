@@ -484,7 +484,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         // a sacrifice cost needs a creature to pay it (the Altars)
         (!a.cost.sacrifice || battlefieldCreatures(state, viewer).length >= a.cost.sacrifice.count) &&
         // a dynamic source with nothing to copy produces nothing (Reflecting Pool with no lands)
-        (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces, obj.id).length > 0),
+        (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces, obj.id).length > 0) &&
+        // a Saga's self-granted mana ability exists only from that chapter on (Urza's Saga)
+        (a.requiresLoreAtLeast == null || (obj.counters.lore ?? 0) >= a.requiresLoreAtLeast),
     )
     if (!manaAbilities.length) continue
     manaSourceIds.push(obj.id)
@@ -537,6 +539,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       }
       // "only if you created a token this turn" (Idol of Oblivion) — hidden until you have
       if (ab.requiresCreatedToken && !state.players[viewer]!.createdTokenThisTurn) return
+      // a Saga's self-granted ability (Urza's Saga) — hidden until that chapter is reached
+      if (ab.requiresLoreAtLeast != null && (obj.counters.lore ?? 0) < ab.requiresLoreAtLeast) return
       // a sacrifice cost is only payable if the player controls enough creatures
       const sacCost = ab.cost.sacrifice?.count ?? 0
       // "Sacrifice a Treasure" is paid with Treasures, not creatures — the picker needs to know which

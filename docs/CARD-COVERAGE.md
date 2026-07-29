@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**592 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**594 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -476,6 +476,7 @@
 - Spire Garden
 - Steam Vents
 - Stomping Ground
+- Storm-Kiln Artist
 - Stormcarved Coast
 - Strangleroot Geist
 - Stroke of Midnight
@@ -553,6 +554,7 @@
 - Unexpected Windfall
 - Unholy Strength
 - Unsummon
+- Urza's Saga
 - Utter End
 - Vampire Cutthroat
 - Vampire Nighthawk

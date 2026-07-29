@@ -128,6 +128,14 @@ export interface ActivatedAbility {
   /** "Activate only if you created a token this turn." (Idol of Oblivion) */
   requiresCreatedToken?: boolean
   /**
+   * An ability a SAGA chapter granted to itself — "I — This Saga gains '{T}: Add {C}.'" (Urza's Saga).
+   * The ability exists once the Saga has that many lore counters, which is exactly when the chapter has
+   * been reached; declaring it this way keeps redact able to hide it until then.
+   * DOCUMENTED SIMPLIFICATION: the lore counter is added as the chapter TRIGGERS, so the ability is
+   * usable a moment earlier than if it waited for that chapter ability to resolve.
+   */
+  requiresLoreAtLeast?: number
+  /**
    * A mana ability whose available colours depend on the board rather than a printed list:
    * `yourLands` = any type a land you control could produce (Reflecting Pool),
    * `yourLegendaries` = any colour among legendary creatures and planeswalkers you control (Mox Amber).
@@ -272,6 +280,12 @@ export interface CardDefinition {
   abilities?: Ability[]
   /** static continuous P/T modifiers (anthems / lords) — CR 613 layer 7c */
   statics?: StaticPTEffect[]
+  /**
+   * A P/T that counts something on the board — "gets +1/+1 for each artifact you control" (Urza's
+   * Saga's Construct) or "+1/+0 for each artifact you control" (Storm-Kiln Artist). Applied in
+   * `currentPT` (CR 613 layer 7c) so it follows the board live.
+   */
+  dynamicPT?: { per: 'artifactsYouControl'; power: number; toughness: number }
   /** static keyword grants (anthems / lords) — CR 613 layer 6 */
   staticKeywords?: StaticKeywordGrant[]
   /** the spell ability for instants/sorceries */

@@ -165,8 +165,10 @@ export function registerImplementedToken(spec: {
   types?: CardDefinition['types']
   /** activated abilities the token has (a Treasure's "{T}, Sacrifice this token: Add one mana…") */
   abilities?: CardDefinition['abilities']
+  /** "…gets +1/+1 for each artifact you control" (Urza's Saga's Construct) */
+  dynamicPT?: CardDefinition['dynamicPT']
 }): string {
-  const key = `itok:${norm(spec.name)}:${spec.power ?? ''}/${spec.toughness ?? ''}:${(spec.keywords ?? []).join('.')}`
+  const key = `itok:${norm(spec.name)}:${spec.power ?? ''}/${spec.toughness ?? ''}:${(spec.keywords ?? []).join('.')}:${spec.dynamicPT ? 'dyn' : ''}`
   if (!registry.has(key)) {
     registry.set(key, {
       name: spec.name,
@@ -176,6 +178,7 @@ export function registerImplementedToken(spec: {
       toughness: spec.toughness,
       keywords: spec.keywords,
       abilities: spec.abilities,
+      dynamicPT: spec.dynamicPT,
     })
   }
   return key

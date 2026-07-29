@@ -11,12 +11,12 @@ import type {
   RulesZone,
 } from '#shared/rules/types'
 import { getDef, defKey } from './cards/registry'
-import { defIsCreature } from './cards/dsl'
+import { defIsCreature, defIsSaga } from './cards/dsl'
 import { mintCardId } from '../game/rng'
 import { currentKeywords } from './characteristics'
 // call-time-only cycle (state → engine): queueTriggeredAbility is a hoisted function export and is
 // only ever invoked inside moveToGraveyard, never at module init — mirrors effects.ts → engine.
-import { queueGrantedTrigger, queueTriggeredAbility } from './engine'
+import { queueGrantedTrigger, queueSagaChapterOnEntry, queueTriggeredAbility } from './engine'
 
 export function zoneArr(state: RulesGameState, player: PlayerId, zone: RulesZone): ObjId[] {
   return state.zones.perPlayer[player]![zone]
@@ -102,6 +102,12 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
     // enters-with-counters (counters were just reset above) — before any SBA check so a
     // 0/0-with-counters creature survives; applies on ANY entry path (cast, tutor, move)
     if (def.entersWithCounters) putCounters(state, obj.id, '+1/+1', def.entersWithCounters)
+    // Saga (CR 714.2b): a lore counter is added AS IT ENTERS, by whatever path — Urza's Saga is
+    // PLAYED as a land, so doing this only where a spell resolves left it with no chapter I at all
+    if (defIsSaga(def) && !(obj.counters.lore ?? 0)) {
+      obj.counters.lore = 1
+      queueSagaChapterOnEntry(state, obj.id)
+    }
     // as-enters choice (CR 614.12, shocklands): QUEUE the pay-life-or-tapped decision for its
     // controller on ANY entry path (played, fetched, moved). It is opened by
     // `drainEntersChoices` once the current decision (e.g. the search being answered) is done, so

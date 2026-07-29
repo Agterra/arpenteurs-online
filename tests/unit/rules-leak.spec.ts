@@ -1001,6 +1001,10 @@ const FUZZ_DECK = [
   // batch CARD54: The One Ring — its cast-only ETB shields its controller from targeting and damage for
   // a full turn cycle (so the fuzzer's spells must respect an untargetable player), and its burden
   // counters make it draw ever more cards while bleeding life.
+  // batch CARD55: Urza's Saga — a SAGA that is PLAYED as a land (the entry path that had no lore
+  // counter at all until this batch), grants itself two abilities as its chapters tick over, makes
+  // board-counting Construct tokens and fetches an artifact before sacrificing itself.
+  ...Array(3).fill("Urza's Saga"),
   ...Array(2).fill('The One Ring'),
   ...Array(3).fill("Witch's Cottage"),
   ...Array(2).fill('Dwarven Mine'),

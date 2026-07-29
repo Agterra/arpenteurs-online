@@ -418,7 +418,7 @@ export const drawCards = (n: number): Effect => (ctx) => {
 export const searchLibrary = (opts: {
   // 'basicLand' = any Basic land; 'any' = any card; { landSubtypes } = a land with one of these
   // subtypes (e.g. Farseek → Plains/Island/Swamp/Mountain, Nature's Lore → Forest — basic OR not).
-  filter: 'basicLand' | 'any' | { landSubtypes: string[] } | { types: CardType[] }
+  filter: 'basicLand' | 'any' | { landSubtypes: string[] } | { types: CardType[]; maxManaValue?: number }
   dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'
   tapped?: boolean
   /** the tutors: reveal the chosen card (log its name) as it goes on top */
@@ -437,8 +437,12 @@ export const searchLibrary = (opts: {
     if (opts.filter === 'any') return true
     const def = getDef(ctx.state.objects[id]!.defName)
     // a card-TYPE filter (the tutors: "an artifact or enchantment card") is not land-specific
-    if (typeof opts.filter === 'object' && 'types' in opts.filter)
-      return opts.filter.types.some((t) => def.types.includes(t))
+    if (typeof opts.filter === 'object' && 'types' in opts.filter) {
+      if (!opts.filter.types.some((t) => def.types.includes(t))) return false
+      // "an artifact card with mana cost {0} or {1}" (Urza's Saga's third chapter)
+      if (opts.filter.maxManaValue != null && manaValueOf(def) > opts.filter.maxManaValue) return false
+      return true
+    }
     if (!def.types.includes('Land')) return false
     if (typeof opts.filter === 'object') return (def.subtypes ?? []).some((st) => opts.filter.landSubtypes.includes(st))
     return def.supertypes?.includes('Basic') ?? false // 'basicLand'
@@ -725,6 +729,8 @@ export interface TokenSpec {
   types?: CardType[]
   /** the token's own activated abilities (a Treasure's mana ability) */
   abilities?: Ability[]
+  /** "This token gets +1/+1 for each artifact you control" (Urza's Saga's Construct) */
+  dynamicPT?: CardDefinition['dynamicPT']
 }
 
 /**

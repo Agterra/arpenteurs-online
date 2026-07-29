@@ -155,11 +155,24 @@ export function currentPT(state: RulesGameState, obj: GameObject): { power: numb
   const c = counterPT(obj)
   const s = staticPT(state, obj)
   const p = pumpPT(state, obj)
+  // "gets +1/+1 for each artifact you control" (Urza's Saga's Construct, Storm-Kiln Artist) — counted
+  // live off the board, so it tracks artifacts entering and leaving
+  const dyn = getDef(obj.defName).dynamicPT
+  let dynP = 0
+  let dynT = 0
+  if (dyn && obj.zone === 'battlefield') {
+    const n = state.zones.perPlayer[obj.controllerId]!.battlefield.filter((id) => {
+      const o = state.objects[id]
+      return !!o && !o.phasedOut && getDef(o.defName).types.includes('Artifact')
+    }).length
+    dynP = dyn.power * n
+    dynT = dyn.toughness * n
+  }
   // a face-down (morph) permanent is a 2/2 with no printed characteristics (CR 707.2), still
   // affected by counters/anthems/pumps
   const bp = obj.faceDown ? 2 : baseP(state, obj)
   const bt = obj.faceDown ? 2 : baseT(state, obj)
-  return { power: bp + c + s.p + p.p, toughness: bt + c + s.t + p.t }
+  return { power: bp + c + s.p + p.p + dynP, toughness: bt + c + s.t + p.t + dynT }
 }
 
 export function currentPower(state: RulesGameState, obj: GameObject): number {
