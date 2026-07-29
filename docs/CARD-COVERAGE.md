@@ -4,8 +4,8 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**522 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
-**7** of them can be a commander (legendary creatures).
+**526 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**8** of them can be a commander (legendary creatures).
 
 ## Cards
 
@@ -150,6 +150,7 @@
 - Entomb
 - Errant Ephemeron
 - Esper Sentinel
+- Eternal Witness
 - Evolving Wilds
 - Exotic Orchard
 - Exploration
@@ -260,6 +261,7 @@
 - Llanowar Elves
 - Llanowar Wastes
 - Lonely Sandbar
+- Loran of the Third Path
 - Lotus Petal
 - Loxodon Warhammer
 - Lush Portico
@@ -360,6 +362,7 @@
 - Ravenous Chupacabra
 - Ravenous Rats
 - Reanimate
+- Reclamation Sage
 - Reflecting Pool
 - Regrowth
 - Rejuvenating Springs
@@ -426,6 +429,7 @@
 - Stroke of Midnight
 - Sulfur Falls
 - Sulfurous Springs
+- Sun Titan
 - Sunbaked Canyon
 - Sundown Pass
 - Sunken Hollow

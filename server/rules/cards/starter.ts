@@ -55,6 +55,7 @@ import {
   returnAllAttackersToHand,
   returnAllNonlandYouDontControlToHand,
   returnToHand,
+  eachOfYouAndTargetDraws,
   eachOpponentLoses,
   gainLife,
   gainLifeX,
@@ -72,6 +73,7 @@ import {
   pumpSelf,
   putBackOnTop,
   returnFromGraveyard,
+  returnFromGraveyardToBattlefield,
   scry,
   searchLibrary,
   sequence,
@@ -3551,5 +3553,80 @@ export const STARTER_SET: CardDefinition[] = [
     colors: ['U'],
     // "Draw two cards, then discard two cards. Untap up to three lands."
     spell: { effect: drawThenDiscardThenUntap(2, 2, 3) },
+  },
+
+  // --- Coverage batch CARD34: optional ("you may") targets, incl. graveyard-card triggers ---
+  {
+    name: 'Eternal Witness',
+    types: ['Creature'],
+    subtypes: ['Human', 'Shaman'],
+    manaCost: '{1}{G}{G}',
+    colors: ['G'],
+    power: 2,
+    toughness: 1,
+    // "When this creature enters, you MAY return target card from your graveyard to your hand."
+    enters: {
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { controller: 'you' }, optional: true }],
+      effect: returnFromGraveyard(),
+    },
+  },
+  {
+    name: 'Reclamation Sage',
+    types: ['Creature'],
+    subtypes: ['Elf', 'Shaman'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    power: 2,
+    toughness: 1,
+    // "When this creature enters, you MAY destroy target artifact or enchantment."
+    enters: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Enchantment'] }, optional: true }],
+      effect: destroyPermanent(),
+    },
+  },
+  {
+    name: 'Sun Titan',
+    types: ['Creature'],
+    subtypes: ['Giant'],
+    manaCost: '{4}{W}{W}',
+    colors: ['W'],
+    power: 6,
+    toughness: 6,
+    keywords: ['vigilance'],
+    // "Whenever this creature enters OR ATTACKS, you may return target permanent card with mana value
+    //  3 or less from your graveyard to the battlefield."
+    enters: {
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { controller: 'you', maxManaValue: 3, excludeTypes: ['Instant', 'Sorcery'] }, optional: true }],
+      effect: returnFromGraveyardToBattlefield(),
+    },
+    attacks: {
+      targets: [{ kind: 'graveyardCard', count: 1, filter: { controller: 'you', maxManaValue: 3, excludeTypes: ['Instant', 'Sorcery'] }, optional: true }],
+      effect: returnFromGraveyardToBattlefield(),
+    },
+  },
+  {
+    name: 'Loran of the Third Path',
+    types: ['Creature'],
+    supertypes: ['Legendary'],
+    subtypes: ['Human', 'Artificer'],
+    manaCost: '{2}{W}',
+    colors: ['W'],
+    power: 2,
+    toughness: 1,
+    keywords: ['vigilance'],
+    // "Vigilance. When Loran enters, destroy UP TO ONE target artifact or enchantment.
+    //  {T}: You and target opponent each draw a card."
+    enters: {
+      targets: [{ kind: 'permanent', count: 1, filter: { types: ['Artifact', 'Enchantment'] }, optional: true }],
+      effect: destroyPermanent(),
+    },
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        targets: [{ kind: 'player', count: 1, filter: { controller: 'opponent' } }],
+        effect: eachOfYouAndTargetDraws(1),
+      },
+    ],
   },
 ]

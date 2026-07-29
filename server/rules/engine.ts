@@ -1006,7 +1006,9 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
   if (specs.length) {
     targets = item.targets.filter((t, i) => specs[i] && isLegalTarget(state, specs[i]!, t, item.controllerId, getDef(item.defName).colors ?? []))
     if (!targets.length) {
-      logLine(state, `${def.name}'s ability fizzles (targets are gone).`)
+      // an all-optional ability that was put on the stack with no target simply does nothing
+      const declined = specs.every((sp) => sp.optional) && item.targets.length === 0
+      logLine(state, declined ? `${def.name}'s ability is declined.` : `${def.name}'s ability fizzles (targets are gone).`)
       return
     }
   }
@@ -1223,6 +1225,12 @@ export function queueTriggeredAbility(state: RulesGameState, sourceId: ObjId, ki
   if (!specs.length) {
     state.zones.stack.push({ id: mintCardId(), kind: 'ability', trigger: kind, controllerId, defName: obj.defName, sourceId, abilityIndex: null, targets: [] })
     logLine(state, `${def.name}'s ${label} ability triggers.`)
+    return
+  }
+  if (specs.every((sp) => sp.optional) && !specs.every((spec) => hasAnyLegalTarget(state, spec, controllerId, def.colors ?? []))) {
+    // optional targeting with nothing legal: the trigger still goes on the stack, targetless
+    state.zones.stack.push({ id: mintCardId(), kind: 'ability', trigger: kind, controllerId, defName: obj.defName, sourceId, abilityIndex: null, targets: [] })
+    logLine(state, `${def.name}'s ${label} ability triggers (no target).`)
     return
   }
   if (!specs.every((spec) => hasAnyLegalTarget(state, spec, controllerId, def.colors ?? []))) {
@@ -1570,6 +1578,8 @@ function graveyardCardMatches(state: RulesGameState, id: ObjId, filter: TargetFi
   const def = getDef(obj.defName)
   if (filter?.types && !filter.types.some((ty) => def.types.includes(ty))) return false
   if (filter?.excludeTypes && filter.excludeTypes.some((ty) => def.types.includes(ty))) return false
+  if (filter?.minManaValue != null && defManaValue(def) < filter.minManaValue) return false
+  if (filter?.maxManaValue != null && defManaValue(def) > filter.maxManaValue) return false
   return true
 }
 
@@ -1589,6 +1599,7 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
   if (filter.controller === 'you' && obj.controllerId !== byController) return false
   if (filter.controller === 'opponent' && obj.controllerId === byController) return false
   if (filter.minManaValue != null && defManaValue(def) < filter.minManaValue) return false
+  if (filter.maxManaValue != null && defManaValue(def) > filter.maxManaValue) return false
   return true
 }
 
@@ -1619,7 +1630,7 @@ export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byCon
   return false
 }
 
-function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | PlayerId, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
+export function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | PlayerId, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
   if (spec.kind === 'spell') {
     const item = state.zones.stack.find((s) => s.kind === 'spell' && s.id === (t as ObjId))
     if (!item) return false
@@ -2022,7 +2033,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           ? flattenSpecs([{ kind: 'creature', count: 1 }])
           : flattenSpecs(chosen?.targets)
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
-      if (msg.targets.length !== specs.length)
+      // "you MAY … target X" / "up to one target X" (CR 601.2c): declining is legal, so an all-optional
+      // spec list accepts zero targets and the ability simply does nothing on resolution
+      const allOptional = specs.length > 0 && specs.every((sp) => sp.optional)
+      if (msg.targets.length !== specs.length && !(allOptional && msg.targets.length === 0))
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
       msg.targets.forEach((t, i) => {
         if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')
@@ -2898,7 +2912,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         pt.sagaChapter != null ? def.saga?.chapters[pt.sagaChapter - 1]?.targets : abilityFor(def, pt.trigger)?.targets,
       )
       const srcColors = def.colors ?? [] // for protection-from-colour target checks
-      if (msg.targets.length !== specs.length)
+      // "you MAY … target X" / "up to one target X" (CR 601.2c): the player may decline, so an
+      // all-optional spec list also accepts an empty target list (the ability then does nothing)
+      const triggerAllOptional = specs.length > 0 && specs.every((sp) => sp.optional)
+      if (msg.targets.length !== specs.length && !(triggerAllOptional && msg.targets.length === 0))
         throw new RulesError('BAD_TARGETS', `Needs exactly ${specs.length} target${specs.length === 1 ? '' : 's'}`)
       msg.targets.forEach((t, i) => {
         if (!isLegalTarget(state, specs[i]!, t, actor, srcColors)) throw new RulesError('BAD_TARGETS', 'Illegal target')

@@ -621,6 +621,8 @@ const canTargetPlayerForTrigger = computed(
 function isTriggerTargetCard(id: ObjId): boolean {
   const l = legal.value
   if (!l?.needsTriggerTargets) return false
+  // a graveyardCard trigger target (Eternal Witness, Sun Titan) is picked from the graveyard strip
+  if (l.triggerTargetKind === 'graveyardCard') return l.triggerGraveyardIds.includes(id)
   const card = cardOf(id)
   if (!card || card.zone !== 'battlefield') return false
   // 'permanent' → any battlefield permanent (server enforces the type filter);
@@ -1390,9 +1392,42 @@ onBeforeUnmount(() => {
                 {{ nameOf(a.attackerId) }} → {{ st.players[a.defenderId]?.name }}
               </span>
             </div>
-            <div v-if="legal?.needsTriggerTargets" class="rounded-lg border border-fuchsia-400 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-medium">
-              {{ legal.triggerSourceName }} — choose a target
-              ({{ legal.triggerTargetKind === 'creature' ? 'creature' : legal.triggerTargetKind === 'permanent' ? 'permanent' : legal.triggerTargetKind === 'player' ? 'player' : 'creature or player' }})
+            <!-- a graveyardCard trigger target: pick from the legal graveyard cards -->
+            <div
+              v-if="legal?.needsTriggerTargets && legal.triggerTargetKind === 'graveyardCard'"
+              class="flex flex-col gap-2 rounded-lg border border-fuchsia-400 bg-fuchsia-500/10 px-3 py-2 text-xs font-medium"
+            >
+              <span>{{ legal.triggerSourceName }} — choose a card from a graveyard</span>
+              <div class="flex flex-wrap gap-2">
+                <RulesCard
+                  v-for="id in legal.triggerGraveyardIds"
+                  :key="`gt${id}`"
+                  :card="st.cards[id]!"
+                  :display="display[st.cards[id]!.defName ?? '']"
+                  size="sm"
+                  glow
+                  @click="send({ type: 'r.chooseTargets', targets: [id] })"
+                  @preview="hoverDisplay = $event"
+                />
+              </div>
+              <div v-if="legal.triggerTargetOptional" class="flex justify-end">
+                <UButton size="xs" variant="ghost" color="neutral" @click="send({ type: 'r.chooseTargets', targets: [] })">
+                  Decline
+                </UButton>
+              </div>
+            </div>
+            <div v-else-if="legal?.needsTriggerTargets" class="flex items-center gap-2 rounded-lg border border-fuchsia-400 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-medium">
+              <span>
+                {{ legal.triggerSourceName }} — choose a target
+                ({{ legal.triggerTargetKind === 'creature' ? 'creature' : legal.triggerTargetKind === 'permanent' ? 'permanent' : legal.triggerTargetKind === 'player' ? 'player' : 'creature or player' }})
+              </span>
+              <UButton
+                v-if="legal.triggerTargetOptional"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                @click="send({ type: 'r.chooseTargets', targets: [] })"
+              >Decline</UButton>
             </div>
             <div v-if="legal?.needsCascade" class="flex items-center gap-2 rounded-lg border border-violet-400 bg-violet-500/10 px-3 py-1.5 text-xs font-medium">
               <span>Cascade — cast <b>{{ legal.cascadeHitId ? nameOf(legal.cascadeHitId) : '' }}</b> for free?</span>

@@ -31,6 +31,8 @@ export interface TargetFilter {
   controller?: 'you' | 'opponent' // relative to the targeting player
   /** target's mana value must be at least this (Despark: "mana value 4 or greater") */
   minManaValue?: number
+  /** target's mana value must be at most this (Sun Titan: "mana value 3 or less") */
+  maxManaValue?: number
 }
 
 export interface TargetSpec {
@@ -43,6 +45,12 @@ export interface TargetSpec {
   count: number
   /** optional narrowing for creature/permanent targets */
   filter?: TargetFilter
+  /**
+   * "You MAY …" / "up to one target …" — the ability may be put on the stack with NO target, in which
+   * case its effect does nothing (CR 601.2c). Without this, a targeted "you may" trigger would force
+   * the effect whenever a legal target existed, which is stricter than the card.
+   */
+  optional?: boolean
 }
 
 export interface Cost {

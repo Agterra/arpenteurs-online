@@ -19,6 +19,9 @@ import { chaosWarpPermanent, devotionTo, fireEntersTriggers, openDiscard, openSa
 
 // intrinsic OR granted indestructible (Heroic Intervention) — the same check checkSBA's
 // damage path uses, so a destroy effect and lethal damage agree on who survives
+/** creature check on a definition (defIsCreature lives in dsl; this avoids an import cycle here) */
+const isCreatureDef = (def: { types: CardType[] }) => def.types.includes('Creature')
+
 const isIndestructible = (ctx: EffectContext, id: ObjId) =>
   currentKeywords(ctx.state, ctx.state.objects[id]!).includes('indestructible')
 
@@ -1019,6 +1022,35 @@ export function untapOwnLands(state: EffectContext['state'], player: PlayerId, n
     done++
   }
   if (done) logLine(state, `${state.players[player]!.name} untaps ${done} land${done === 1 ? '' : 's'}.`)
+}
+
+/**
+ * Sun Titan: return each target graveyard card to the battlefield under the ability's controller.
+ * (Reanimate's own rider — losing life equal to its mana value — lives in `reanimate`; this is the
+ * plain version.)
+ */
+export const returnFromGraveyardToBattlefield = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'graveyard') continue
+    const def = getDef(obj.defName)
+    obj.controllerId = ctx.controllerId
+    obj.summoningSick = isCreatureDef(def)
+    moveTo(ctx.state, t, 'battlefield')
+    logLine(ctx.state, `${def.name} returns to the battlefield under ${ctx.state.players[ctx.controllerId]!.name}'s control.`)
+    fireEntersTriggers(ctx.state, t)
+  }
+}
+
+/** Loran of the Third Path: the controller and a target opponent each draw a card. */
+export const eachOfYouAndTargetDraws = (n: number): Effect => (ctx) => {
+  for (let i = 0; i < n; i++) drawOne(ctx.state, ctx.controllerId)
+  for (const t of ctx.targets) {
+    if (!isPlayerId(ctx, t)) continue
+    for (let i = 0; i < n; i++) drawOne(ctx.state, t)
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} and ${ctx.state.players[t]!.name} each draw ${n}.`)
+  }
 }
 
 /** Bloom Tender: for each COLOUR among permanents you control, add one mana of that colour. */

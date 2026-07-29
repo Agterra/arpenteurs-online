@@ -23,7 +23,15 @@ import { getDef } from './cards/registry'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
-import { controlledArtifacts, controlledLands, dynamicManaColors, hasAnyLegalTarget, landDropAllowance, permanentCostReduction } from './engine'
+import {
+  controlledArtifacts,
+  controlledLands,
+  dynamicManaColors,
+  hasAnyLegalTarget,
+  isLegalTarget,
+  landDropAllowance,
+  permanentCostReduction,
+} from './engine'
 
 function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean {
   const obj = state.objects[id]
@@ -270,13 +278,26 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       // targeted dies/attacks/upkeep trigger surfaces the right target kind
       const def = pt ? getDef(pt.defName) : null
       const ab = def && pt
-        ? pt.trigger === 'dies' ? def.dies : pt.trigger === 'attacks' ? def.attacks : pt.trigger === 'upkeep' ? def.upkeep : def.enters
+        ? pt.trigger === 'dies' ? def.dies
+          : pt.trigger === 'attacks' ? def.attacks
+          : pt.trigger === 'upkeep' ? def.upkeep
+          : pt.trigger === 'landfall' ? def.landEnters
+          : def.enters
         : null
       const spec = ab?.targets?.[0] ?? null
+      // a graveyardCard trigger target needs its own picker, so hand the client the legal cards
+      const triggerGraveyardIds =
+        spec?.kind === 'graveyardCard'
+          ? state.turnOrder.flatMap((pid) =>
+              zoneArr(state, pid, 'graveyard').filter((id) => isLegalTarget(state, spec, id, viewer, def?.colors ?? [])),
+            )
+          : []
       return {
         ...none,
         needsTriggerTargets: true,
         triggerTargetKind: spec?.kind ?? null,
+        triggerTargetOptional: !!spec?.optional,
+        triggerGraveyardIds,
         triggerSourceName: pt ? getDef(pt.defName).name : null,
       }
     }

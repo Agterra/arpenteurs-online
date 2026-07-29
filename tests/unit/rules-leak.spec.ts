@@ -223,6 +223,14 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
         if (spec?.filter?.controller === 'opponent' && o.controllerId === p) return false
         return true
       }
+      // a graveyardCard trigger target (Eternal Witness, Sun Titan) — redact hands us the legal ids;
+      // an optional trigger may also be declined, which exercises the empty-target path
+      if (kind === 'graveyardCard') {
+        const gy = legal.triggerGraveyardIds
+        const decline = legal.triggerTargetOptional && rnd() < 0.4
+        applyRulesAction(state, p, { type: 'r.chooseTargets', targets: decline || !gy.length ? [] : [pick(gy)] })
+        return true
+      }
       const onField = Object.values(state.objects).filter((o) => o.zone === 'battlefield' && matches(o))
       const creatures = onField.filter((o) => getDef(o.defName).types.includes('Creature')).map((o) => o.id)
       const cands: (ObjId | PlayerId)[] =
@@ -760,6 +768,10 @@ const FUZZ_DECK = [
   // Frantic Search, whose discard carries the untap-lands follow-up.
   ...Array(2).fill('Ghostly Prison'),
   ...Array(2).fill('Frantic Search'),
+  // batch CARD34: Eternal Witness (an OPTIONAL graveyard-card ETB trigger — graveyard→hand, the
+  // re-mint path) and Sun Titan (the same shape returning a permanent to the battlefield).
+  ...Array(3).fill('Eternal Witness'),
+  ...Array(2).fill('Sun Titan'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

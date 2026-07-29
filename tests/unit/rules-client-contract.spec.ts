@@ -42,8 +42,9 @@ describe('every implemented targeted trigger uses a client-selectable target kin
   })
   for (const c of cases) {
     it(`${c.card} (${c.trigger}) targets '${c.kind}' — client-selectable`, () => {
-      // 'spell' is not a legal battlefield trigger target here; only the enumerated card kinds
-      expect(['creature', 'permanent', 'player', 'anyTarget'].includes(c.kind)).toBe(true)
+      // 'spell' is not a legal battlefield trigger target here; 'graveyardCard' became selectable in
+      // batch CARD34 (the board renders the legal graveyard cards, with Decline when optional)
+      expect(['creature', 'permanent', 'player', 'anyTarget', 'graveyardCard'].includes(c.kind)).toBe(true)
     })
   }
 })

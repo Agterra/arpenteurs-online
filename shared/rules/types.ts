@@ -515,6 +515,10 @@ export interface LegalActions {
   /** a triggered ability of yours needs a target chosen */
   needsTriggerTargets: boolean
   triggerTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+  /** the trigger's target is optional ("you may…", "up to one…") → the client offers Decline */
+  triggerTargetOptional: boolean
+  /** for a graveyardCard trigger target: the graveyard cards that are legal picks right now */
+  triggerGraveyardIds: ObjId[]
   triggerSourceName: string | null
   /** non-mana activated abilities you can use right now (cost = mana part, '' if none; sacCost = creatures to sacrifice as a cost) */
   activations: { objId: ObjId; abilityIndex: number; targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null; cost: string; sacCost: number; lifeCost: number }[]
