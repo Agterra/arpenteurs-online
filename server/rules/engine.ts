@@ -1753,12 +1753,16 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // {a} or {b}, deals 1 damage to you") — pick the one that can produce the requested colour,
       // else the first (so every existing single-ability call site is unchanged)
       const manaAbilities = (getDef(obj.defName).abilities ?? []).filter((a) => a.kind === 'activated' && a.isMana)
-      const ability = (msg.color && manaAbilities.find((a) => (a.produces ?? []).includes(msg.color!))) || manaAbilities[0]
+      // a filter ability is selected by the caller passing a `pair` (its output choice)
+      const filterAbility = msg.pair != null ? manaAbilities.find((a) => a.filter) : undefined
+      const ability =
+        filterAbility || (msg.color && manaAbilities.find((a) => (a.produces ?? []).includes(msg.color!))) || manaAbilities[0]
       if (!ability) throw new RulesError('NO_MANA_ABILITY', 'No mana ability')
       // asking for a colour none of its mana abilities can make is illegal (rather than silently
       // falling back to another ability's output)
       if (
         msg.color &&
+        !ability.filter &&
         !manaAbilities.some((a) =>
           (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces) : (a.produces ?? [])).includes(msg.color!),
         )
@@ -1774,6 +1778,24 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // a creature's {T} mana ability (mana dork) still needs it to not be summoning sick (CR 302.6)
       if (manaCost.tap && defIsCreature(getDef(obj.defName)) && obj.summoningSick && !hasKw(state, obj.id, 'haste'))
         throw new RulesError('SUMMONING_SICK', `${objName(state, obj.id)} can't tap for mana yet`)
+      // FILTER ability (the filter lands): pay one mana of payFrom, add the chosen pair
+      if (ability.filter) {
+        const f = ability.filter
+        const out = msg.pair != null ? f.outputs[msg.pair] : undefined
+        if (!out) throw new RulesError('CHOOSE_OUTPUT', 'Choose which two mana to add')
+        const payColor = msg.payColor && f.payFrom.includes(msg.payColor) ? msg.payColor : undefined
+        if (!payColor) throw new RulesError('CHOOSE_COLOR', `Pay one ${f.payFrom.map((c) => `{${c}}`).join(' or ')}`)
+        const pool = state.players[actor]!.manaPool
+        if (pool[payColor] < 1) throw new RulesError('CANT_PAY', `No {${payColor}} in your pool`)
+        if (ability.cost.tap && obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
+        pool[payColor]--
+        if (ability.cost.tap) obj.tapped = true
+        pool[out[0]]++
+        pool[out[1]]++
+        logLine(state, `${name(state, actor)} filters {${payColor}} into {${out[0]}}{${out[1]}} with ${objName(state, obj.id)}.`)
+        state.passed = []
+        break
+      }
       // a dynamic source's colours come from the board (Reflecting Pool, Mox Amber)
       const produces = ability.dynamicProduces
         ? dynamicManaColors(state, actor, ability.dynamicProduces)

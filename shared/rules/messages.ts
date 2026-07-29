@@ -20,6 +20,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
     color: z.enum(['W', 'U', 'B', 'R', 'G', 'C']).optional(),
     // creatures sacrificed to pay a mana ability's "Sacrifice a creature" cost (the Altars)
     sacrifices: z.array(Id).max(20).optional(),
+    // filter lands: which colour pays the hybrid cost, and which output pair to add
+    payColor: z.enum(['W', 'U', 'B', 'R', 'G', 'C']).optional(),
+    pair: z.number().int().min(0).max(9).optional(),
   }),
   z.object({
     type: z.literal('r.activate'),

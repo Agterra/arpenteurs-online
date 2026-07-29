@@ -11,6 +11,7 @@
  */
 import type {
   LegalActions,
+  ManaColor,
   ObjId,
   PlayerId,
   RulesClientCard,
@@ -170,6 +171,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     manaSourceIds: [],
     manaSourceColors: {},
     manaSourceSacCost: {},
+    manaFilters: [],
     declarableAttackerIds: [],
     declarableBlockerIds: [],
     attackablePlayerIds: [],
@@ -355,6 +357,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   const potential = { ...state.players[viewer]!.manaPool }
   const manaSourceColors: LegalActions['manaSourceColors'] = {}
   const manaSourceSacCost: LegalActions['manaSourceSacCost'] = {}
+  const manaFilters: LegalActions['manaFilters'] = []
   for (const obj of Object.values(state.objects)) {
     if (obj.zone !== 'battlefield' || obj.controllerId !== viewer) continue
     // a permanent may have SEVERAL mana abilities (a pain land: "{T}: Add {C}" plus a coloured one
@@ -384,13 +387,20 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     // painful colours); a single ability prompts only when it is itself a colour choice
     // a dynamic source's choices come from the board (Reflecting Pool, Mox Amber)
     const colorsOf = (a: (typeof manaAbilities)[number]) =>
-      a.dynamicProduces ? dynamicManaColors(state, viewer, a.dynamicProduces) : (a.produces ?? [])
+      a.filter ? [] : a.dynamicProduces ? dynamicManaColors(state, viewer, a.dynamicProduces) : (a.produces ?? [])
     manaSourceColors[obj.id] =
       manaAbilities.length > 1
         ? [...new Set(manaAbilities.flatMap(colorsOf))]
         : manaAbilities[0]!.chooseColor || manaAbilities[0]!.dynamicProduces
           ? colorsOf(manaAbilities[0]!)
           : []
+    // a filter ability is offered only while its hybrid cost is actually payable from the pool
+    for (const a of manaAbilities) {
+      if (!a.filter) continue
+      if (a.cost.tap && obj.tapped) continue
+      if (!a.filter.payFrom.some((c) => state.players[viewer]!.manaPool[c] > 0)) continue
+      manaFilters.push({ objId: obj.id, payFrom: [...a.filter.payFrom], outputs: a.filter.outputs.map((o) => [...o] as [ManaColor, ManaColor]) })
+    }
     const sacNeeded = Math.max(0, ...manaAbilities.map((a) => a.cost.sacrifice?.count ?? 0))
     if (sacNeeded) manaSourceSacCost[obj.id] = sacNeeded
     // only cost-free {T} sources add to the pre-tap potential; cost-bearing rocks
@@ -654,6 +664,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     manaSourceIds,
     manaSourceColors,
     manaSourceSacCost,
+    manaFilters,
     activations,
     equippableIds,
     loyaltyActivations,

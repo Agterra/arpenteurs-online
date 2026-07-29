@@ -113,6 +113,13 @@ export interface ActivatedAbility {
    */
   dynamicProduces?: 'yourLands' | 'yourLegendaries'
   /**
+   * A FILTER mana ability (the filter lands: "{W/B}, {T}: Add {W}{W}, {W}{B}, or {B}{B}"): pay one
+   * mana of any colour in `payFrom`, then add the chosen pair from `outputs`. Both choices come in on
+   * r.tapMana (`payColor` + `pair`), since neither the single-colour `chooseColor` path nor a fixed
+   * `produces` list can express "one in, two out, three combinations".
+   */
+  filter?: { payFrom: ManaColor[]; outputs: [ManaColor, ManaColor][] }
+  /**
    * Nykthos: "Add an amount of mana of that color equal to your devotion to that color." The colour
    * is chosen on tap (`chooseColor`) and the AMOUNT is that colour's devotion — the number of mana
    * symbols of it among the mana costs of permanents you control (CR 700.5).

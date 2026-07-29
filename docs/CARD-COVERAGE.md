@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**508 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**518 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **7** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -85,6 +85,7 @@
 - Cancel
 - Canopy Vista
 - Capsize
+- Cascade Bluffs
 - Cathars' Crusade
 - Caves of Koilos
 - Centaur Courser
@@ -162,15 +163,18 @@
 - Fellwar Stone
 - Fencing Ace
 - Fervor
+- Fetid Heath
 - Field Marshal
 - Fierce Guardianship
 - Fiery Islet
 - Fiery Temper
+- Fire-Lit Thicket
 - Firebolt
 - Flame Rift
 - Flame Slash
 - Flametongue Kavu
 - Fleshbag Marauder
+- Flooded Grove
 - Flooded Strand
 - Foreboding Ruins
 - Forest
@@ -202,6 +206,7 @@
 - Golgari Signet
 - Grand Abolisher
 - Grasp of Darkness
+- Graven Cairns
 - Gray Merchant of Asphodel
 - Gray Ogre
 - Great Furnace
@@ -285,6 +290,7 @@
 - Mulldrifter
 - Murder
 - Murderous Rider
+- Mystic Gate
 - Mystic Monastery
 - Mystical Tutor
 - Naturalize
@@ -361,6 +367,7 @@
 - Rogue's Passage
 - Rootbound Crag
 - Ruby Medallion
+- Rugged Prairie
 - Sacred Foundry
 - Sakura-Tribe Elder
 - Sandsteppe Citadel
@@ -419,6 +426,7 @@
 - Sunbaked Canyon
 - Sundown Pass
 - Sunken Hollow
+- Sunken Ruins
 - Sunpetal Grove
 - Swamp
 - Swan Song
@@ -468,6 +476,7 @@
 - Tropical Island
 - Tukatongue Thallid
 - Tundra
+- Twilight Mire
 - Undercity Sewers
 - Underground Mortuary
 - Underground River
@@ -505,6 +514,7 @@
 - Windswept Heath
 - Withering Torment
 - Woe Strider
+- Wooded Bastion
 - Wooded Foothills
 - Woodland Cemetery
 - Worldly Tutor

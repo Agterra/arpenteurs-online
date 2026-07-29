@@ -278,6 +278,25 @@ const revealLand = (name: string, a: ManaColor, b: ManaColor, need: [string, str
 })
 
 /**
+ * A filter land: "{T}: Add {C}." and "{a/b}, {T}: Add {a}{a}, {a}{b}, or {b}{b}." — one mana in, two
+ * out, three combinations (see Ability.filter).
+ */
+const filterLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  abilities: [
+    { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+    {
+      kind: 'activated',
+      cost: { tap: true },
+      isMana: true,
+      filter: { payFrom: [a, b], outputs: [[a, a], [a, b], [b, b]] },
+      effect: addMana(a), // unused: the engine adds the chosen pair
+    },
+  ],
+})
+
+/**
  * A horizon land: "{T}, Pay 1 life: Add {a} or {b}." and "{1}, {T}, Sacrifice this land: Draw a card."
  * (a life-cost mana ability plus a sac-self draw — both existing primitives).
  */
@@ -3480,4 +3499,16 @@ export const STARTER_SET: CardDefinition[] = [
     //  creatures, or enchantments."
     opponentsCantActOnYourTurn: true,
   },
+
+  // --- Coverage batch CARD32: the ten filter lands ---
+  filterLand('Rugged Prairie', 'R', 'W'),
+  filterLand('Cascade Bluffs', 'U', 'R'),
+  filterLand('Flooded Grove', 'G', 'U'),
+  filterLand('Fetid Heath', 'W', 'B'),
+  filterLand('Twilight Mire', 'B', 'G'),
+  filterLand('Graven Cairns', 'B', 'R'),
+  filterLand('Mystic Gate', 'W', 'U'),
+  filterLand('Sunken Ruins', 'U', 'B'),
+  filterLand('Fire-Lit Thicket', 'R', 'G'),
+  filterLand('Wooded Bastion', 'G', 'W'),
 ]

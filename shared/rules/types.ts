@@ -483,6 +483,11 @@ export interface LegalActions {
   manaSourceColors: Record<ObjId, ManaColor[]>
   /** mana sources whose ability also costs "Sacrifice a creature" (the Altars) → objId → how many */
   manaSourceSacCost: Record<ObjId, number>
+  /**
+   * Filter-land abilities usable right now: pay one mana of `payFrom` (you hold at least one) and add
+   * the chosen `outputs` pair. The client renders the pair picker; r.tapMana takes `payColor` + `pair`.
+   */
+  manaFilters: { objId: ObjId; payFrom: ManaColor[]; outputs: [ManaColor, ManaColor][] }[]
   declarableAttackerIds: ObjId[]
   declarableBlockerIds: ObjId[]
   /** players your attackers may be sent at (alive opponents) */

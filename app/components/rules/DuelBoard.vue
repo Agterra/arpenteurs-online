@@ -938,9 +938,29 @@ const manaPick = ref<{ objId: ObjId; colors: ManaColor[]; sacrifices?: ObjId[] }
 // a mana ability that also costs "Sacrifice a creature" (the Altars): collect the creatures first
 const manaSac = ref<{ objId: ObjId; count: number; colors: ManaColor[] } | null>(null)
 const manaSacPick = ref<Set<ObjId>>(new Set())
+// filter lands: pay one hybrid mana, add one of three pairs
+const manaFilter = ref<{ objId: ObjId; payFrom: ManaColor[]; outputs: [ManaColor, ManaColor][]; plain: ManaColor[] } | null>(null)
+function sendFilter(pair: number, payColor: ManaColor) {
+  if (manaFilter.value) send({ type: 'r.tapMana', objId: manaFilter.value.objId, pair, payColor })
+  manaFilter.value = null
+}
+/** colours of the hybrid cost the player can actually pay from their pool right now */
+const filterPayable = computed<ManaColor[]>(() =>
+  (manaFilter.value?.payFrom ?? []).filter((c) => (me.value?.manaPool[c] ?? 0) > 0),
+)
+
 function tapManaSource(id: ObjId) {
   const colors = legal.value?.manaSourceColors[id] ?? []
   const sacCount = legal.value?.manaSourceSacCost[id] ?? 0
+  // a filter land offers its pairs only when its hybrid cost is payable; the plain {C} half is the
+  // normal path, so the picker is offered ONLY when there is no plain colour choice to make
+  // a filter land has BOTH a plain half ("{T}: Add {C}") and the filter half, so the picker offers
+  // the plain colours alongside the three pairs
+  const filt = legal.value?.manaFilters.find((f) => f.objId === id)
+  if (filt) {
+    manaFilter.value = { ...filt, plain: colors.length ? colors : (['C'] as ManaColor[]) }
+    return
+  }
   if (sacCount) {
     manaSac.value = { objId: id, count: sacCount, colors }
     manaSacPick.value = new Set()
@@ -1861,6 +1881,52 @@ onBeforeUnmount(() => {
             <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
               Pay ward
             </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- filter land: choose which two mana to add, and which colour pays for it -->
+      <div v-if="manaFilter" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-w-sm flex-col rounded-lg border border-sky-400 bg-default p-4 shadow-xl">
+          <p class="mb-1 text-sm font-semibold">
+            {{ display[cardOf(manaFilter.objId)?.defName ?? '']?.name ?? 'Filter land' }} — filter one mana into two
+          </p>
+          <p class="mb-2 text-xs text-dimmed">
+            Tap it plainly, or pay
+            <ManaSymbols :value="filterPayable.map((c) => `{${c}}`).join('')" :size="12" /> to filter:
+          </p>
+          <div class="mb-2 flex flex-wrap gap-2">
+            <UButton
+              v-for="pc in manaFilter.plain"
+              :key="`plain-${pc}`"
+              size="xs"
+              variant="soft"
+              color="neutral"
+              class="px-1.5 py-0"
+              @click="send({ type: 'r.tapMana', objId: manaFilter!.objId, color: pc }); manaFilter = null"
+            >
+              <span class="flex items-center gap-0.5">Add <ManaSymbols :value="`{${pc}}`" :size="12" /></span>
+            </UButton>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <template v-for="(out, i) in manaFilter.outputs" :key="i">
+              <UButton
+                v-for="pc in filterPayable"
+                :key="`${i}-${pc}`"
+                size="xs"
+                variant="soft"
+                class="px-1.5 py-0"
+                @click="sendFilter(i, pc)"
+              >
+                <span class="flex items-center gap-0.5">
+                  <ManaSymbols :value="`{${pc}}`" :size="12" /> →
+                  <ManaSymbols :value="`{${out[0]}}{${out[1]}}`" :size="12" />
+                </span>
+              </UButton>
+            </template>
+          </div>
+          <div class="mt-3 flex justify-end">
+            <UButton size="sm" variant="ghost" color="neutral" @click="manaFilter = null">Cancel</UButton>
           </div>
         </div>
       </div>

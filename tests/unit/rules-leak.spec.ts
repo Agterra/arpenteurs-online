@@ -236,6 +236,20 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
    * fuzzer's tap loops threw BAD_SACRIFICE the moment such a source was in play.
    */
   const tapSource = (src: ObjId, legalNow: ReturnType<typeof computeLegal>): boolean => {
+    // a filter land (one mana in, two out) is a different shape: pass the pair + the paying colour
+    const filt = legalNow.manaFilters.find((f) => f.objId === src)
+    if (filt && rnd() < 0.5) {
+      const payable = filt.payFrom.filter((c) => state.players[actor]!.manaPool[c] > 0)
+      if (payable.length) {
+        applyRulesAction(state, actor, {
+          type: 'r.tapMana',
+          objId: src,
+          pair: Math.floor(rnd() * filt.outputs.length),
+          payColor: pick(payable),
+        })
+        return true
+      }
+    }
     const colors = legalNow.manaSourceColors[src] ?? []
     const sacCount = legalNow.manaSourceSacCost[src] ?? 0
     let sacrifices: ObjId[] | undefined
@@ -701,6 +715,9 @@ const FUZZ_DECK = [
   // discard, i.e. hidden→hidden then hidden→public).
   ...Array(2).fill("Ashnod's Altar"),
   ...Array(2).fill('Gamble'),
+  // batch CARD32: a filter land — its hybrid payment + three-way output choice is a mana shape no
+  // other card has, and the fuzzer uses it whenever it has a payable colour in the pool.
+  ...Array(3).fill('Graven Cairns'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
