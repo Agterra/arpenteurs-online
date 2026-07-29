@@ -889,6 +889,7 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'upkeep' ? def.upkeep
     : kind === 'cast' ? def.castSpell
     : kind === 'draw' ? def.drawnCard
+    : kind === 'landfall' ? def.landEnters
     : def.enters
 }
 
@@ -899,6 +900,7 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   upkeep: 'upkeep',
   cast: 'cast',
   draw: 'draw',
+  landfall: 'landfall',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1110,8 +1112,13 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
   for (const pid of state.turnOrder) {
     for (const id of [...state.zones.perPlayer[pid]!.battlefield]) {
       const p = state.objects[id]
-      const ab = p && getDef(p.defName).enters
-      if (!p || !ab) continue
+      if (!p) continue
+      // landfall: "whenever a LAND YOU CONTROL enters" (Rampaging Baloths). Checked BEFORE the ETB
+      // branch bails out — a landfall permanent usually has no `enters` ability of its own.
+      if (getDef(p.defName).landEnters && defIsLand(getDef(subject.defName)) && subject.controllerId === p.controllerId)
+        queueTriggeredAbility(state, p.id, 'landfall')
+      const ab = getDef(p.defName).enters
+      if (!ab) continue
       const isSelf = p.id === subjectId
       const w = ab.watch
       const fires = !w
@@ -1405,6 +1412,12 @@ function blockRestriction(state: RulesGameState, blocker: GameObject, attacker: 
   const aDef = getDef(attacker.defName)
   const bDef = getDef(blocker.defName)
   if (aDef.cantBeBlocked) return `${a} can't be blocked`
+  // an Equipment/Aura granting "can't be blocked" (Whispersilk Cloak)
+  for (const id of state.zones.perPlayer[attacker.controllerId]!.battlefield) {
+    const src = state.objects[id]
+    if (src?.attachedTo === attacker.id && getDef(src.defName).grantsToHost?.cantBeBlocked)
+      return `${a} can't be blocked (${objName(state, id)})`
+  }
   // until-end-of-turn "can't be blocked" (Rogue's Passage)
   if (state.unblockable?.includes(attacker.id)) return `${a} can't be blocked this turn`
   // landwalk: unblockable if the defending player controls a land of that type
@@ -2350,7 +2363,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (!obj) continue
         // split (Cultivate/Kodama's Reach): first pick → `first`, the rest → `rest`
         const route = ps.split ? (i === 0 ? ps.split.first : ps.split.rest) : { dest: ps.dest, tapped: ps.tapped }
-        if (route.dest === 'libraryTop') {
+        if (route.dest === 'graveyard') {
+          // Entomb: library → graveyard is hidden → PUBLIC, so no re-mint is needed (the card is
+          // legitimately revealed by arriving in a public zone)
+          moveToGraveyard(state, id)
+        } else if (route.dest === 'libraryTop') {
           topPicks.push(obj)
           if (ps.reveal) logLine(state, `${name(state, actor)} reveals ${getDef(obj.defName).name}.`)
         } else if (route.dest === 'battlefield') {

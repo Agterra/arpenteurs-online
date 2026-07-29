@@ -395,7 +395,7 @@ export const searchLibrary = (opts: {
   // 'basicLand' = any Basic land; 'any' = any card; { landSubtypes } = a land with one of these
   // subtypes (e.g. Farseek → Plains/Island/Swamp/Mountain, Nature's Lore → Forest — basic OR not).
   filter: 'basicLand' | 'any' | { landSubtypes: string[] } | { types: CardType[] }
-  dest: 'battlefield' | 'hand' | 'libraryTop'
+  dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'
   tapped?: boolean
   /** the tutors: reveal the chosen card (log its name) as it goes on top */
   reveal?: boolean
@@ -927,6 +927,20 @@ export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) =
     ctx.state,
     `Each opponent loses ${x} life (devotion to {${color}}); ${ctx.state.players[ctx.controllerId]!.name} gains ${gained}.`,
   )
+}
+
+/** Mana Geyser: add {R} for each TAPPED land the controller's opponents control. */
+export const addManaPerOpponentTappedLand = (color: ManaColor): Effect => (ctx) => {
+  let n = 0
+  for (const pid of ctx.state.turnOrder) {
+    if (pid === ctx.controllerId) continue
+    n += ctx.state.zones.perPlayer[pid]!.battlefield.filter((id) => {
+      const o = ctx.state.objects[id]!
+      return o.tapped && getDef(o.defName).types.includes('Land')
+    }).length
+  }
+  ctx.state.players[ctx.controllerId]!.manaPool[color] += n
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} adds ${n} {${color}} (one per tapped opposing land).`)
 }
 
 /** Exsanguinate: each opponent loses X life and the controller gains the total lost. */

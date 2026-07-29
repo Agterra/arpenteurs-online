@@ -12,6 +12,7 @@ import {
   addLoyaltyToOtherPlaneswalkers,
   addMana,
   addManaPerLandSubtype,
+  addManaPerOpponentTappedLand,
   monstrosity,
   counterTarget,
   chaosWarpTarget,
@@ -233,6 +234,21 @@ const dualLand = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, s
   types: ['Land'],
   subtypes,
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/**
+ * A Karoo ("bounce") land: enters tapped, "When this land enters, return a land you control to its
+ * owner's hand", and "{T}: Add {a}{b}" (two mana at once, a fixed output).
+ */
+const karooLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTapped: true,
+  enters: {
+    targets: [{ kind: 'permanent', count: 1, filter: { types: ['Land'], controller: 'you' } }],
+    effect: returnToHand(),
+  },
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], effect: addMana(a, b) }],
 })
 
 /** A "Snarl" land: untapped if you reveal a matching land card from hand, else tapped. */
@@ -3103,5 +3119,86 @@ export const STARTER_SET: CardDefinition[] = [
     toughness: 3,
     // "Whenever one or more other creatures die, draw a card. This ability triggers only once each turn."
     dies: { watch: { scope: 'anyCreature', excludeSelf: true }, oncePerTurn: true, effect: drawCards(1) },
+  },
+
+  // --- Coverage batch CARD28: the Karoo lands, landfall, and five singles ---
+  karooLand('Simic Growth Chamber', 'G', 'U'),
+  karooLand('Golgari Rot Farm', 'B', 'G'),
+  karooLand('Dimir Aqueduct', 'U', 'B'),
+  karooLand('Orzhov Basilica', 'W', 'B'),
+  karooLand('Izzet Boilerworks', 'U', 'R'),
+  karooLand('Gruul Turf', 'R', 'G'),
+  karooLand('Azorius Chancery', 'W', 'U'),
+  karooLand('Boros Garrison', 'R', 'W'),
+  karooLand('Rakdos Carnarium', 'B', 'R'),
+  karooLand('Selesnya Sanctuary', 'G', 'W'),
+  {
+    name: 'Azusa, Lost but Seeking',
+    types: ['Creature'],
+    supertypes: ['Legendary'],
+    subtypes: ['Human', 'Monk'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    power: 1,
+    toughness: 2,
+    // "You may play two additional lands on each of your turns."
+    extraLandDrops: 2,
+  },
+  {
+    name: 'Seething Song',
+    types: ['Sorcery'],
+    manaCost: '{2}{R}',
+    colors: ['R'],
+    // "Add {R}{R}{R}{R}{R}."
+    spell: { effect: addMana('R', 'R', 'R', 'R', 'R') },
+  },
+  {
+    name: 'Mana Geyser',
+    types: ['Sorcery'],
+    manaCost: '{3}{R}{R}',
+    colors: ['R'],
+    // "Add {R} for each tapped land your opponents control."
+    spell: { effect: addManaPerOpponentTappedLand('R') },
+  },
+  {
+    name: 'Entomb',
+    types: ['Instant'],
+    manaCost: '{B}',
+    colors: ['B'],
+    // "Search your library for a card, put that card into your graveyard, then shuffle."
+    spell: { effect: searchLibrary({ filter: 'any', dest: 'graveyard', count: 1 }) },
+  },
+  {
+    name: 'Baleful Strix',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Bird'],
+    manaCost: '{U}{B}',
+    colors: ['U', 'B'],
+    power: 1,
+    toughness: 1,
+    keywords: ['flying', 'deathtouch'],
+    // "Flying, deathtouch. When this creature enters, draw a card."
+    enters: { effect: drawCards(1) },
+  },
+  {
+    name: 'Whispersilk Cloak',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{3}',
+    // "Equipped creature can't be blocked and has shroud. Equip {2}"
+    equipCost: '{2}',
+    grantsToHost: { keywords: ['shroud'], cantBeBlocked: true },
+  },
+  {
+    name: 'Rampaging Baloths',
+    types: ['Creature'],
+    subtypes: ['Beast'],
+    manaCost: '{4}{G}{G}',
+    colors: ['G'],
+    power: 6,
+    toughness: 6,
+    keywords: ['trample'],
+    // "Trample. Landfall — Whenever a land you control enters, create a 4/4 green Beast creature token."
+    landEnters: { effect: createToken({ name: 'Beast', power: 4, toughness: 4, subtypes: ['Beast'] }) },
   },
 ]

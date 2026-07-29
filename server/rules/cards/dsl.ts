@@ -144,7 +144,7 @@ export interface TriggeredAbility {
   oncePerTurn?: boolean
 }
 /** The trigger events the engine emits. */
-export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw'
+export type TriggerKind = 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -232,6 +232,11 @@ export interface CardDefinition {
   attacks?: TriggeredAbility
   /** "At the beginning of your upkeep, …" — fires each of the controller's upkeeps */
   upkeep?: TriggeredAbility
+  /**
+   * Landfall — "Whenever a land you control enters, …" (Rampaging Baloths). Fires from the same
+   * entry hook as the ETB watchers, once per land entering under this permanent's controller.
+   */
+  landEnters?: TriggeredAbility
   /**
    * "Whenever an opponent casts a spell, …" (CR 603.2) — a CAST trigger, put on the stack above the
    * spell that caused it, so it resolves first. `watch` narrows which casts fire it.
@@ -442,7 +447,15 @@ export interface CardDefinition {
    * attaches on resolution to its spell target; Equipment (subtype 'Equipment')
    * attaches via its equip ability (`equipCost`).
    */
-  grantsToHost?: { power?: number; toughness?: number; keywords?: Keyword[]; cantAttack?: boolean; cantBlock?: boolean }
+  grantsToHost?: {
+    power?: number
+    toughness?: number
+    keywords?: Keyword[]
+    cantAttack?: boolean
+    cantBlock?: boolean
+    /** "Equipped creature can't be blocked." (Whispersilk Cloak) */
+    cantBeBlocked?: boolean
+  }
   /** Equipment: the mana cost of its equip activated ability (sorcery speed). */
   equipCost?: string
   /**

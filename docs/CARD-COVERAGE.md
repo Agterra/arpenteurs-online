@@ -4,8 +4,8 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**456 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
-**6** of them can be a commander (legendary creatures).
+**473 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**7** of them can be a commander (legendary creatures).
 
 ## Cards
 
@@ -33,9 +33,12 @@
 - Audacious Thief
 - Augury Raven
 - Avacyn's Pilgrim
+- Azorius Chancery
 - Azorius Guildgate
 - Azorius Signet
+- Azusa, Lost but Seeking
 - Badlands
+- Baleful Strix
 - Barktooth Warbeard
 - Barren Moor
 - Basilisk Collar
@@ -65,6 +68,7 @@
 - Bonesplitter
 - Boomerang
 - Borderland Marauder
+- Boros Garrison
 - Boros Guildgate
 - Boros Signet
 - Bountiful Promenade
@@ -114,6 +118,7 @@
 - Diabolic Edict
 - Diabolic Intent
 - Diabolic Tutor
+- Dimir Aqueduct
 - Dimir Guildgate
 - Dimir Signet
 - Disenchant
@@ -131,6 +136,7 @@
 - Elvish Visionary
 - Emerald Medallion
 - Enlightened Tutor
+- Entomb
 - Errant Ephemeron
 - Esper Sentinel
 - Evolving Wilds
@@ -180,6 +186,7 @@
 - Godless Shrine
 - Gods Willing
 - Golgari Guildgate
+- Golgari Rot Farm
 - Golgari Signet
 - Grasp of Darkness
 - Gray Merchant of Asphodel
@@ -188,6 +195,7 @@
 - Grizzly Bears
 - Gruul Guildgate
 - Gruul Signet
+- Gruul Turf
 - Hallowed Fountain
 - Harmonize
 - Harrow
@@ -203,6 +211,7 @@
 - Isamaru, Hound of Konda
 - Island
 - Isolated Chapel
+- Izzet Boilerworks
 - Izzet Guildgate
 - Izzet Signet
 - Jayemdae Tome
@@ -233,6 +242,7 @@
 - Mahamoti Djinn
 - Man-o'-War
 - Mana Confluence
+- Mana Geyser
 - Manalith
 - Marhault Elsdragon
 - Marsh Boa
@@ -269,6 +279,7 @@
 - Opt
 - Opulent Palace
 - Ornithopter of Paradise
+- Orzhov Basilica
 - Orzhov Guildgate
 - Orzhov Signet
 - Overgrown Farmland
@@ -303,8 +314,10 @@
 - Rainbow Efreet
 - Raise Dead
 - Raise the Alarm
+- Rakdos Carnarium
 - Rakdos Guildgate
 - Rakdos Signet
+- Rampaging Baloths
 - Rampant Growth
 - Rapid Hybridization
 - Raugrin Triome
@@ -336,7 +349,9 @@
 - Seaside Citadel
 - Seat of the Synod
 - Secluded Steppe
+- Seething Song
 - Selesnya Guildgate
+- Selesnya Sanctuary
 - Selesnya Signet
 - Serra Angel
 - Shardless Agent
@@ -348,6 +363,7 @@
 - Shock
 - Siege Wurm
 - Sign in Blood
+- Simic Growth Chamber
 - Simic Guildgate
 - Simic Signet
 - Skullclamp
@@ -448,6 +464,7 @@
 - Waterfall Aerialist
 - Watery Grave
 - Wayfarer's Bauble
+- Whispersilk Cloak
 - White Knight
 - Wind Drake
 - Windswept Heath

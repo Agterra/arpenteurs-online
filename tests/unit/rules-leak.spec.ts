@@ -163,8 +163,29 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       // player). Must be handled or the fuzzer stalls the moment such a trigger fires — mirrors the
       // client's own trigger-target selection (isTriggerTargetCard / canTargetPlayerForTrigger).
       const kind = legal.triggerTargetKind
+      // the trigger's own spec carries a FILTER (a Karoo land's ETB wants a LAND YOU CONTROL), so
+      // read it off the definition instead of guessing from the kind alone — picking any permanent
+      // made the engine reject the choice and aborted the run
+      const pt = state.pendingTrigger
+      const tdef = pt ? getDef(pt.defName) : undefined
+      const tab = tdef && pt
+        ? pt.trigger === 'dies' ? tdef.dies
+          : pt.trigger === 'attacks' ? tdef.attacks
+          : pt.trigger === 'upkeep' ? tdef.upkeep
+          : pt.trigger === 'landfall' ? tdef.landEnters
+          : tdef.enters
+        : undefined
+      const spec = tab?.targets?.[0]
       const players = state.turnOrder.filter((x) => !state.players[x]!.hasLost)
-      const onField = Object.values(state.objects).filter((o) => o.zone === 'battlefield')
+      const matches = (o: { id: ObjId; controllerId: PlayerId; defName: string }) => {
+        const d = getDef(o.defName)
+        if (spec?.filter?.types && !spec.filter.types.some((t) => d.types.includes(t))) return false
+        if (spec?.filter?.excludeTypes && spec.filter.excludeTypes.some((t) => d.types.includes(t))) return false
+        if (spec?.filter?.controller === 'you' && o.controllerId !== p) return false
+        if (spec?.filter?.controller === 'opponent' && o.controllerId === p) return false
+        return true
+      }
+      const onField = Object.values(state.objects).filter((o) => o.zone === 'battlefield' && matches(o))
       const creatures = onField.filter((o) => getDef(o.defName).types.includes('Creature')).map((o) => o.id)
       const cands: (ObjId | PlayerId)[] =
         kind === 'player' ? players
@@ -637,6 +658,11 @@ const FUZZ_DECK = [
   ...Array(2).fill('Foreboding Ruins'),
   ...Array(2).fill('Exploration'),
   ...Array(2).fill('Morbid Opportunist'),
+  // batch CARD28: a Karoo land (its ETB bounces one of your lands — battlefield→hand, re-minted) and
+  // Rampaging Baloths (landfall, so every land drop makes a token) + Entomb (library→graveyard).
+  ...Array(2).fill('Dimir Aqueduct'),
+  ...Array(2).fill('Rampaging Baloths'),
+  ...Array(2).fill('Entomb'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

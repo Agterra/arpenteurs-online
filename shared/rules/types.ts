@@ -146,7 +146,7 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw'
+  trigger?: 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall'
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -245,7 +245,7 @@ export interface RulesGameState {
   pendingSearch: {
     player: PlayerId
     matchIds: ObjId[]
-    dest: 'battlefield' | 'hand' | 'libraryTop'
+    dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'
     tapped: boolean
     count: number
     /** the tutors: the chosen card is REVEALED (its name is logged) as it goes on top */
@@ -262,8 +262,8 @@ export interface RulesGameState {
      */
     untapIfLandsAtLeast?: number
     split?: {
-      first: { dest: 'battlefield' | 'hand' | 'libraryTop'; tapped: boolean }
-      rest: { dest: 'battlefield' | 'hand' | 'libraryTop'; tapped: boolean }
+      first: { dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'; tapped: boolean }
+      rest: { dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'; tapped: boolean }
     }
   } | null
   /**
