@@ -686,12 +686,19 @@ function isValidTarget(id: ObjId): boolean {
   if (!card || card.zone !== 'battlefield') return false
   // 'player' targets are clicked via the HUD, never a card on the battlefield
   if (targeting.value.spec === 'player') return false
-  // 'permanent' targets any permanent on the battlefield; 'creature'/'any' need a creature
+  // 'permanent' targets any permanent on the battlefield
   if (targeting.value.spec === 'permanent') return true
-  return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
+  const typeLine = display.value[card.defName ?? '']?.typeLine ?? ''
+  // "target player or planeswalker" (Boros Charm) — only the planeswalker side is clickable here
+  if (targeting.value.spec === 'player-or-pw') return typeLine.includes('Planeswalker')
+  // "any target" (CR 115.4) = a creature, a player OR a planeswalker
+  if (targeting.value.spec === 'any') return typeLine.includes('Creature') || typeLine.includes('Planeswalker')
+  return typeLine.includes('Creature')
 }
-/** a player HUD click is a legal spell target ('creature or player' or 'player'). */
-const targetingPlayerOk = computed(() => targeting.value?.spec === 'any' || targeting.value?.spec === 'player')
+/** a player HUD click is a legal spell target ('any target', 'player', or 'player or planeswalker'). */
+const targetingPlayerOk = computed(
+  () => targeting.value?.spec === 'any' || targeting.value?.spec === 'player' || targeting.value?.spec === 'player-or-pw',
+)
 
 // ---------- triggered-ability target selection ----------
 const canTargetPlayerForTrigger = computed(
@@ -708,7 +715,10 @@ function isTriggerTargetCard(id: ObjId): boolean {
   // 'creature'/'anyTarget' → a creature. (mirrors isValidTarget for spell targets)
   if (l.triggerTargetKind === 'permanent') return true
   if (l.triggerTargetKind !== 'creature' && l.triggerTargetKind !== 'anyTarget') return false
-  return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
+  const typeLine = display.value[card.defName ?? '']?.typeLine ?? ''
+  // 'anyTarget' includes a planeswalker (CR 115.4), same as a spell's any-target
+  if (l.triggerTargetKind === 'anyTarget' && typeLine.includes('Planeswalker')) return true
+  return typeLine.includes('Creature')
 }
 
 // ---------- cascade (CR 702.85): cast the revealed hit for free, choosing its target ----------
@@ -1443,7 +1453,7 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="targeting" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
               Casting {{ nameOf(targeting.objId) }} — select a target
-              ({{ targeting.spec === 'any' ? 'creature or player' : targeting.spec === 'player' ? 'a player' : targeting.spec === 'spell' ? 'a spell on the stack' : targeting.spec === 'permanent' ? 'any permanent' : 'creature' }})
+              ({{ targeting.spec === 'any' ? 'creature, player or planeswalker' : targeting.spec === 'player' ? 'a player' : targeting.spec === 'player-or-pw' ? 'a player or planeswalker' : targeting.spec === 'spell' ? 'a spell on the stack' : targeting.spec === 'permanent' ? 'any permanent' : 'creature' }})
               <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="targeting = null">Cancel</UButton>
             </div>
             <!-- mana payment: tap your own sources to pay, then Cast -->

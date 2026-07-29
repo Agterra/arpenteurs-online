@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**544 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**546 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -76,6 +76,7 @@
 - Bonesplitter
 - Boomerang
 - Borderland Marauder
+- Boros Charm
 - Boros Garrison
 - Boros Guildgate
 - Boros Signet
@@ -381,6 +382,7 @@
 - Regrowth
 - Rejuvenating Springs
 - Reliquary Tower
+- Return of the Wildspeaker
 - Revitalize
 - Rhystic Study
 - Rockfall Vale

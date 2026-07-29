@@ -44,6 +44,7 @@ import {
   drawCards,
   drawCardsX,
   drawPerControlledCreature,
+  drawPerGreatestPowerAmong,
   drawThenDiscardThenUntap,
   eachOfYouAndTargetDraws,
   eachOpponentLoses,
@@ -62,6 +63,7 @@ import {
   gainLifePerSpellThisTurn,
   gainLifeX,
   grantKeywordsToControlled,
+  grantKeywordsToTarget,
   grantProtection,
   grantProtectionToControlled,
   lookAndReorder,
@@ -76,6 +78,7 @@ import {
   playersDiscard,
   playersSacrifice,
   pump,
+  pumpControlled,
   pumpSelf,
   putBackOnTop,
   reanimate,
@@ -3892,6 +3895,48 @@ export const STARTER_SET: CardDefinition[] = [
           grantKeywordsToControlled(['lifelink', 'indestructible'], { creaturesOnly: true }),
           grantProtectionToControlled(['W', 'U', 'B', 'R', 'G']),
         ),
+      },
+    ],
+  },
+  // --- Coverage batch CARD41: "any target" now includes planeswalkers, and two more modal spells ---
+  {
+    name: 'Boros Charm',
+    types: ['Instant'],
+    manaCost: '{R}{W}',
+    colors: ['R', 'W'],
+    // "Choose one — • Boros Charm deals 4 damage to target player or planeswalker. • Permanents you
+    //  control gain indestructible until end of turn. • Target creature gains double strike until
+    //  end of turn."
+    // "target player or planeswalker" = an `anyTarget` whose permanent side excludes creatures.
+    modes: [
+      {
+        label: 'Deal 4 damage to target player or planeswalker',
+        targets: [{ kind: 'anyTarget', count: 1, filter: { excludeTypes: ['Creature'] } }],
+        effect: dealDamage(4),
+      },
+      { label: 'Permanents you control gain indestructible', effect: grantKeywordsToControlled(['indestructible']) },
+      {
+        label: 'Target creature gains double strike',
+        targets: [{ kind: 'creature', count: 1 }],
+        effect: grantKeywordsToTarget(['double strike']),
+      },
+    ],
+  },
+  {
+    name: 'Return of the Wildspeaker',
+    types: ['Instant'],
+    manaCost: '{4}{G}',
+    colors: ['G'],
+    // "Choose one — • Draw cards equal to the greatest power among non-Human creatures you control.
+    //  • Non-Human creatures you control get +3/+3 until end of turn."
+    modes: [
+      {
+        label: 'Draw cards equal to your greatest non-Human power',
+        effect: drawPerGreatestPowerAmong({ excludeSubtypes: ['Human'] }),
+      },
+      {
+        label: 'Non-Human creatures you control get +3/+3',
+        effect: pumpControlled(3, 3, { excludeSubtypes: ['Human'] }),
       },
     ],
   },

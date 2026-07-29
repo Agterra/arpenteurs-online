@@ -61,8 +61,20 @@ export const dealDamage = (n: number): Effect => (ctx) => {
     } else if (isCreatureOnBattlefield(ctx.state, t)) {
       ctx.state.objects[t]!.damageMarked += n
       logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to ${getDef(ctx.state.objects[t]!.defName).name}.`)
+    } else if (isPlaneswalkerOn(ctx.state, t)) {
+      // "any target" includes a planeswalker (CR 115.4); damage to one removes that much loyalty
+      // (CR 120.3c) and the 0-loyalty SBA then puts it into its owner's graveyard
+      const pw = ctx.state.objects[t as ObjId]!
+      pw.loyalty = (pw.loyalty ?? 0) - n
+      logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to ${getDef(pw.defName).name} — it loses ${n} loyalty.`)
     }
   }
+}
+
+/** Is `id` a planeswalker on the battlefield? (damage to "any target" routes to loyalty) */
+const isPlaneswalkerOn = (state: EffectContext['state'], id: ObjId | PlayerId) => {
+  const o = Object.hasOwn(state.objects, id) ? state.objects[id as ObjId] : undefined
+  return !!o && o.zone === 'battlefield' && getDef(o.defName).types.includes('Planeswalker')
 }
 
 /** Deal `base` damage to each target — or `kicked` damage if the spell was kicked (CR 702.33). */
@@ -1264,6 +1276,57 @@ const describeSweep = (types: CardType[], opts?: { maxManaValue?: number; minMan
   if (opts?.maxManaValue != null) return `${what} with mana value ${opts.maxManaValue} or less`
   if (opts?.minManaValue != null) return `${what} with mana value ${opts.minManaValue} or greater`
   return what
+}
+
+/**
+ * Boros Charm's third mode: each TARGET creature gains `keywords` until end of turn. The
+ * controlled-permanents version is grantKeywordsToControlled; this one is target-driven.
+ */
+export const grantKeywordsToTarget = (keywords: Keyword[]): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t) || !isCreatureOnBattlefield(ctx.state, t)) continue
+    for (const keyword of keywords) (ctx.state.keywordGrants ??= []).push({ objId: t, keyword })
+    logLine(
+      ctx.state,
+      `${getDef(ctx.state.objects[t]!.defName).name} gains ${keywords.join(' and ')} until end of turn.`,
+    )
+  }
+}
+
+/**
+ * Return of the Wildspeaker's first mode: "Draw cards equal to the greatest power among non-Human
+ * creatures you control." Power is the CURRENT power (counters, pumps and anthems included).
+ */
+export const drawPerGreatestPowerAmong = (opts: { excludeSubtypes?: string[] }): Effect => (ctx) => {
+  const mine = battlefieldCreatures(ctx.state, ctx.controllerId).filter(
+    (c) => !(opts.excludeSubtypes ?? []).some((st) => (getDef(c.defName).subtypes ?? []).includes(st)),
+  )
+  const greatest = mine.reduce((best, c) => Math.max(best, currentPower(ctx.state, c)), 0)
+  for (let i = 0; i < greatest; i++) drawOne(ctx.state, ctx.controllerId)
+  logLine(
+    ctx.state,
+    `${ctx.state.players[ctx.controllerId]!.name} draws ${greatest} card${greatest === 1 ? '' : 's'} (greatest power among their ${(opts.excludeSubtypes ?? []).length ? `non-${opts.excludeSubtypes!.join('/non-')} ` : ''}creatures).`,
+  )
+}
+
+/**
+ * Return of the Wildspeaker's second mode: creatures you control get +power/+toughness until end of
+ * turn, optionally skipping some subtypes ("Non-Human creatures you control get +3/+3"). Skips
+ * `unimplemented` (assisted-table) creatures like every other mass-creature effect.
+ */
+export const pumpControlled = (power: number, toughness: number, opts?: { excludeSubtypes?: string[] }): Effect => (ctx) => {
+  let n = 0
+  for (const c of battlefieldCreatures(ctx.state, ctx.controllerId)) {
+    const def = getDef(c.defName)
+    if (def.unimplemented) continue
+    if ((opts?.excludeSubtypes ?? []).some((st) => (def.subtypes ?? []).includes(st))) continue
+    ctx.state.pumps.push({ objId: c.id, power, toughness })
+    n++
+  }
+  logLine(
+    ctx.state,
+    `${n} creature${n === 1 ? '' : 's'} ${ctx.state.players[ctx.controllerId]!.name} controls get +${power}/+${toughness} until end of turn.`,
+  )
 }
 
 /** Gamble: discard a card at random from the controller's hand. */

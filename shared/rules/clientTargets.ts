@@ -9,7 +9,7 @@
  *
  * Kept out of DuelBoard.vue purely so the test can import it; the component is the only consumer.
  */
-export type TargetClass = 'any' | 'creature' | 'permanent' | 'spell' | 'player'
+export type TargetClass = 'any' | 'creature' | 'permanent' | 'spell' | 'player' | 'player-or-pw'
 
 /** Single-target spells: one click of the matching class, then the payment panel. */
 export const TARGETED_SPELLS: Record<string, TargetClass> = {
@@ -100,6 +100,15 @@ export const MODAL_SPELLS: Record<string, { label: string; spec: TargetClass | n
   abrade: [
     { label: 'Deal 3 damage to target creature', spec: 'creature' },
     { label: 'Destroy target artifact', spec: 'permanent' },
+  ],
+  'boros charm': [
+    { label: 'Deal 4 damage to target player or planeswalker', spec: 'player-or-pw' },
+    { label: 'Permanents you control gain indestructible', spec: null },
+    { label: 'Target creature gains double strike', spec: 'creature' },
+  ],
+  'return of the wildspeaker': [
+    { label: 'Draw cards equal to your greatest non-Human power', spec: null },
+    { label: 'Non-Human creatures you control get +3/+3', spec: null },
   ],
   'austere command': [
     { label: 'Destroy all artifacts', spec: null },

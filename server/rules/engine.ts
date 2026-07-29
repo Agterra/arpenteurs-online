@@ -1839,7 +1839,13 @@ export function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId 
     return isCreature && matchesFilter(state, state.objects[t as ObjId]!, spec.filter, byController)
   if (spec.kind === 'permanent')
     return isPermanent && matchesFilter(state, state.objects[t as ObjId]!, spec.filter, byController)
-  return isPlayer || isCreature // anyTarget
+  // anyTarget = "any target" (CR 115.4): a creature, a player, OR a planeswalker. A filter applies to
+  // the permanent side only, which is how "target player or planeswalker" is expressed (Boros Charm:
+  // anyTarget + excludeTypes ['Creature']).
+  if (isPlayer) return true
+  if (isCreature || isPlaneswalkerOnBattlefield(state, t))
+    return matchesFilter(state, state.objects[t as ObjId]!, spec.filter, byController)
+  return false
 }
 
 // ---------- player actions ----------

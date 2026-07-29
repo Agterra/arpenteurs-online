@@ -67,6 +67,7 @@ function assertNoLeaks(state: RulesGameState, context: string, seen: Map<PlayerI
 // games (a green deck alone doesn't guarantee it) — asserted at the end of the run
 let pwLoyaltyFired = 0
 let pwAttacked = 0
+let pwBurned = 0 // a spell/ability aimed its damage at a planeswalker ("any target" — CR 115.4)
 
 /** One random-but-legal action for whoever must act; returns false when stuck. */
 function randomAction(state: RulesGameState, rnd: () => number): boolean {
@@ -564,6 +565,16 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
                 return true
               })
             : []
+        // 'anyTarget' = creature, player OR planeswalker (CR 115.4) — a filter, when present,
+        // applies to the permanent side only ("target player or planeswalker" excludes creatures)
+        const planeswalkers = Object.values(state.objects)
+          .filter((o) => o.zone === 'battlefield' && getDef(o.defName).types.includes('Planeswalker'))
+          .map((o) => o.id)
+        const anyCands = [
+          ...(spec.filter?.excludeTypes?.includes('Creature') ? [] : creatures),
+          ...players,
+          ...planeswalkers,
+        ]
         const cands =
           spec.kind === 'creature'
             ? creatures
@@ -573,9 +584,15 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
                 ? players
                 : spec.kind === 'graveyardCard'
                   ? graveyardCards
-                  : [...creatures, ...players]
+                  : anyCands
         if (!cands.length) return tryPass()
-        targets.push(pick(cands))
+        // deliberately bias toward a planeswalker when one is on the board: burn is the only way
+        // this new target class is reached, and a fuzz game's planeswalkers are attacked to death
+        // early, so an unbiased pick left the pwBurned coverage guard asserting nothing
+        const pwCands = planeswalkers.filter((id) => cands.includes(id))
+        const chosenTarget = spec.kind === 'anyTarget' && pwCands.length && rnd() < 0.5 ? pick(pwCands) : pick(cands)
+        if (spec.kind === 'anyTarget' && planeswalkers.includes(chosenTarget as ObjId)) pwBurned++ // coverage guard
+        targets.push(chosenTarget)
       }
     }
     // cast-time additional costs (Village Rites: sacrifice a creature; Thrill of Possibility:
@@ -875,6 +892,11 @@ const FUZZ_DECK = [
   // would distort this otherwise B/R/G deck.
   ...Array(4).fill('Plains'),
   ...Array(2).fill('Farewell'),
+  // batch CARD41: Boros Charm (its first mode targets a PLAYER OR PLANESWALKER — an any-target whose
+  // permanent side excludes creatures, so the fuzzer's target picker must respect the filter) and
+  // Return of the Wildspeaker (a mass pump / greatest-power draw, no targets).
+  ...Array(2).fill('Boros Charm'),
+  ...Array(2).fill('Return of the Wildspeaker'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),
@@ -890,6 +912,7 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     ]
     pwLoyaltyFired = 0
     pwAttacked = 0
+    pwBurned = 0
     try {
       for (const [nPlayers, seed] of cases) {
         const rnd = mulberry32(seed)
@@ -925,6 +948,7 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // as dead code (a planeswalker never castable / never attacked)
     expect(pwLoyaltyFired).toBeGreaterThan(0)
     expect(pwAttacked).toBeGreaterThan(0)
+    expect(pwBurned).toBeGreaterThan(0) // the new any-target-includes-planeswalkers path ran
     // Execution budget only — NOT part of the leak assertion. This fuzzes 4 games (2/3/4-player)
     // to a 1500-step cap, redacting the full state for every viewer after EVERY action (history-
     // aware). The 3/4-player games run to the cap (random play rarely ends them), so the work is
