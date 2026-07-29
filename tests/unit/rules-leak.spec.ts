@@ -1055,6 +1055,11 @@ const FUZZ_DECK = [
   // phases, so the fuzzer answers a mode choice each turn cycle and pays life for it (it can lose a game).
   // batch CARD63: Victimize — TWO graveyard targets (the fuzzer's cast branch must pick two distinct
   // creature cards from its own graveyard) whose sacrifice DECISION carries the reanimation follow-up.
+  // batch CARD64: Tireless Provisioner — a MODAL landfall trigger, so the fuzzer answers a mode choice on
+  // every land drop (the most frequent trigger in a fuzz game), and Command Beacon, whose sac ability
+  // moves a COMMANDER command-zone→hand.
+  ...Array(2).fill('Tireless Provisioner'),
+  ...Array(2).fill('Command Beacon'),
   ...Array(2).fill('Victimize'),
   ...Array(2).fill('Black Market Connections'),
   ...Array(2).fill('Mystic Remora'),

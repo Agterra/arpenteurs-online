@@ -201,6 +201,16 @@ export function hasCreatureType(def: CardDefinition, type: string): boolean {
   return (def.subtypes ?? []).includes(type)
 }
 
+/**
+ * A triggered ability that offers MODES ("choose one or more" on a trigger — Black Market Connections;
+ * "create a Food token or a Treasure token" — Tireless Provisioner). The controller picks as the ability
+ * resolves (r.chooseModes) and the chosen modes run in printed order.
+ */
+export type ModalTriggeredAbility = TriggeredAbility & {
+  modes?: SpellMode[]
+  modeRule?: { count?: number; oneOrMore?: boolean }
+}
+
 /** A triggered ability body (CR 603): optional targets chosen when it goes on the stack. */
 export interface TriggeredAbility {
   /**
@@ -393,7 +403,7 @@ export interface CardDefinition {
    * Landfall — "Whenever a land you control enters, …" (Rampaging Baloths). Fires from the same
    * entry hook as the ETB watchers, once per land entering under this permanent's controller.
    */
-  landEnters?: TriggeredAbility
+  landEnters?: ModalTriggeredAbility
   /**
    * "Whenever an opponent casts a spell, …" (CR 603.2) — a CAST trigger, put on the stack above the
    * spell that caused it, so it resolves first. `watch` narrows which casts fire it.
@@ -650,7 +660,7 @@ export interface CardDefinition {
    * for the active player only. `modes` on the ability makes it a MODAL trigger: its controller chooses
    * which modes happen (the same "choose one or more" shape as a modal spell, but on a trigger).
    */
-  firstMain?: TriggeredAbility & { modes?: SpellMode[]; modeRule?: { count?: number; oneOrMore?: boolean } }
+  firstMain?: ModalTriggeredAbility
   /** "At the beginning of combat on your turn, …" (Helm of the Host, The Ozolith) — CR 506.1 */
   beginCombat?: TriggeredAbility
   /**

@@ -22,6 +22,7 @@ import {
   chaosWarpTarget,
   chooseFromHand,
   chooseNewTargets,
+  commanderFromCommandZoneToHand,
   countersOnEachCreatureOfTarget,
   counterTarget,
   counterTargetGrantingToken,
@@ -4905,6 +4906,34 @@ export const STARTER_SET: CardDefinition[] = [
     spell: {
       targets: [{ kind: 'graveyardCard', count: 2, filter: { types: ['Creature'], controller: 'you' } }],
       effect: sacrificeThenReturnTargetsTapped(),
+    },
+  },
+  // --- Coverage batch CARD64: Command Beacon + Tireless Provisioner (a modal LANDFALL trigger) ---
+  {
+    name: 'Command Beacon',
+    types: ['Land'],
+    // "{T}: Add {C}. / {T}, Sacrifice this land: Put your commander into your hand from the command zone."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      { kind: 'activated', cost: { tap: true, sacrificeSelf: true }, effect: commanderFromCommandZoneToHand() },
+    ],
+  },
+  {
+    name: 'Tireless Provisioner',
+    types: ['Creature'],
+    subtypes: ['Elf', 'Scout'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    power: 3,
+    toughness: 3,
+    // "Landfall — Whenever a land you control enters, create a Food token or a Treasure token."
+    landEnters: {
+      modeRule: { count: 1 },
+      modes: [
+        { label: 'Create a Food token', effect: createToken(FOOD) },
+        { label: 'Create a Treasure token', effect: createTreasures(1) },
+      ],
+      effect: noop(), // the modes carry the whole ability
     },
   },
 ]

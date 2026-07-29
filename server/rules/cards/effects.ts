@@ -1808,6 +1808,22 @@ export const sacrificeThenReturnTargetsTapped = (): Effect => (ctx) => {
   openSacrifice(ctx.state, [ctx.controllerId], 1, { thenReturnTapped: cards })
 }
 
+/**
+ * Command Beacon: "Put your commander into your hand from the command zone." The command zone is public
+ * and everyone knows what your commander is, so this needs no re-mint (remintForHiddenEntry declines for
+ * a commander for exactly that reason).
+ */
+export const commanderFromCommandZoneToHand = (): Effect => (ctx) => {
+  const cmd = ctx.state.players[ctx.controllerId]!.commanderId
+  const obj = cmd ? ctx.state.objects[cmd] : undefined
+  if (!obj || obj.zone !== 'command') {
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name}'s commander is not in the command zone.`)
+    return
+  }
+  moveTo(ctx.state, obj.id, 'hand')
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} puts ${getDef(obj.defName).name} into their hand.`)
+}
+
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */
 export const noop = (): Effect => () => {}
 

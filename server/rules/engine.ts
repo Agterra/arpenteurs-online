@@ -1361,19 +1361,21 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
   }
   // a MODAL trigger (Black Market Connections): its controller chooses the modes, then the chosen ones
   // resolve in printed order — the same rule a modal spell follows (CR 601.2b)
-  if (item.trigger === 'firstMain') {
-    const ability = getDef(item.defName).firstMain
+  if (item.trigger === 'firstMain' || item.trigger === 'landfall') {
+    const def0 = getDef(item.defName)
+    const ability = item.trigger === 'firstMain' ? def0.firstMain : def0.landEnters
     if (ability?.modes?.length) {
       state.pending = { kind: 'modes', player: item.controllerId }
       state.pendingModes = {
         player: item.controllerId,
         sourceId: item.sourceId,
-        sourceName: getDef(item.defName).name,
+        sourceName: def0.name,
+        trigger: item.trigger,
         count: ability.modeRule?.count ?? 1,
         oneOrMore: !!ability.modeRule?.oneOrMore,
         labels: ability.modes.map((m) => m.label),
       }
-      logLine(state, `${getDef(item.defName).name}: ${name(state, item.controllerId)} chooses its modes.`)
+      logLine(state, `${def0.name}: ${name(state, item.controllerId)} chooses its mode${ability.modes.length > 1 ? 's' : ''}.`)
       return
     }
   }
@@ -3797,7 +3799,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         throw new RulesError('NOT_PENDING', 'Not waiting for your modes')
       const pm = state.pendingModes
       const src = state.objects[pm.sourceId]
-      const ability = src ? getDef(src.defName).firstMain : undefined
+      const srcDef = src ? getDef(src.defName) : undefined
+      const ability = pm.trigger === 'firstMain' ? srcDef?.firstMain : srcDef?.landEnters
       const ids = [...new Set(msg.modes)].sort((a, b) => a - b)
       // compare against the RAW list: comparing the deduped set with itself never catches a duplicate
       if (ids.length !== msg.modes.length) throw new RulesError('BAD_MODE', 'Each mode may be chosen only once')

@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**608 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**610 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -116,6 +116,7 @@
 - Cloudblazer
 - Cloudkin Seer
 - Colossal Dreadmaw
+- Command Beacon
 - Command Tower
 - Commander's Sphere
 - Commercial District
@@ -542,6 +543,7 @@
 - Three Visits
 - Thrill of Possibility
 - Thundering Falls
+- Tireless Provisioner
 - Titanic Growth
 - Tomakul Honor Guard
 - Tome Scour

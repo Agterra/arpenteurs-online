@@ -410,7 +410,16 @@ export interface RulesGameState {
    * A MODAL TRIGGER's mode choice (Black Market Connections: "choose one or more" at your first main
    * phase). The chosen modes' effects run in printed order, exactly like a modal spell's.
    */
-  pendingModes: { player: PlayerId; sourceId: ObjId; sourceName: string; count: number; oneOrMore: boolean; labels: string[] } | null
+  pendingModes: {
+    player: PlayerId
+    sourceId: ObjId
+    sourceName: string
+    /** which trigger's ability carries the modes (any kind may — CR 700.2 on a trigger) */
+    trigger: 'firstMain' | 'landfall'
+    count: number
+    oneOrMore: boolean
+    labels: string[]
+  } | null
   pendingDiscard: {
     player: PlayerId
     count: number
