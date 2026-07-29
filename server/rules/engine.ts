@@ -96,6 +96,31 @@ export function landDropAllowance(state: RulesGameState, player: PlayerId): numb
   return 1 + extra
 }
 
+/** How many artifacts a player controls (Mox Opal's metalcraft). */
+export const controlledArtifacts = (state: RulesGameState, player: PlayerId) =>
+  zoneArr(state, player, 'battlefield').filter((id) => getDef(state.objects[id]!.defName).types.includes('Artifact')).length
+
+/**
+ * The colours a `dynamicProduces` mana ability can currently make:
+ * `yourLands` = every colour a land you control could produce (Reflecting Pool),
+ * `yourLegendaries` = every colour among legendary creatures/planeswalkers you control (Mox Amber).
+ */
+export function dynamicManaColors(state: RulesGameState, player: PlayerId, kind: 'yourLands' | 'yourLegendaries'): ManaColor[] {
+  const out = new Set<ManaColor>()
+  for (const id of zoneArr(state, player, 'battlefield')) {
+    const def = getDef(state.objects[id]!.defName)
+    if (kind === 'yourLands') {
+      if (!def.types.includes('Land')) continue
+      for (const ab of def.abilities ?? []) if (ab.isMana) for (const c of ab.produces ?? []) out.add(c)
+    } else {
+      const isLegendary = def.supertypes?.includes('Legendary') ?? false
+      if (!isLegendary || !(defIsCreature(def) || def.types.includes('Planeswalker'))) continue
+      for (const c of def.colors ?? []) out.add(c)
+    }
+  }
+  return (['W', 'U', 'B', 'R', 'G', 'C'] as const).filter((c) => out.has(c))
+}
+
 /** How many lands a player controls (Temple of the False God's activation condition). */
 export const controlledLands = (state: RulesGameState, player: PlayerId) =>
   zoneArr(state, player, 'battlefield').filter((id) => defIsLand(getDef(state.objects[id]!.defName))).length
@@ -1638,6 +1663,24 @@ function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId | Playe
 
 // ---------- player actions ----------
 
+/**
+ * Grand Abolisher: during its controller's turn, their OPPONENTS can't cast spells or activate
+ * abilities of artifacts, creatures or enchantments. Checked at the top of r.cast / r.activate.
+ */
+function requireNotAbolished(state: RulesGameState, actor: PlayerId, kind: 'cast' | 'activate', sourceDef?: CardDefinition) {
+  if (actor === state.activePlayer) return
+  const abolisher = zoneArr(state, state.activePlayer, 'battlefield').find(
+    (id) => getDef(state.objects[id]!.defName).opponentsCantActOnYourTurn,
+  )
+  if (!abolisher) return
+  // only those three permanent types are locked down for activations; casting is locked entirely
+  if (kind === 'activate') {
+    const t = sourceDef?.types ?? []
+    if (!t.includes('Artifact') && !t.includes('Creature') && !t.includes('Enchantment')) return
+  }
+  throw new RulesError('ABOLISHED', `${objName(state, abolisher)} stops you during its controller's turn`)
+}
+
 function requirePriority(state: RulesGameState, actor: PlayerId) {
   if (state.status === 'ended') throw new RulesError('GAME_ENDED', 'The game is over')
   if (state.pending) throw new RulesError('PENDING', `Waiting for ${name(state, state.pending.player)}'s ${state.pending.kind}`)
@@ -1714,16 +1757,28 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (!ability) throw new RulesError('NO_MANA_ABILITY', 'No mana ability')
       // asking for a colour none of its mana abilities can make is illegal (rather than silently
       // falling back to another ability's output)
-      if (msg.color && !manaAbilities.some((a) => (a.produces ?? []).includes(msg.color!)))
+      if (
+        msg.color &&
+        !manaAbilities.some((a) =>
+          (a.dynamicProduces ? dynamicManaColors(state, actor, a.dynamicProduces) : (a.produces ?? [])).includes(msg.color!),
+        )
+      )
         throw new RulesError('CHOOSE_COLOR', `${objName(state, obj.id)} can't make {${msg.color}}`)
-      // only {T} mana abilities (with an OPTIONAL mana cost, e.g. Signets' {1});
-      // a cost-free untapped ability would be activatable unboundedly (infinite mana)
-      if (!ability.cost.tap) throw new RulesError('UNSUPPORTED', 'Only {T} mana abilities are supported')
-      if (obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
+      // a mana ability must have SOME consuming cost, or it could be activated unboundedly (infinite
+      // mana): {T} for the usual sources, or a sacrifice / life / mana cost (the Altars have no {T} —
+      // their cost is sacrificing a creature, which is finite)
+      const manaCost = ability.cost
+      if (!manaCost.tap && !manaCost.sacrifice && !manaCost.sacrificeSelf && !manaCost.life && !manaCost.mana)
+        throw new RulesError('UNSUPPORTED', 'That mana ability has no cost the engine can pay')
+      if (manaCost.tap && obj.tapped) throw new RulesError('TAPPED', 'Already tapped')
       // a creature's {T} mana ability (mana dork) still needs it to not be summoning sick (CR 302.6)
-      if (defIsCreature(getDef(obj.defName)) && obj.summoningSick && !hasKw(state, obj.id, 'haste'))
+      if (manaCost.tap && defIsCreature(getDef(obj.defName)) && obj.summoningSick && !hasKw(state, obj.id, 'haste'))
         throw new RulesError('SUMMONING_SICK', `${objName(state, obj.id)} can't tap for mana yet`)
-      const produces = ability.produces ?? []
+      // a dynamic source's colours come from the board (Reflecting Pool, Mox Amber)
+      const produces = ability.dynamicProduces
+        ? dynamicManaColors(state, actor, ability.dynamicProduces)
+        : (ability.produces ?? [])
+      if (ability.dynamicProduces && !produces.length) throw new RulesError('NO_MANA', 'It can produce no mana right now')
       // colour CHOICE (guildgate/dork/rock): validate the choice up front
       if (ability.chooseColor && (!msg.color || !produces.includes(msg.color)))
         throw new RulesError('CHOOSE_COLOR', `Choose which colour (${produces.join('/')})`)
@@ -1732,6 +1787,22 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // "Activate only if you control five or more lands." (Temple of the False God)
       if (ability.requiresLandsAtLeast != null && controlledLands(state, actor) < ability.requiresLandsAtLeast)
         throw new RulesError('NOT_ACTIVE', `Needs ${ability.requiresLandsAtLeast} lands`)
+      // metalcraft (Mox Opal)
+      if (ability.requiresArtifactsAtLeast != null && controlledArtifacts(state, actor) < ability.requiresArtifactsAtLeast)
+        throw new RulesError('NOT_ACTIVE', `Needs ${ability.requiresArtifactsAtLeast} artifacts`)
+      // a "Sacrifice a creature" cost on a MANA ability (Ashnod's Altar, Phyrexian Altar/Tower):
+      // validated before any mutation, paid below once the colour choice is known
+      const manaSacCost = ability.cost.sacrifice
+      const manaSacIds = manaSacCost ? [...new Set(msg.sacrifices ?? [])] : []
+      if (manaSacCost) {
+        if (manaSacIds.length !== manaSacCost.count)
+          throw new RulesError('BAD_SACRIFICE', `Sacrifice exactly ${manaSacCost.count} creature${manaSacCost.count === 1 ? '' : 's'}`)
+        for (const id of manaSacIds) {
+          const c = state.objects[id]
+          if (!c || c.zone !== 'battlefield' || c.controllerId !== actor || !defIsCreature(getDef(c.defName)))
+            throw new RulesError('BAD_SACRIFICE', 'Not a creature you control')
+        }
+      }
       const manaLifeCost = ability.cost.life ?? 0
       if (manaLifeCost > state.players[actor]!.life)
         throw new RulesError('CANT_PAY', `Not enough life (need ${manaLifeCost})`)
@@ -1743,7 +1814,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         if (!payment.covered) throw new RulesError('CANT_PAY', `Not enough mana (short ${payment.shortfall})`)
         for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
       }
-      obj.tapped = true
+      if (manaCost.tap) obj.tapped = true
       if (manaLifeCost) {
         state.players[actor]!.life -= manaLifeCost
         logLine(state, `${name(state, actor)} pays ${manaLifeCost} life for ${objName(state, obj.id)}.`)
@@ -1754,6 +1825,13 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} adds ${n} {${msg.color}} (devotion).`)
       } else if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
+      // pay a mana ability's sacrifice cost (the Altars) — after the mana is in the pool, so a dies
+      // trigger that wants to spend it sees it
+      for (const id of manaSacIds) {
+        logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)} for mana.`)
+        moveToGraveyard(state, id)
+      }
+      if (manaSacIds.length) checkSBA(state)
       // a mana ability that hurts (Ancient Tomb, City of Brass, the pain lands)
       if (ability.damageOnTapForMana) {
         state.players[actor]!.life -= ability.damageOnTapForMana
@@ -1778,6 +1856,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (!obj || obj.zone !== 'battlefield' || obj.phasedOut || obj.controllerId !== actor)
         throw new RulesError('NOT_YOURS', "You don't control that permanent")
       if (state.loseAbilities.includes(obj.id)) throw new RulesError('NO_ABILITY', 'That permanent has lost all abilities')
+      requireNotAbolished(state, actor, 'activate', getDef(obj.defName))
       const ability = getDef(obj.defName).abilities?.[msg.abilityIndex]
       if (!ability || ability.kind !== 'activated' || ability.isMana)
         throw new RulesError('NO_ABILITY', 'No such activated ability')
@@ -1858,6 +1937,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
 
     case 'r.cast': {
       requirePriority(state, actor)
+      requireNotAbolished(state, actor, 'cast')
       const candidate = state.objects[msg.objId]
       const castingAdventure = !!msg.adventure
       // castable from your hand, your commander from the command zone, or (Adventure, CR 715) the

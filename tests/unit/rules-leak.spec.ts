@@ -230,6 +230,30 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
 
   const actor = state.priorityPlayer
   if (!actor) return false
+  /**
+   * Tap a mana source, paying a "Sacrifice a creature" mana cost when the source has one (the
+   * Altars). Returns false when it cannot be paid, so callers can move on — without this the
+   * fuzzer's tap loops threw BAD_SACRIFICE the moment such a source was in play.
+   */
+  const tapSource = (src: ObjId, legalNow: ReturnType<typeof computeLegal>): boolean => {
+    const colors = legalNow.manaSourceColors[src] ?? []
+    const sacCount = legalNow.manaSourceSacCost[src] ?? 0
+    let sacrifices: ObjId[] | undefined
+    if (sacCount) {
+      const mine = state.zones.perPlayer[actor]!.battlefield.filter(
+        (id) => id !== src && getDef(state.objects[id]!.defName).types.includes('Creature'),
+      )
+      if (mine.length < sacCount) return false
+      sacrifices = mine.slice(0, sacCount)
+    }
+    applyRulesAction(state, actor, {
+      type: 'r.tapMana',
+      objId: src,
+      ...(colors.length ? { color: pick(colors) } : {}),
+      ...(sacrifices ? { sacrifices } : {}),
+    })
+    return true
+  }
   // ~15% of the time, exercise an assisted-table manual override instead of a
   // normal action (overrides don't need priority; using the priority holder is
   // just a convenient legal actor). These stay leak-safe by construction.
@@ -246,7 +270,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       for (const src of legal.manaSourceIds) {
         if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= 2) break
         const colors = legal.manaSourceColors[src] ?? []
-        applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+        tapSource(src, legal)
       }
       try {
         applyRulesAction(state, actor, { type: 'r.foretell', objId: pick(foretellable) })
@@ -265,7 +289,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     for (const src of legal.manaSourceIds) {
       if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= need) break
       const colors = legal.manaSourceColors[src] ?? []
-      applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      tapSource(src, legal)
     }
     try {
       applyRulesAction(state, actor, { type: 'r.cast', objId: o.objId, targets: [], overload: true })
@@ -282,7 +306,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       for (const src of legal.manaSourceIds) {
         if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= 4) break
         const colors = legal.manaSourceColors[src] ?? []
-        applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+        tapSource(src, legal)
       }
       try { applyRulesAction(state, actor, { type: 'r.morph', objId: faceUp.id }) } catch { /* can't pay */ }
       return true
@@ -291,7 +315,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       for (const src of legal.manaSourceIds) {
         if (Object.values(state.players[actor]!.manaPool).reduce((x, y) => x + y, 0) >= 3) break
         const colors = legal.manaSourceColors[src] ?? []
-        applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+        tapSource(src, legal)
       }
       try { applyRulesAction(state, actor, { type: 'r.cast', objId: pick(morphInHand), faceDown: true, targets: [] }) } catch { /* can't pay */ }
       return true
@@ -307,7 +331,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       const pool = state.players[actor]!.manaPool
       if (Object.values(pool).reduce((x, y) => x + y, 0) >= need) break
       const colors = legal.manaSourceColors[src] ?? []
-      applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      tapSource(src, legal)
     }
     const myCreatures = Object.values(state.objects)
       .filter((o) => o.zone === 'battlefield' && o.controllerId === actor && getDef(o.defName).types.includes('Creature'))
@@ -352,7 +376,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       const pool = state.players[actor]!.manaPool
       if (Object.values(pool).reduce((x, y) => x + y, 0) >= eqCost) break
       const colors = legal.manaSourceColors[src] ?? []
-      applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      tapSource(src, legal)
     }
     const mine = Object.values(state.objects)
       .filter((o) => o.zone === 'battlefield' && o.controllerId === actor && getDef(o.defName).types.includes('Creature'))
@@ -388,7 +412,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       const pool = state.players[actor]!.manaPool
       if (Object.values(pool).reduce((a, b) => a + b, 0) >= need) break
       const colors = legal.manaSourceColors[src] ?? []
-      applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+      tapSource(src, legal)
     }
     const targets: (ObjId | PlayerId)[] = []
     for (const spec of specs) {
@@ -454,7 +478,7 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
   if (roll < 0.55 && legal.manaSourceIds.length) {
     const src = pick(legal.manaSourceIds)
     const colors = legal.manaSourceColors[src] ?? []
-    applyRulesAction(state, actor, colors.length ? { type: 'r.tapMana', objId: src, color: pick(colors) } : { type: 'r.tapMana', objId: src })
+    if (!tapSource(src, legal)) return tryPass()
     return true
   }
   return tryPass()
@@ -672,6 +696,11 @@ const FUZZ_DECK = [
   // the shared scry decision runs in BOTH modes under the history-aware assertion.
   ...Array(3).fill('Consider'),
   ...Array(2).fill('Undercity Sewers'),
+  // batch CARD31: Ashnod's Altar (a TAPLESS mana ability whose cost is sacrificing a creature — the
+  // fuzzer taps mana sources constantly, so this runs often) and Gamble (tutor to hand + a random
+  // discard, i.e. hidden→hidden then hidden→public).
+  ...Array(2).fill("Ashnod's Altar"),
+  ...Array(2).fill('Gamble'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

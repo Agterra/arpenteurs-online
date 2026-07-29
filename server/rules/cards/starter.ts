@@ -13,6 +13,7 @@ import {
   addLoyaltyToOtherPlaneswalkers,
   addMana,
   addManaPerLandSubtype,
+  addManaPerColorAmongPermanents,
   addManaPerOpponentTappedLand,
   monstrosity,
   counterTarget,
@@ -32,6 +33,7 @@ import {
   destroyPermanent,
   destroyPermanentGrantToken,
   destroyPermanentControllerGains,
+  discardAtRandom,
   destroyTarget,
   drainEachOpponentByDevotion,
   drainEachOpponentX,
@@ -3350,4 +3352,132 @@ export const STARTER_SET: CardDefinition[] = [
   horizonLand('Nurturing Peatland', 'B', 'G'),
   horizonLand('Waterlogged Grove', 'G', 'U'),
   horizonLand('Fiery Islet', 'U', 'R'),
+
+  // --- Coverage batch CARD31: metalcraft, dynamic mana colours, sac-for-mana, Grand Abolisher ---
+  {
+    name: 'Decanter of Endless Water',
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "You have no maximum hand size. {T}: Add one mana of any color."
+    noMaxHandSize: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') },
+    ],
+  },
+  {
+    name: 'Mox Opal',
+    types: ['Artifact'],
+    supertypes: ['Legendary'],
+    manaCost: '{0}',
+    // "Metalcraft — {T}: Add one mana of any color. Activate only if you control three or more artifacts."
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        requiresArtifactsAtLeast: 3,
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Mox Amber',
+    types: ['Artifact'],
+    supertypes: ['Legendary'],
+    manaCost: '{0}',
+    // "{T}: Add one mana of any color among legendary creatures and planeswalkers you control."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, chooseColor: true, dynamicProduces: 'yourLegendaries', effect: addMana('W') },
+    ],
+  },
+  {
+    name: 'Reflecting Pool',
+    types: ['Land'],
+    // "{T}: Add one mana of any type that a land you control could produce."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, chooseColor: true, dynamicProduces: 'yourLands', effect: addMana('C') },
+    ],
+  },
+  {
+    name: "Ashnod's Altar",
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "Sacrifice a creature: Add {C}{C}." (no {T} — repeatable while creatures last)
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { sacrifice: { count: 1, filter: 'creature' } },
+        isMana: true,
+        produces: ['C'],
+        effect: addMana('C', 'C'),
+      },
+    ],
+  },
+  {
+    name: 'Phyrexian Altar',
+    types: ['Artifact'],
+    manaCost: '{3}',
+    // "Sacrifice a creature: Add one mana of any color."
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { sacrifice: { count: 1, filter: 'creature' } },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Phyrexian Tower',
+    types: ['Land'],
+    // "{T}: Add {C}." / "{T}, Sacrifice a creature: Add {B}{B}."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { tap: true, sacrifice: { count: 1, filter: 'creature' } },
+        isMana: true,
+        produces: ['B'],
+        effect: addMana('B', 'B'),
+      },
+    ],
+  },
+  {
+    name: 'Bloom Tender',
+    types: ['Creature'],
+    subtypes: ['Elf', 'Druid'],
+    manaCost: '{1}{G}',
+    colors: ['G'],
+    power: 1,
+    toughness: 1,
+    // "Vivid — {T}: For each color among permanents you control, add one mana of that color."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], effect: addManaPerColorAmongPermanents() },
+    ],
+  },
+  {
+    name: 'Gamble',
+    types: ['Sorcery'],
+    manaCost: '{R}',
+    colors: ['R'],
+    // "Search your library for a card, put that card into your hand, discard a card at random, then
+    //  shuffle." (the discard happens as the search is answered — see r.search)
+    spell: { effect: sequence(searchLibrary({ filter: 'any', dest: 'hand', count: 1 }), discardAtRandom(1)) },
+  },
+  {
+    name: 'Grand Abolisher',
+    types: ['Creature'],
+    subtypes: ['Human', 'Cleric'],
+    manaCost: '{W}{W}',
+    colors: ['W'],
+    power: 2,
+    toughness: 2,
+    // "During your turn, your opponents can't cast spells or activate abilities of artifacts,
+    //  creatures, or enchantments."
+    opponentsCantActOnYourTurn: true,
+  },
 ]

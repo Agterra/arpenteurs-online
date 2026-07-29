@@ -109,6 +109,26 @@ describe('every implemented targeted spell has a client target picker', () => {
 })
 
 /**
+ * The client taps a mana source with r.tapMana, which can express exactly these cost pieces: {T},
+ * a mana cost, "pay N life", "sacrifice this permanent" and "sacrifice N creatures" (the last via the
+ * picker added for the Altars). A mana ability with any other cost would be untappable in the UI.
+ */
+describe('every implemented mana ability uses a cost the client can pay', () => {
+  const ALLOWED = new Set(['tap', 'mana', 'life', 'sacrificeSelf', 'sacrifice'])
+  const offenders: string[] = []
+  for (const def of allDefs()) {
+    if (def.unimplemented) continue
+    for (const ab of def.abilities ?? []) {
+      if (ab.kind !== 'activated' || !ab.isMana) continue
+      for (const key of Object.keys(ab.cost)) if (!ALLOWED.has(key)) offenders.push(`${def.name}: ${key}`)
+    }
+  }
+  it('no mana ability has an unpayable cost', () => {
+    expect(offenders).toEqual([])
+  })
+})
+
+/**
  * A spell whose X is paid in LIFE has no {X} in its mana cost, so the client shows its X stepper
  * only for the names listed in LIFE_X_SPELLS. Missing there = the cast is sent with no x and the
  * server rejects it (NEEDS_X) — uncastable in the UI while engine tests, which pass x directly,

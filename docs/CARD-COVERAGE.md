@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**498 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**508 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **7** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -31,6 +31,7 @@
 - Arcane Signet
 - Archmage Emeritus
 - Arid Mesa
+- Ashnod's Altar
 - Assault // Battery
 - Audacious Thief
 - Augury Raven
@@ -64,6 +65,7 @@
 - Bloodbraid Elf
 - Bloodstained Mire
 - Bloodthrone Vampire
+- Bloom Tender
 - Boggart Brute
 - Bojuka Bog
 - Bond Beetle
@@ -117,6 +119,7 @@
 - Deadly Dispute
 - Deadly Rollick
 - Deathcap Glade
+- Decanter of Endless Water
 - Delver of Secrets
 - Demonic Tutor
 - Deserted Beach
@@ -179,6 +182,7 @@
 - Furycalm Snarl
 - Fyndhorn Elves
 - Gaea's Anthem
+- Gamble
 - Game Trail
 - Generous Gift
 - Giant Growth
@@ -196,6 +200,7 @@
 - Golgari Guildgate
 - Golgari Rot Farm
 - Golgari Signet
+- Grand Abolisher
 - Grasp of Darkness
 - Gray Merchant of Asphodel
 - Gray Ogre
@@ -275,6 +280,8 @@
 - Morphic Pool
 - Mortify
 - Mountain
+- Mox Amber
+- Mox Opal
 - Mulldrifter
 - Murder
 - Murderous Rider
@@ -306,7 +313,9 @@
 - Pale Bears
 - Path to Exile
 - Pearl Medallion
+- Phyrexian Altar
 - Phyrexian Arena
+- Phyrexian Tower
 - Pincher Beetles
 - Pitiless Plunderer
 - Plague Stinger
@@ -342,6 +351,7 @@
 - Ravenous Chupacabra
 - Ravenous Rats
 - Reanimate
+- Reflecting Pool
 - Regrowth
 - Rejuvenating Springs
 - Reliquary Tower

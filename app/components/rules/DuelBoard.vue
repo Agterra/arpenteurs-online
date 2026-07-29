@@ -478,6 +478,8 @@ function onBattlefieldClick(id: ObjId) {
 
   // collecting a cast-time sacrifice (Village Rites / Deadly Dispute) takes precedence
   if (castExtra.value?.sacrifice) return void toggleCastExtraSac(id)
+  // …as does a mana ability's sacrifice cost (Ashnod's Altar)
+  if (manaSac.value) return void toggleManaSac(id)
 
   if (multiTargeting.value) {
     // collect the ordered fight targets; when both are chosen, move to payment
@@ -932,14 +934,48 @@ const myCreatureIds = computed(() =>
 )
 
 // dual-land colour picker (multi-colour mana sources)
-const manaPick = ref<{ objId: ObjId; colors: ManaColor[] } | null>(null)
+const manaPick = ref<{ objId: ObjId; colors: ManaColor[]; sacrifices?: ObjId[] } | null>(null)
+// a mana ability that also costs "Sacrifice a creature" (the Altars): collect the creatures first
+const manaSac = ref<{ objId: ObjId; count: number; colors: ManaColor[] } | null>(null)
+const manaSacPick = ref<Set<ObjId>>(new Set())
 function tapManaSource(id: ObjId) {
   const colors = legal.value?.manaSourceColors[id] ?? []
+  const sacCount = legal.value?.manaSourceSacCost[id] ?? 0
+  if (sacCount) {
+    manaSac.value = { objId: id, count: sacCount, colors }
+    manaSacPick.value = new Set()
+    return
+  }
   if (colors.length > 1) manaPick.value = { objId: id, colors }
   else send({ type: 'r.tapMana', objId: id })
 }
+function toggleManaSac(id: ObjId) {
+  const m = manaSac.value
+  if (!m) return
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield' || card.controllerId !== you.value) return
+  if (!(display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')) return
+  const next = new Set(manaSacPick.value)
+  if (next.has(id)) next.delete(id)
+  else if (next.size < m.count) next.add(id)
+  manaSacPick.value = next
+}
+const cancelManaSac = () => {
+  manaSac.value = null
+  manaSacPick.value = new Set()
+}
+/** creatures chosen → either ask for the colour, or tap right away */
+function confirmManaSac() {
+  const m = manaSac.value
+  if (!m || manaSacPick.value.size !== m.count) return
+  const sacrifices = [...manaSacPick.value]
+  cancelManaSac()
+  if (m.colors.length > 1) manaPick.value = { objId: m.objId, colors: m.colors, sacrifices }
+  else send({ type: 'r.tapMana', objId: m.objId, sacrifices })
+}
 function pickMana(color: ManaColor) {
-  if (manaPick.value) send({ type: 'r.tapMana', objId: manaPick.value.objId, color })
+  if (manaPick.value)
+    send({ type: 'r.tapMana', objId: manaPick.value.objId, color, sacrifices: manaPick.value.sacrifices })
   manaPick.value = null
 }
 
@@ -1825,6 +1861,24 @@ onBeforeUnmount(() => {
             <UButton size="sm" icon="i-lucide-shield-check" :disabled="!legal.wardAffordable" @click="sendWard(true)">
               Pay ward
             </UButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- a mana ability's sacrifice cost (Ashnod's Altar / Phyrexian Altar / Phyrexian Tower) -->
+      <div v-if="manaSac" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="flex max-w-sm flex-col rounded-lg border border-rose-400 bg-default p-4 shadow-xl">
+          <p class="mb-1 text-sm font-semibold">
+            {{ display[cardOf(manaSac.objId)?.defName ?? '']?.name ?? 'Mana ability' }} — sacrifice
+            {{ manaSac.count }} creature{{ manaSac.count === 1 ? '' : 's' }}
+          </p>
+          <p class="mb-3 text-xs text-dimmed">
+            Click {{ manaSac.count }} creature{{ manaSac.count === 1 ? '' : 's' }} you control
+            ({{ manaSacPick.size }}/{{ manaSac.count }}).
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton size="sm" variant="ghost" color="neutral" @click="cancelManaSac">Cancel</UButton>
+            <UButton size="sm" :disabled="manaSacPick.size !== manaSac.count" @click="confirmManaSac">Tap for mana</UButton>
           </div>
         </div>
       </div>

@@ -48,8 +48,8 @@ export interface TargetSpec {
 export interface Cost {
   mana?: string // e.g. "{1}{G}"
   tap?: boolean // {T}
-  /** "Sacrifice a creature" as part of the cost (aristocrat sac outlets). Paid at
-   *  activation time — the activating player chooses which creature(s). */
+  /** "Sacrifice a creature" as part of the cost (aristocrat sac outlets, and the Altars' mana
+   *  abilities). Paid at activation time — the activating player chooses which creature(s). */
   sacrifice?: { count: number; filter: 'creature' }
   /**
    * "Pay N life" as part of the cost (the fetch lands). CR 119.4: payable only while your life
@@ -103,6 +103,15 @@ export interface ActivatedAbility {
    * client can't evaluate.
    */
   requiresLandsAtLeast?: number
+  /** "Activate only if you control three or more artifacts." (Mox Opal's metalcraft) */
+  requiresArtifactsAtLeast?: number
+  /**
+   * A mana ability whose available colours depend on the board rather than a printed list:
+   * `yourLands` = any type a land you control could produce (Reflecting Pool),
+   * `yourLegendaries` = any colour among legendary creatures and planeswalkers you control (Mox Amber).
+   * The engine computes the set for validation and redact surfaces it as the source's colour choices.
+   */
+  dynamicProduces?: 'yourLands' | 'yourLegendaries'
   /**
    * Nykthos: "Add an amount of mana of that color equal to your devotion to that color." The colour
    * is chosen on tap (`chooseColor`) and the AMOUNT is that colour's devotion — the number of mana
@@ -292,6 +301,11 @@ export interface CardDefinition {
   additionalCost?: { sacrifice?: { count: number; filter: 'creature' | 'artifactOrCreature' | 'land' }; discard?: number }
   /** "This spell can't be countered." (Dovin's Veto) — every counter effect skips it. */
   cantBeCountered?: boolean
+  /**
+   * Grand Abolisher: "During your turn, your opponents can't cast spells or activate abilities of
+   * artifacts, creatures, or enchantments." A static restriction checked in r.cast / r.activate.
+   */
+  opponentsCantActOnYourTurn?: boolean
   /**
    * A static cost reduction this PERMANENT gives your spells (Foundry Inspector: "artifact spells
    * you cast cost {1} less"; the Medallions: "[colour] spells you cast cost {1} less"). Summed over

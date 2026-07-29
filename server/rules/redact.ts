@@ -22,7 +22,7 @@ import { getDef } from './cards/registry'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
-import { controlledLands, hasAnyLegalTarget, landDropAllowance, permanentCostReduction } from './engine'
+import { controlledArtifacts, controlledLands, dynamicManaColors, hasAnyLegalTarget, landDropAllowance, permanentCostReduction } from './engine'
 
 function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean {
   const obj = state.objects[id]
@@ -169,6 +169,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     castableIds: [],
     manaSourceIds: [],
     manaSourceColors: {},
+    manaSourceSacCost: {},
     declarableAttackerIds: [],
     declarableBlockerIds: [],
     attackablePlayerIds: [],
@@ -353,8 +354,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   const manaSourceIds: ObjId[] = []
   const potential = { ...state.players[viewer]!.manaPool }
   const manaSourceColors: LegalActions['manaSourceColors'] = {}
+  const manaSourceSacCost: LegalActions['manaSourceSacCost'] = {}
   for (const obj of Object.values(state.objects)) {
-    if (obj.zone !== 'battlefield' || obj.controllerId !== viewer || obj.tapped) continue
+    if (obj.zone !== 'battlefield' || obj.controllerId !== viewer) continue
     // a permanent may have SEVERAL mana abilities (a pain land: "{T}: Add {C}" plus a coloured one
     // that hurts) — the picker offers every colour any of them can make, and r.tapMana selects the
     // ability from the requested colour
@@ -362,23 +364,35 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       (a) =>
         a.kind === 'activated' &&
         a.isMana &&
-        a.cost.tap &&
+        // a {T} ability needs the permanent untapped; a tapless one (Ashnod's Altar) does not
+        (a.cost.tap ? !obj.tapped : true) &&
         // "Pay N life" mana abilities (Mana Confluence) are only usable at life ≥ N (CR 119.4)
         (a.cost.life ?? 0) <= state.players[viewer]!.life &&
         // "Activate only if you control five or more lands" (Temple of the False God)
-        (a.requiresLandsAtLeast == null || controlledLands(state, viewer) >= a.requiresLandsAtLeast),
+        (a.requiresLandsAtLeast == null || controlledLands(state, viewer) >= a.requiresLandsAtLeast) &&
+        // metalcraft (Mox Opal)
+        (a.requiresArtifactsAtLeast == null || controlledArtifacts(state, viewer) >= a.requiresArtifactsAtLeast) &&
+        // a sacrifice cost needs a creature to pay it (the Altars)
+        (!a.cost.sacrifice || battlefieldCreatures(state, viewer).length >= a.cost.sacrifice.count) &&
+        // a dynamic source with nothing to copy produces nothing (Reflecting Pool with no lands)
+        (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces).length > 0),
     )
     if (!manaAbilities.length) continue
     manaSourceIds.push(obj.id)
     // only chooseColor sources prompt a colour picker; fixed-output rocks (Signets) don't
     // several abilities → the player picks among ALL their colours (a pain land's {C} plus its two
     // painful colours); a single ability prompts only when it is itself a colour choice
+    // a dynamic source's choices come from the board (Reflecting Pool, Mox Amber)
+    const colorsOf = (a: (typeof manaAbilities)[number]) =>
+      a.dynamicProduces ? dynamicManaColors(state, viewer, a.dynamicProduces) : (a.produces ?? [])
     manaSourceColors[obj.id] =
       manaAbilities.length > 1
-        ? [...new Set(manaAbilities.flatMap((a) => a.produces ?? []))]
-        : manaAbilities[0]!.chooseColor
-          ? (manaAbilities[0]!.produces ?? [])
+        ? [...new Set(manaAbilities.flatMap(colorsOf))]
+        : manaAbilities[0]!.chooseColor || manaAbilities[0]!.dynamicProduces
+          ? colorsOf(manaAbilities[0]!)
           : []
+    const sacNeeded = Math.max(0, ...manaAbilities.map((a) => a.cost.sacrifice?.count ?? 0))
+    if (sacNeeded) manaSourceSacCost[obj.id] = sacNeeded
     // only cost-free {T} sources add to the pre-tap potential; cost-bearing rocks
     // (Signets need input mana) are re-validated by the server on tap
     const free = manaAbilities.find((a) => !a.cost.mana)
@@ -639,6 +653,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     castableIds,
     manaSourceIds,
     manaSourceColors,
+    manaSourceSacCost,
     activations,
     equippableIds,
     loyaltyActivations,

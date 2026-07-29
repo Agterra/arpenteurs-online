@@ -8,7 +8,7 @@ import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rule
 import { parseManaCost } from '#shared/utils/manaCost'
 import { apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
 import { getDef, defKey, registerImplementedToken } from './registry'
-import { mintCardId } from '../../game/rng'
+import { mintCardId, randomIndex } from '../../game/rng'
 // currentPower is safe to import: characteristics is already in this module's
 // transitive graph via engine (effects→engine→characteristics); called at runtime only.
 import { currentKeywords, currentPower } from '../characteristics'
@@ -988,6 +988,29 @@ export const gainLifePerSpellThisTurn = (): Effect => (ctx) => {
   if (!n) return
   ctx.state.players[ctx.controllerId]!.life += n
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} gains ${n} life (spells cast this turn).`)
+}
+
+/** Bloom Tender: for each COLOUR among permanents you control, add one mana of that colour. */
+export const addManaPerColorAmongPermanents = (): Effect => (ctx) => {
+  const colors = new Set<ManaColor>()
+  for (const id of ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield)
+    for (const c of getDef(ctx.state.objects[id]!.defName).colors ?? []) colors.add(c)
+  for (const c of colors) ctx.state.players[ctx.controllerId]!.manaPool[c]++
+  logLine(
+    ctx.state,
+    `${ctx.state.players[ctx.controllerId]!.name} adds ${colors.size} mana (one per colour among their permanents).`,
+  )
+}
+
+/** Gamble: discard a card at random from the controller's hand. */
+export const discardAtRandom = (n: number): Effect => (ctx) => {
+  for (let i = 0; i < n; i++) {
+    const hand = ctx.state.zones.perPlayer[ctx.controllerId]!.hand
+    if (!hand.length) return
+    const id = hand[randomIndex(hand.length)]!
+    logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} discards ${getDef(ctx.state.objects[id]!.defName).name} at random.`)
+    moveToGraveyard(ctx.state, id)
+  }
 }
 
 /** Mana Geyser: add {R} for each TAPPED land the controller's opponents control. */

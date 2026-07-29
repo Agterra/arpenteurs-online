@@ -14,7 +14,13 @@ const Id = z.string().min(1).max(64)
 export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.pass') }),
   z.object({ type: z.literal('r.playLand'), objId: Id }),
-  z.object({ type: z.literal('r.tapMana'), objId: Id, color: z.enum(['W', 'U', 'B', 'R', 'G', 'C']).optional() }),
+  z.object({
+    type: z.literal('r.tapMana'),
+    objId: Id,
+    color: z.enum(['W', 'U', 'B', 'R', 'G', 'C']).optional(),
+    // creatures sacrificed to pay a mana ability's "Sacrifice a creature" cost (the Altars)
+    sacrifices: z.array(Id).max(20).optional(),
+  }),
   z.object({
     type: z.literal('r.activate'),
     objId: Id,

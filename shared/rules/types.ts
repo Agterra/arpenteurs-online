@@ -481,6 +481,8 @@ export interface LegalActions {
   manaSourceIds: ObjId[] // untapped permanents you can tap for mana
   /** colours each mana source can produce (>1 means the player must choose on tap) */
   manaSourceColors: Record<ObjId, ManaColor[]>
+  /** mana sources whose ability also costs "Sacrifice a creature" (the Altars) → objId → how many */
+  manaSourceSacCost: Record<ObjId, number>
   declarableAttackerIds: ObjId[]
   declarableBlockerIds: ObjId[]
   /** players your attackers may be sent at (alive opponents) */
