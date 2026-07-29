@@ -15,7 +15,7 @@ import { currentKeywords, currentPower } from '../characteristics'
 // fireEntersTriggers/openSacrifice are hoisted function exports; the effects→engine
 // edge is a call-time-only cycle (invoked inside effect bodies, never at module
 // init), so it is safe — mirrors the existing effects→registry (getDef) cycle.
-import { chaosWarpPermanent, fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
+import { chaosWarpPermanent, devotionTo, fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
 
 // intrinsic OR granted indestructible (Heroic Intervention) — the same check checkSBA's
 // damage path uses, so a destroy effect and lethal damage agree on who survives
@@ -907,6 +907,26 @@ export const drainTargetPlayer = (n: number): Effect => (ctx) => {
     ctx.state.players[ctx.controllerId]!.life += n
     logLine(ctx.state, `${ctx.state.players[t]!.name} loses ${n} life; ${ctx.state.players[ctx.controllerId]!.name} gains ${n}.`)
   }
+}
+
+/**
+ * Gray Merchant of Asphodel: each opponent loses X life, where X is the controller's devotion to
+ * `color`, and the controller gains the total lost.
+ */
+export const drainEachOpponentByDevotion = (color: ManaColor): Effect => (ctx) => {
+  const x = devotionTo(ctx.state, ctx.controllerId, color)
+  if (x <= 0) return
+  let gained = 0
+  for (const pid of ctx.state.turnOrder) {
+    if (pid === ctx.controllerId || ctx.state.players[pid]!.hasLost) continue
+    ctx.state.players[pid]!.life -= x
+    gained += x
+  }
+  ctx.state.players[ctx.controllerId]!.life += gained
+  logLine(
+    ctx.state,
+    `Each opponent loses ${x} life (devotion to {${color}}); ${ctx.state.players[ctx.controllerId]!.name} gains ${gained}.`,
+  )
 }
 
 /** "You may play an additional land this turn." (Explore) */

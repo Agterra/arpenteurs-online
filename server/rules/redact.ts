@@ -22,7 +22,7 @@ import { getDef } from './cards/registry'
 import { defIsCreature, defIsEquipment, defIsLand, type CardDefinition } from './cards/dsl'
 import { currentKeywords, currentPT, hostCantAttack, hostCantBlock } from './characteristics'
 import { battlefieldCreatures, zoneArr } from './state'
-import { controlledLands, hasAnyLegalTarget } from './engine'
+import { controlledLands, hasAnyLegalTarget, permanentCostReduction } from './engine'
 
 function visibleTo(state: RulesGameState, id: ObjId, viewer: PlayerId): boolean {
   const obj = state.objects[id]
@@ -437,6 +437,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     // reduction (e.g. Blasphemous Act) so the reduced affordability is reflected here.
     const castCost = parseManaCost(def.manaCost)
     if (def.costReduction) castCost.generic = Math.max(0, castCost.generic - def.costReduction(state))
+    // and the reduction the viewer's own permanents give it (Foundry Inspector, the Medallions) —
+    // same function as r.cast, so the highlight can't drift from what the server will accept
+    const fromPermanents = permanentCostReduction(state, viewer, def)
+    if (fromPermanents) castCost.generic = Math.max(0, castCost.generic - fromPermanents)
     if (planPayment(castCost, potential).covered) castableIds.push(id)
     // not castable if no legal targets: for a modal spell at least ONE mode must have
     // all its targets legal; otherwise every target spec of the plain spell must be

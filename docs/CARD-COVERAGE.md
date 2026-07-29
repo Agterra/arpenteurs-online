@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**393 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**437 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -20,10 +20,12 @@
 - Ambush Viper
 - An Offer You Can't Refuse
 - Ancient Craving
+- Ancient Den
 - Ancient Tomb
 - Angel of Mercy
 - Angelic Gift
 - Anguished Unmaking
+- Arcane Sanctum
 - Arcane Signet
 - Arid Mesa
 - Assault // Battery
@@ -32,11 +34,13 @@
 - Avacyn's Pilgrim
 - Azorius Guildgate
 - Azorius Signet
+- Badlands
 - Barktooth Warbeard
 - Barren Moor
 - Bastion of Remembrance
 - Battering Craghorn
 - Battlefield Forge
+- Bayou
 - Beast Whisperer
 - Beast Within
 - Benalish Cavalry
@@ -88,12 +92,14 @@
 - Craw Wurm
 - Crop Rotation
 - Cruel Celebrant
+- Crumbling Necropolis
 - Crystal Ball
 - Cultivate
 - Cyclonic Rift
 - Damn
 - Damnation
 - Dark Ritual
+- Darksteel Citadel
 - Darksteel Myr
 - Day of Judgment
 - Deadly Dispute
@@ -119,6 +125,7 @@
 - Elvish Lookout
 - Elvish Mystic
 - Elvish Visionary
+- Emerald Medallion
 - Enlightened Tutor
 - Errant Ephemeron
 - Esper Sentinel
@@ -144,6 +151,8 @@
 - Flooded Strand
 - Forest
 - Forgotten Cave
+- Foundry Inspector
+- Frontier Bivouac
 - Fyndhorn Elves
 - Gaea's Anthem
 - Generous Gift
@@ -162,7 +171,9 @@
 - Golgari Guildgate
 - Golgari Signet
 - Grasp of Darkness
+- Gray Merchant of Asphodel
 - Gray Ogre
+- Great Furnace
 - Grizzly Bears
 - Gruul Guildgate
 - Gruul Signet
@@ -176,6 +187,7 @@
 - Hinterland Harbor
 - Holy Strength
 - Impact Tremors
+- Indatha Triome
 - Isamaru, Hound of Konda
 - Island
 - Isolated Chapel
@@ -184,7 +196,11 @@
 - Jayemdae Tome
 - Jedit Ojanen
 - Jerrard of the Closed Fist
+- Jet Medallion
+- Jetmir's Garden
+- Jungle Shrine
 - Karplusan Forest
+- Ketria Triome
 - Knight of Glory
 - Kodama's Reach
 - Krenko's Command
@@ -225,6 +241,7 @@
 - Mulldrifter
 - Murder
 - Murderous Rider
+- Mystic Monastery
 - Mystical Tutor
 - Naturalize
 - Nature's Lore
@@ -232,8 +249,11 @@
 - Nessian Asp
 - Night's Whisper
 - Nissa, Voice of Zendikar
+- Nomad Outpost
+- Nykthos, Shrine to Nyx
 - Nyxborn Rollicker
 - Opt
+- Opulent Palace
 - Ornithopter of Paradise
 - Orzhov Guildgate
 - Orzhov Signet
@@ -244,11 +264,13 @@
 - Paladin en-Vec
 - Pale Bears
 - Path to Exile
+- Pearl Medallion
 - Phyrexian Arena
 - Pincher Beetles
 - Pitiless Plunderer
 - Plague Stinger
 - Plains
+- Plateau
 - Polluted Delta
 - Pongify
 - Pounce
@@ -261,6 +283,7 @@
 - Putrefy
 - Putrid Goblin
 - Pyroclasm
+- Raffine's Tower
 - Raging Goblin
 - Rainbow Efreet
 - Raise Dead
@@ -269,6 +292,7 @@
 - Rakdos Signet
 - Rampant Growth
 - Rapid Hybridization
+- Raugrin Triome
 - Raven's Crime
 - Ravenous Chupacabra
 - Ravenous Rats
@@ -281,12 +305,21 @@
 - Rockfall Vale
 - Rogue's Passage
 - Rootbound Crag
+- Ruby Medallion
 - Sacred Foundry
 - Sakura-Tribe Elder
+- Sandsteppe Citadel
+- Sapphire Medallion
+- Savage Lands
+- Savai Triome
+- Savannah
 - Savannah Lions
 - Scalding Tarn
+- Scrubland
 - Sea of Clouds
 - Search for Tomorrow
+- Seaside Citadel
+- Seat of the Synod
 - Secluded Steppe
 - Selesnya Guildgate
 - Selesnya Signet
@@ -309,6 +342,7 @@
 - Soltari Foot Soldier
 - Soul Warden
 - Soul's Attendant
+- Spara's Headquarters
 - Spectator Seating
 - Sphinx's Revelation
 - Spire Garden
@@ -327,6 +361,7 @@
 - Swiftfoot Boots
 - Sword of Vengeance
 - Swords to Plowshares
+- Taiga
 - Talisman of Conviction
 - Talisman of Creativity
 - Talisman of Curiosity
@@ -364,8 +399,12 @@
 - Toxic Deluge
 - Training Center
 - Tranquil Thicket
+- Tree of Tales
+- Tropical Island
 - Tukatongue Thallid
+- Tundra
 - Underground River
+- Underground Sea
 - Undergrowth Stadium
 - Unexpected Windfall
 - Unholy Strength
@@ -376,12 +415,14 @@
 - Vampiric Tutor
 - Vandalblast
 - Vault of Champions
+- Vault of Whispers
 - Verdant Catacombs
 - Vicious Conquistador
 - Village Rites
 - Vindicate
 - Viscera Seer
 - Volcanic Hammer
+- Volcanic Island
 - Vulshok Morningstar
 - Wall of Blossoms
 - Wall of Omens
@@ -398,7 +439,10 @@
 - Worldly Tutor
 - Worn Powerstone
 - Wrath of God
+- Xander's Lounge
 - Yavimaya Coast
 - Young Wolf
 - Youthful Knight
+- Zagoth Triome
+- Ziatora's Proving Ground
 - Zulaport Cutthroat

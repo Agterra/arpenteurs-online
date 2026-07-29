@@ -628,6 +628,10 @@ const FUZZ_DECK = [
   ...Array(2).fill('Opt'),
   ...Array(2).fill('Explore'),
   ...Array(2).fill('Crop Rotation'),
+  // batch CARD26: Gray Merchant (a devotion-sized drain on ETB) and a Triome (a tapland with
+  // Cycling {3}, so the fuzzer's cycling branch runs on a land too).
+  ...Array(2).fill('Gray Merchant of Asphodel'),
+  ...Array(2).fill('Ketria Triome'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

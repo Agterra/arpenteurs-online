@@ -30,6 +30,7 @@ import {
   destroyPermanent,
   destroyPermanentGrantToken,
   destroyTarget,
+  drainEachOpponentByDevotion,
   drainTargetPlayer,
   drawCards,
   drawCardsX,
@@ -222,6 +223,47 @@ const slowLand = (name: string, a: ManaColor, b: ManaColor): CardDefinition => (
   types: ['Land'],
   entersTappedUnlessOtherLandsAtLeast: 2,
   abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/** An original dual land: untapped, two real basic land types, "{T}: Add {a} or {b}." */
+const dualLand = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  subtypes,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b], chooseColor: true, effect: addMana(a) }],
+})
+
+/** A tri-land (Shards/Khans): enters tapped, "{T}: Add {a}, {b}, or {c}." */
+const triLand = (name: string, a: ManaColor, b: ManaColor, c: ManaColor): CardDefinition => ({
+  name,
+  types: ['Land'],
+  entersTapped: true,
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b, c], chooseColor: true, effect: addMana(a) }],
+})
+
+/** A Triome: a tri-land with three real basic land types and Cycling {3}. */
+const triome = (name: string, a: ManaColor, b: ManaColor, c: ManaColor, subtypes: [string, string, string]): CardDefinition => ({
+  name,
+  types: ['Land'],
+  subtypes,
+  entersTapped: true,
+  cyclingCost: '{3}',
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [a, b, c], chooseColor: true, effect: addMana(a) }],
+})
+
+/** An artifact land: "{T}: Add {c}." — an Artifact AND a Land. */
+const artifactLand = (name: string, c: ManaColor): CardDefinition => ({
+  name,
+  types: ['Artifact', 'Land'],
+  abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: [c], effect: addMana(c) }],
+})
+
+/** A Medallion: "[colour] spells you cast cost {1} less to cast." */
+const medallion = (name: string, color: ManaColor): CardDefinition => ({
+  name,
+  types: ['Artifact'],
+  manaCost: '{2}',
+  spellCostReduction: { amount: 1, colors: [color] },
 })
 
 /** A Signet: "{1}, {T}: Add {a}{b}." — fixed dual-colour ramp + fixing (not a choice). */
@@ -2864,5 +2906,99 @@ export const STARTER_SET: CardDefinition[] = [
     //  basic land cards, put them onto the battlefield, then shuffle."
     additionalCost: { sacrifice: { count: 1, filter: 'land' } },
     spell: { effect: searchLibrary({ filter: 'basicLand', dest: 'battlefield', count: 2 }) },
+  },
+
+  // --- Coverage batch CARD26: devotion, cost reduction from permanents, and four land cycles ---
+  {
+    name: 'Gray Merchant of Asphodel',
+    types: ['Creature'],
+    subtypes: ['Zombie'],
+    manaCost: '{3}{B}{B}',
+    colors: ['B'],
+    power: 2,
+    toughness: 2,
+    // "When this creature enters, each opponent loses X life, where X is your devotion to black.
+    //  You gain life equal to the life lost this way."
+    enters: { effect: drainEachOpponentByDevotion('B') },
+  },
+  {
+    name: 'Nykthos, Shrine to Nyx',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "{T}: Add {C}." / "{2}, {T}: Choose a color. Add an amount of mana of that color equal to your
+    //  devotion to that color."
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaEqualToDevotion: true,
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Foundry Inspector',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Construct'],
+    manaCost: '{3}',
+    power: 3,
+    toughness: 2,
+    // "Artifact spells you cast cost {1} less to cast."
+    spellCostReduction: { amount: 1, types: ['Artifact'] },
+  },
+  medallion('Jet Medallion', 'B'),
+  medallion('Ruby Medallion', 'R'),
+  medallion('Sapphire Medallion', 'U'),
+  medallion('Emerald Medallion', 'G'),
+  medallion('Pearl Medallion', 'W'),
+  // the original dual lands (untapped, real basic land types — fetchable)
+  dualLand('Underground Sea', 'U', 'B', ['Island', 'Swamp']),
+  dualLand('Volcanic Island', 'U', 'R', ['Island', 'Mountain']),
+  dualLand('Tropical Island', 'G', 'U', ['Forest', 'Island']),
+  dualLand('Tundra', 'W', 'U', ['Plains', 'Island']),
+  dualLand('Badlands', 'B', 'R', ['Swamp', 'Mountain']),
+  dualLand('Scrubland', 'W', 'B', ['Plains', 'Swamp']),
+  dualLand('Bayou', 'B', 'G', ['Swamp', 'Forest']),
+  dualLand('Plateau', 'R', 'W', ['Mountain', 'Plains']),
+  dualLand('Savannah', 'G', 'W', ['Forest', 'Plains']),
+  dualLand('Taiga', 'R', 'G', ['Mountain', 'Forest']),
+  // the tri-lands (Shards of Alara / Khans of Tarkir)
+  triLand('Arcane Sanctum', 'W', 'U', 'B'),
+  triLand('Crumbling Necropolis', 'U', 'B', 'R'),
+  triLand('Savage Lands', 'B', 'R', 'G'),
+  triLand('Jungle Shrine', 'R', 'G', 'W'),
+  triLand('Seaside Citadel', 'G', 'W', 'U'),
+  triLand('Nomad Outpost', 'R', 'W', 'B'),
+  triLand('Mystic Monastery', 'U', 'R', 'W'),
+  triLand('Opulent Palace', 'B', 'G', 'U'),
+  triLand('Frontier Bivouac', 'G', 'U', 'R'),
+  triLand('Sandsteppe Citadel', 'W', 'B', 'G'),
+  // the Triomes (three basic land types + Cycling {3})
+  triome('Ketria Triome', 'G', 'U', 'R', ['Forest', 'Island', 'Mountain']),
+  triome("Jetmir's Garden", 'R', 'G', 'W', ['Mountain', 'Forest', 'Plains']),
+  triome("Spara's Headquarters", 'G', 'W', 'U', ['Forest', 'Plains', 'Island']),
+  triome('Indatha Triome', 'W', 'B', 'G', ['Plains', 'Swamp', 'Forest']),
+  triome('Raugrin Triome', 'U', 'R', 'W', ['Island', 'Mountain', 'Plains']),
+  triome('Savai Triome', 'R', 'W', 'B', ['Mountain', 'Plains', 'Swamp']),
+  triome('Zagoth Triome', 'B', 'G', 'U', ['Swamp', 'Forest', 'Island']),
+  triome("Raffine's Tower", 'W', 'U', 'B', ['Plains', 'Island', 'Swamp']),
+  triome("Xander's Lounge", 'U', 'B', 'R', ['Island', 'Swamp', 'Mountain']),
+  triome("Ziatora's Proving Ground", 'B', 'R', 'G', ['Swamp', 'Mountain', 'Forest']),
+  // the artifact lands
+  artifactLand('Seat of the Synod', 'U'),
+  artifactLand('Great Furnace', 'R'),
+  artifactLand('Tree of Tales', 'G'),
+  artifactLand('Ancient Den', 'W'),
+  artifactLand('Vault of Whispers', 'B'),
+  {
+    name: 'Darksteel Citadel',
+    types: ['Artifact', 'Land'],
+    keywords: ['indestructible'],
+    // "Indestructible. {T}: Add {C}."
+    abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') }],
   },
 ]

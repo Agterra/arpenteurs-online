@@ -54,6 +54,38 @@ const setCounter = (obj: GameObject, name: string, value: number) => {
  * CR 402.2 exception — does this player control a permanent granting "you have no maximum hand
  * size" (Reliquary Tower, Thought Vessel)? Checked live at cleanup, so it follows the permanent.
  */
+/**
+ * Devotion to a colour (CR 700.5): how many mana symbols of that colour appear in the mana costs of
+ * the permanents this player controls. Hybrid/phyrexian pips are not in the pool, so a plain count
+ * of the coloured pips is exact for every implemented card.
+ */
+export function devotionTo(state: RulesGameState, player: PlayerId, color: ManaColor): number {
+  let n = 0
+  for (const id of zoneArr(state, player, 'battlefield')) {
+    const def = getDef(state.objects[id]!.defName)
+    if (!def.manaCost) continue
+    n += parseManaCost(def.manaCost).colored[color]
+  }
+  return n
+}
+
+/**
+ * Total cost reduction the caster's permanents give a spell (Foundry Inspector, the Medallions).
+ * Applies to the generic portion only; the caller floors the result at 0.
+ */
+export function permanentCostReduction(state: RulesGameState, caster: PlayerId, def: CardDefinition): number {
+  let total = 0
+  for (const id of zoneArr(state, caster, 'battlefield')) {
+    const src = getDef(state.objects[id]!.defName)
+    const r = src.spellCostReduction
+    if (!r) continue
+    if (r.types?.length && !r.types.some((t) => def.types.includes(t))) continue
+    if (r.colors?.length && !r.colors.some((c) => (def.colors ?? []).includes(c))) continue
+    total += r.amount
+  }
+  return total
+}
+
 /** How many lands a player controls (Temple of the False God's activation condition). */
 export const controlledLands = (state: RulesGameState, player: PlayerId) =>
   zoneArr(state, player, 'battlefield').filter((id) => defIsLand(getDef(state.objects[id]!.defName))).length
@@ -1676,7 +1708,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         state.players[actor]!.life -= manaLifeCost
         logLine(state, `${name(state, actor)} pays ${manaLifeCost} life for ${objName(state, obj.id)}.`)
       }
-      if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
+      if (ability.chooseColor && ability.manaEqualToDevotion) {
+        const n = devotionTo(state, actor, msg.color!)
+        state.players[actor]!.manaPool[msg.color!] += n
+        logLine(state, `${name(state, actor)} adds ${n} {${msg.color}} (devotion).`)
+      } else if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
       // a mana ability that hurts (Ancient Tomb, City of Brass, the pain lands)
       if (ability.damageOnTapForMana) {
@@ -1918,6 +1954,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // static generic cost reduction (CR 601.2f) — e.g. Blasphemous Act "{1} less per creature".
       // Applied after cost increases, before convoke; floored at 0, coloured pips untouched.
       if (!adv && !splitHalf && def.costReduction) cost.generic = Math.max(0, cost.generic - def.costReduction(state))
+      // cost reduction from the caster's PERMANENTS (Foundry Inspector, the Medallions)
+      if (!adv && !splitHalf) {
+        const fromPermanents = permanentCostReduction(state, actor, def)
+        if (fromPermanents) cost.generic = Math.max(0, cost.generic - fromPermanents)
+      }
       // convoke (CR 702.51): tap creatures you control to pay for {1} or a matching-colour pip
       // (main face only). Validated + planned against a local `cost` here; creatures are tapped
       // only after the remaining mana payment is confirmed below (no partial mutation on failure).

@@ -101,6 +101,12 @@ export interface ActivatedAbility {
    * client can't evaluate.
    */
   requiresLandsAtLeast?: number
+  /**
+   * Nykthos: "Add an amount of mana of that color equal to your devotion to that color." The colour
+   * is chosen on tap (`chooseColor`) and the AMOUNT is that colour's devotion — the number of mana
+   * symbols of it among the mana costs of permanents you control (CR 700.5).
+   */
+  manaEqualToDevotion?: boolean
   targets?: TargetSpec[]
   effect: Effect
 }
@@ -261,6 +267,13 @@ export interface CardDefinition {
   additionalCost?: { sacrifice?: { count: number; filter: 'creature' | 'artifactOrCreature' | 'land' }; discard?: number }
   /** "This spell can't be countered." (Dovin's Veto) — every counter effect skips it. */
   cantBeCountered?: boolean
+  /**
+   * A static cost reduction this PERMANENT gives your spells (Foundry Inspector: "artifact spells
+   * you cast cost {1} less"; the Medallions: "[colour] spells you cast cost {1} less"). Summed over
+   * every matching permanent you control as a spell is cast, applied to the GENERIC portion only,
+   * and mirrored in redact's castability check. `types`/`colors` empty = every spell you cast.
+   */
+  spellCostReduction?: { amount: number; types?: CardType[]; colors?: ManaColor[] }
   /**
    * Saga (CR 714): an Enchantment — Saga with ordered chapter abilities. `chapters[0]` is
    * chapter I. The engine adds a lore counter as it enters (→ chapter I) and after each of the
