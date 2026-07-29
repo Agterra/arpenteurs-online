@@ -13,6 +13,7 @@ import {
   addMana,
   monstrosity,
   counterTarget,
+  chaosWarpTarget,
   counterTargetGrantingToken,
   counterTargetGrantingTreasures,
   createToken,
@@ -54,6 +55,7 @@ import {
   weakenAllCreaturesX,
   weakenControlledCreatures,
   pumpSelf,
+  putBackOnTop,
   returnFromGraveyard,
   scry,
   searchLibrary,
@@ -2461,5 +2463,24 @@ export const STARTER_SET: CardDefinition[] = [
       targets: [{ kind: 'spell', count: 1, filter: { types: ['Enchantment', 'Instant', 'Sorcery'] } }],
       effect: counterTargetGrantingToken({ name: 'Bird', power: 2, toughness: 2, subtypes: ['Bird'], keywords: ['flying'] }, 1),
     },
+  },
+
+  // --- Coverage batch CARD20: shuffle-a-permanent-away, and draw-then-put-back ---
+  {
+    name: 'Chaos Warp',
+    types: ['Instant'],
+    manaCost: '{2}{R}',
+    colors: ['R'],
+    // "The owner of target permanent shuffles it into their library, then reveals the top card of
+    //  their library. If it's a permanent card, they put it onto the battlefield."
+    spell: { targets: [{ kind: 'permanent', count: 1 }], effect: chaosWarpTarget() },
+  },
+  {
+    name: 'Brainstorm',
+    types: ['Instant'],
+    manaCost: '{U}',
+    colors: ['U'],
+    // "Draw three cards, then put two cards from your hand on top of your library in any order."
+    spell: { effect: sequence(drawCards(3), putBackOnTop(2)) },
   },
 ]

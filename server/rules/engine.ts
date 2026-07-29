@@ -325,7 +325,7 @@ export function remintForHiddenEntry(state: RulesGameState, oldId: ObjId, fromPu
 
 /** Re-mint every id in a player's library (post-shuffle / post-bottom) so an id that
  *  was once visible (a mulliganed hand) can't be tracked into the hidden library. */
-function remintLibrary(state: RulesGameState, pid: PlayerId) {
+export function remintLibrary(state: RulesGameState, pid: PlayerId) {
   const lib = zoneArr(state, pid, 'library')
   for (let i = 0; i < lib.length; i++) {
     const oldId = lib[i]!
@@ -337,6 +337,47 @@ function remintLibrary(state: RulesGameState, pid: PlayerId) {
     delete state.objects[oldId]
     lib[i] = newId
   }
+}
+
+/**
+ * Chaos Warp: shuffle a permanent into its OWNER's library, then reveal the top card and put it
+ * onto the battlefield if it is a permanent card. Battlefield → library is public → hidden, so the
+ * shuffled permanent AND the whole library are re-minted (invariant #3): nobody may follow that id
+ * into the library. The revealed card's NAME is public (a log line), which is exactly what the card
+ * says; its id stays unserialised while it is in the library, and it is re-minted if it stays there.
+ */
+export function chaosWarpPermanent(state: RulesGameState, objId: ObjId) {
+  const obj = state.objects[objId]
+  if (!obj || obj.zone !== 'battlefield') return
+  const owner = obj.ownerId
+  const nm = getDef(obj.defName).name
+  if (obj.isCommander) {
+    // a commander never enters a hidden zone (it would keep its stable, broadcast id)
+    moveTo(state, objId, 'command')
+    logLine(state, `${nm} returns to the command zone instead of being shuffled away.`)
+    return
+  }
+  moveTo(state, objId, 'library')
+  remintForHiddenEntry(state, objId, true) // public → hidden: fresh id
+  const lib = zoneArr(state, owner, 'library')
+  shuffleInPlace(lib)
+  remintLibrary(state, owner)
+  logLine(state, `${nm} is shuffled into ${name(state, owner)}'s library.`)
+  const topId = lib[0]
+  if (!topId) return
+  const topDef = getDef(state.objects[topId]!.defName)
+  logLine(state, `${name(state, owner)} reveals ${topDef.name}.`)
+  if (defIsPermanent(topDef)) {
+    state.objects[topId]!.controllerId = owner
+    state.objects[topId]!.summoningSick = defIsCreature(topDef)
+    moveTo(state, topId, 'battlefield')
+    logLine(state, `${topDef.name} enters the battlefield.`)
+    fireEntersTriggers(state, topId)
+  } else {
+    // it stays on top, revealed — re-mint so the publicly revealed id can't be tracked later
+    remintForHiddenEntry(state, topId, true)
+  }
+  checkSBA(state)
 }
 
 /** Leave the mulligan phase and begin turn 1 once every remaining player has kept. */
@@ -367,6 +408,7 @@ function repairControlFlow(state: RulesGameState) {
     const cascadeExiled = state.pendingCascade?.exiledIds
     const entersChoiceObjId = state.pendingEntersChoice?.objId
     const optionalPay = state.pendingOptionalPay
+    state.pendingPutBack = null // a departed player's put-back lapses (their cards left with them)
     state.pending = null
     state.pendingTrigger = null // a departed player's trigger is removed
     state.pendingScry = null
@@ -2403,6 +2445,30 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         }
       }
       // resume: active player gets priority; the pass/resolve loop continues the stack
+      if (state.status === 'active') grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.putBack': {
+      if (state.pending?.kind !== 'putBack' || state.pending.player !== actor || !state.pendingPutBack)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your put-back')
+      const need = state.pendingPutBack.count
+      const chosen = [...new Set(msg.objIds)]
+      if (chosen.length !== need) throw new RulesError('BAD_PUTBACK', `Choose exactly ${need} card${need === 1 ? '' : 's'}`)
+      const hand = zoneArr(state, actor, 'hand')
+      for (const id of chosen) if (!hand.includes(id)) throw new RulesError('BAD_PUTBACK', 'Not a card in your hand')
+      state.pending = null
+      state.pendingPutBack = null
+      // the FIRST id ends up on top: put them back in reverse so each unshift lands above the last.
+      // Re-mint each one: a hand id IS serialised to its owner, and the redactor treats the library
+      // as unknown to everyone, so keeping the id would leave the owner's own view able to follow a
+      // card into the library — exactly the tracking vector invariant #3 forbids (the leak fuzzer's
+      // history-aware check catches it). The player still learns what they put on top from the log.
+      for (const id of [...chosen].reverse()) {
+        moveTo(state, id, 'library', { top: true })
+        remintForHiddenEntry(state, id, true)
+      }
+      logLine(state, `${name(state, actor)} puts ${chosen.length} card${chosen.length === 1 ? '' : 's'} on top of their library.`)
       if (state.status === 'active') grantPriority(state, state.activePlayer)
       break
     }

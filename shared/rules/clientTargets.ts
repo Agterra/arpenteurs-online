@@ -56,6 +56,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   boomerang: 'permanent',
   capsize: 'permanent',
   'feed the swarm': 'permanent', // creature or enchantment an opponent controls
+  'chaos warp': 'permanent', // any permanent — its owner shuffles it away
   'cyclonic rift': 'permanent', // nonland permanent you don't control
   vandalblast: 'permanent', // artifact you don't control
   'diabolic edict': 'player',

@@ -228,7 +228,7 @@ export interface RulesGameState {
   /** players who have passed priority since the last stack change / step start */
   passed: PlayerId[]
   /** engine is waiting for a player decision (no priority until it's made) */
-  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay'; player: PlayerId } | null
+  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay' | 'putBack'; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
   pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
@@ -316,6 +316,12 @@ export interface RulesGameState {
    * tapping it is equivalent to it having entered tapped. Battlefield ids are public.
    */
   pendingEntersChoice: { player: PlayerId; objId: ObjId; life: number } | null
+  /**
+   * "…then put two cards from your hand on top of your library in any order." (Brainstorm) — the
+   * player picks `count` cards from their own hand; the ids sent back are hand ids they already
+   * hold, and hand → library is hidden → hidden, so nothing new is revealed either way.
+   */
+  pendingPutBack: { player: PlayerId; count: number } | null
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
   entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number }[]
   /**
@@ -494,6 +500,9 @@ export interface LegalActions {
   /** the ward cost you'd pay, and whether your current mana pool covers it */
   wardCost: string
   wardAffordable: boolean
+  /** you must put cards from your hand on top of your library (Brainstorm) — click them in order */
+  needsPutBack: boolean
+  putBackCount: number
   /** an "unless you pay {N}" decision is waiting on YOU (Rhystic Study): pay, or the ability happens */
   needsOptionalPay: boolean
   /** the mana cost you'd pay, the ability's source name, and whether your pool covers it */

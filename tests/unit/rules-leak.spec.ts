@@ -136,6 +136,14 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       applyRulesAction(state, p, { type: 'r.scry', toBottom })
       return true
     }
+    if (state.pending.kind === 'putBack' && state.pendingPutBack) {
+      // put back the first N hand cards (Brainstorm). Hand → library is hidden → hidden, but the
+      // fuzzer must answer this or it stalls; the history-aware assertion then confirms those ids
+      // are still never serialised to anyone else.
+      const hand = state.zones.perPlayer[p]!.hand
+      applyRulesAction(state, p, { type: 'r.putBack', objIds: hand.slice(0, state.pendingPutBack.count) })
+      return true
+    }
     if (state.pending.kind === 'optionalPay') {
       // pay the "unless that player pays {N}" tax when affordable (randomly), else decline and let
       // the ability happen (Rhystic Study draws for its controller — a library→hand move, so the
@@ -571,6 +579,10 @@ const FUZZ_DECK = [
   // Swan Song, whose counter hands the countered player a Bird token.
   ...Array(3).fill('Dragonskull Summit'),
   ...Array(2).fill('Swan Song'),
+  // batch CARD20: Chaos Warp (battlefield → library, the leak-critical public→hidden shuffle whose
+  // re-mints the history-aware assertion checks) and Brainstorm (draw 3, put 2 back on top).
+  ...Array(3).fill('Chaos Warp'),
+  ...Array(3).fill('Brainstorm'),
   ...Array(6).fill('Shock'),
   ...Array(4).fill('Lightning Bolt'),
   ...Array(4).fill('Gray Ogre'),

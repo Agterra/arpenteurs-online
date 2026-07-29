@@ -118,6 +118,7 @@ async function rehydrate(gameId: string): Promise<Room> {
     rulesState.entersChoiceQueue ??= []
     rulesState.pendingEntersChoice ??= null
     rulesState.pendingOptionalPay ??= null
+    rulesState.pendingPutBack ??= null
     rulesState.seq = game.snapshotSeq
   } else {
     state = game.snapshot as unknown as ServerGameState

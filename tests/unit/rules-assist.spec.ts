@@ -70,18 +70,21 @@ describe('unimplemented cards in play', () => {
   it('an unimplemented spell resolves with no effect and goes to the graveyard', () => {
     const { state, A, B } = makeDuel()
     rig(state, A, { battlefield: ['Mountain', 'Mountain', 'Mountain'] }) // RRR pays {2}{R}
-    const cultivate = putFallback(
+    // NOTE: this must name a card the engine does NOT implement — the point is the assisted-table
+    // fallback path. It used to be Chaos Warp, which batch CARD20 implemented (the implemented def
+    // then demanded its target and this test failed loudly, which is the guard working).
+    const unimplemented = putFallback(
       state,
       A,
-      { name: 'Chaos Warp', typeLine: 'Sorcery', manaCost: '{2}{R}', oracleText: 'The owner of target permanent shuffles it…' },
+      { name: 'Insurrection', typeLine: 'Sorcery', manaCost: '{2}{R}', oracleText: 'Untap all creatures and gain control of them…' },
       'hand',
     )
     toStep(state, 'main1')
     for (const id of [...state.zones.perPlayer[A]!.battlefield]) act(state, A, { type: 'r.tapMana', objId: id })
     const lifeB = state.players[B]!.life
-    act(state, A, { type: 'r.cast', objId: cultivate, targets: [] }) // no targets for unimplemented
+    act(state, A, { type: 'r.cast', objId: unimplemented, targets: [] }) // no targets for a fallback
     until(state, (s) => !s.zones.stack.length, 'resolution')
-    expect(state.zones.perPlayer[A]!.graveyard).toContain(cultivate) // resolved to graveyard
+    expect(state.zones.perPlayer[A]!.graveyard).toContain(unimplemented) // resolved to graveyard
     expect(state.players[B]!.life).toBe(lifeB) // did nothing automatically
   })
 

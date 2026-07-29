@@ -15,7 +15,7 @@ import { currentKeywords, currentPower } from '../characteristics'
 // fireEntersTriggers/openSacrifice are hoisted function exports; the effects→engine
 // edge is a call-time-only cycle (invoked inside effect bodies, never at module
 // init), so it is safe — mirrors the existing effects→registry (getDef) cycle.
-import { fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
+import { chaosWarpPermanent, fireEntersTriggers, openDiscard, openSacrifice, remintForHiddenEntry } from '../engine'
 
 // intrinsic OR granted indestructible (Heroic Intervention) — the same check checkSBA's
 // damage path uses, so a destroy effect and lethal damage agree on who survives
@@ -85,6 +85,33 @@ export const returnAllNonlandYouDontControlToHand = (): Effect => (ctx) => {
   )
   logLine(ctx.state, `Every nonland permanent ${ctx.state.players[ctx.controllerId]!.name} doesn't control is returned to hand.`)
   for (const o of doomed) returnToHand()({ ...ctx, targets: [o.id] })
+}
+
+/**
+ * Brainstorm's second half: the controller puts `count` cards from their hand on top of their
+ * library, in an order they choose (r.putBack). Hidden → hidden, so no re-mint is needed — the ids
+ * were never serialised to anyone else. With fewer cards in hand than `count` they put back what
+ * they have; an empty hand is a no-op.
+ */
+export const putBackOnTop = (count: number): Effect => (ctx) => {
+  const hand = ctx.state.zones.perPlayer[ctx.controllerId]!.hand
+  const n = Math.min(count, hand.length)
+  if (n <= 0) return
+  ctx.state.pending = { kind: 'putBack', player: ctx.controllerId }
+  ctx.state.pendingPutBack = { player: ctx.controllerId, count: n }
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} puts ${n} card${n === 1 ? '' : 's'} back on top of their library.`)
+}
+
+/**
+ * Chaos Warp: the OWNER of the target permanent shuffles it into their library, then reveals the
+ * top card and puts it onto the battlefield if it is a permanent card. The leak-critical
+ * public→hidden re-mint lives in the engine helper.
+ */
+export const chaosWarpTarget = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    chaosWarpPermanent(ctx.state, t)
+  }
 }
 
 /** Overloaded artifact sweeper (Vandalblast): destroy every artifact the controller doesn't control. */

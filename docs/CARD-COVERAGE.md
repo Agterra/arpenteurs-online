@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**330 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**332 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **6** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -58,6 +58,7 @@
 - Borderland Marauder
 - Boros Guildgate
 - Boros Signet
+- Brainstorm
 - Breeding Pool
 - Brushland
 - Burst Lightning
@@ -66,6 +67,7 @@
 - Cathars' Crusade
 - Caves of Koilos
 - Centaur Courser
+- Chaos Warp
 - Char
 - City of Brass
 - Clifftop Retreat

@@ -65,6 +65,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.entersChoice'), pay: z.boolean() }),
   // "…unless that player pays {N}" (Rhystic Study / Esper Sentinel): pay, or the ability resolves
   z.object({ type: z.literal('r.optionalPay'), pay: z.boolean() }),
+  // "put N cards from your hand on top of your library in any order" (Brainstorm) — first id = top
+  z.object({ type: z.literal('r.putBack'), objIds: z.array(Id).max(20) }),
   z.object({ type: z.literal('r.cascade'), cast: z.boolean(), targets: z.array(Id).max(8).default([]), mode: z.number().int().min(0).max(9).optional() }),
   z.object({
     type: z.literal('r.loyalty'),

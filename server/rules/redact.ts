@@ -190,6 +190,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
+    needsPutBack: false,
+    putBackCount: 0,
     needsOptionalPay: false,
     optionalPayCost: '',
     optionalPaySourceName: '',
@@ -289,6 +291,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         wardCost: state.pendingWard.cost,
         wardAffordable: planPayment(parseManaCost(state.pendingWard.cost), state.players[viewer]!.manaPool).covered,
       }
+    }
+    if (state.pending.kind === 'putBack' && state.pendingPutBack) {
+      // the picker runs over the viewer's OWN hand, which they already see — no new information
+      return { ...none, needsPutBack: true, putBackCount: state.pendingPutBack.count }
     }
     if (state.pending.kind === 'optionalPay' && state.pendingOptionalPay) {
       // the spell's caster may pay the tax; declining lets the ability happen (Rhystic Study)

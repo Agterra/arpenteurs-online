@@ -94,6 +94,8 @@ const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number; alt?: Al
 const attackAssign = ref<{ attackerId: ObjId; defenderId: PlayerId }[]>([])
 const pendingAttacker = ref<ObjId | null>(null)
 const selDiscard = ref<Set<ObjId>>(new Set())
+// Brainstorm's put-back: an ORDERED pick from your own hand (first clicked ends up on top)
+const selPutBack = ref<ObjId[]>([])
 // equipment being equipped (awaiting a creature-you-control click) → r.equip
 const equipping = ref<ObjId | null>(null)
 // forced-sacrifice (edict) selection + sacrifice-as-cost (sac outlet) picker
@@ -146,6 +148,7 @@ watch(
       pendingBlocker.value = null
     }
     if (!l.needsDiscard) selDiscard.value = new Set()
+    if (!l.needsPutBack) selPutBack.value = []
     if (!l.needsSacrifice) selSacrifice.value = new Set()
     if (equipping.value && !l.equippableIds.includes(equipping.value)) equipping.value = null
     // drop a stale cost-sacrifice picker if its ability is no longer available
@@ -425,6 +428,12 @@ function onHandClick(id: ObjId) {
   const card = cardOf(id)
   const l = legal.value
   if (!card || !l) return
+  if (l.needsPutBack) {
+    const i = selPutBack.value.indexOf(id)
+    if (i >= 0) selPutBack.value = selPutBack.value.filter((x) => x !== id)
+    else if (selPutBack.value.length < l.putBackCount) selPutBack.value = [...selPutBack.value, id]
+    return
+  }
   if (l.needsDiscard) {
     const next = new Set(selDiscard.value)
     if (next.has(id)) next.delete(id)
@@ -958,7 +967,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsSacrifice || l.needsWard || l.needsOptionalPay || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1417,8 +1426,8 @@ onBeforeUnmount(() => {
                 <RulesCard
                   :card="st.cards[id]!"
                   :display="display[st.cards[id]!.defName ?? '']"
-                  :glow="bottomingActive || (!!legal && legal.needsDiscard)"
-                  :selected="selDiscard.has(id) || bottoming.has(id)"
+                  :glow="bottomingActive || (!!legal && (legal.needsDiscard || legal.needsPutBack))"
+                  :selected="selDiscard.has(id) || bottoming.has(id) || selPutBack.includes(id)"
                   manual
                   @click="onHandClick(id)"
                   @menu="openMenu($event, id)"
@@ -1535,6 +1544,14 @@ onBeforeUnmount(() => {
               </UButton>
               <UButton v-else-if="legal?.needsBlockers" color="info" icon="i-lucide-shield" @click="confirmBlockers">
                 {{ blockPairs.length ? `Confirm ${blockPairs.length} block${blockPairs.length > 1 ? 's' : ''}` : 'No blocks' }}
+              </UButton>
+              <UButton
+                v-else-if="legal?.needsPutBack"
+                color="primary"
+                :disabled="selPutBack.length !== legal.putBackCount"
+                @click="send({ type: 'r.putBack', objIds: selPutBack })"
+              >
+                Put back {{ selPutBack.length }}/{{ legal.putBackCount }} (first = top)
               </UButton>
               <UButton v-else-if="legal?.needsDiscard" color="warning" :disabled="selDiscard.size !== legal.discardCount" @click="confirmDiscard">
                 Discard {{ selDiscard.size }}/{{ legal.discardCount }}
