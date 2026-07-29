@@ -6,7 +6,7 @@
 import type { Ability, EffectContext, Effect } from './dsl'
 import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { parseManaCost } from '#shared/utils/manaCost'
-import { apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
+import { putCounters, apnapOrder, battlefieldCreatures, isCreatureOnBattlefield, moveTo, moveToGraveyard, drawOne, logLine } from '../state'
 import { getDef, defKey, registerImplementedToken } from './registry'
 import { mintCardId, randomIndex } from '../../game/rng'
 // currentPower is safe to import: characteristics is already in this module's
@@ -178,12 +178,12 @@ export const fight = (): Effect => (ctx) => {
   const bDealsToA = pb > 0 && !protectedFromColors(ctx, oa, getDef(ob.defName).colors ?? [])
   if (aDealsToB) {
     // wither/infect deal fight damage to a creature as -1/-1 counters (CR 702.79a / 702.90a)
-    if (kwA.includes('wither') || kwA.includes('infect')) ob.counters['-1/-1'] = (ob.counters['-1/-1'] ?? 0) + pa
+    if (kwA.includes('wither') || kwA.includes('infect')) putCounters(ctx.state, ob.id, '-1/-1', pa)
     else ob.damageMarked += pa
     if (kwA.includes('deathtouch')) ob.deathtouched = true
   }
   if (bDealsToA) {
-    if (kwB.includes('wither') || kwB.includes('infect')) oa.counters['-1/-1'] = (oa.counters['-1/-1'] ?? 0) + pb
+    if (kwB.includes('wither') || kwB.includes('infect')) putCounters(ctx.state, oa.id, '-1/-1', pb)
     else oa.damageMarked += pb
     if (kwB.includes('deathtouch')) oa.deathtouched = true
   }
@@ -535,14 +535,14 @@ export const addCounters = (kind: '+1/+1' | '-1/-1', n: number): Effect => (ctx)
     if (isPlayerId(ctx, t)) continue
     const obj = ctx.state.objects[t]
     if (!obj || obj.zone !== 'battlefield') continue
-    obj.counters[kind] = (obj.counters[kind] ?? 0) + n
+    putCounters(ctx.state, obj.id, kind, n)
     logLine(ctx.state, `${getDef(obj.defName).name} gets ${n} ${kind} counter${n > 1 ? 's' : ''}.`)
   }
 }
 
 /** Put N counters on every creature the controller controls (e.g. Cathars' Crusade). */
 export const addCountersToEachControlled = (kind: '+1/+1' | '-1/-1', n: number): Effect => (ctx) => {
-  for (const c of battlefieldCreatures(ctx.state, ctx.controllerId)) c.counters[kind] = (c.counters[kind] ?? 0) + n
+  for (const c of battlefieldCreatures(ctx.state, ctx.controllerId)) putCounters(ctx.state, c.id, kind, n)
   logLine(
     ctx.state,
     `Each creature ${ctx.state.players[ctx.controllerId]!.name} controls gets ${n} ${kind} counter${n > 1 ? 's' : ''}.`,
@@ -665,7 +665,7 @@ export const adapt = (n: number): Effect => (ctx) => {
     logLine(ctx.state, `${getDef(o.defName).name} doesn't adapt (it already has +1/+1 counters).`)
     return
   }
-  o.counters['+1/+1'] = (o.counters['+1/+1'] ?? 0) + n
+  putCounters(ctx.state, o.id, '+1/+1', n)
   logLine(ctx.state, `${getDef(o.defName).name} adapts — gets ${n} +1/+1 counter${n === 1 ? '' : 's'}.`)
 }
 
@@ -675,7 +675,7 @@ export const adapt = (n: number): Effect => (ctx) => {
 export const monstrosity = (n: number): Effect => (ctx) => {
   const o = ctx.state.objects[ctx.sourceId]
   if (!o || o.zone !== 'battlefield' || o.monstrous) return
-  o.counters['+1/+1'] = (o.counters['+1/+1'] ?? 0) + n
+  putCounters(ctx.state, o.id, '+1/+1', n)
   o.monstrous = true
   logLine(ctx.state, `${getDef(o.defName).name} becomes monstrous — gets ${n} +1/+1 counter${n === 1 ? '' : 's'}.`)
 }
@@ -784,6 +784,17 @@ export const counterTargetGrantingTreasures = (count: number): Effect => counter
 function spawnTokens(state: EffectContext['state'], ownerId: PlayerId, spec: TokenSpec, count: number) {
   const defName = registerImplementedToken(spec)
   if (count > 0) state.players[ownerId]!.createdTokenThisTurn = true // Idol of Oblivion's condition
+  // token-creation REPLACEMENT effects (CR 616): Doubling Season / Parallel Lives / Anointed
+  // Procession each double the count, and several stack multiplicatively
+  const doublers = state.zones.perPlayer[ownerId]!.battlefield.filter((id) => {
+    const src = state.objects[id]
+    return !!src && !src.phasedOut && !state.loseAbilities.includes(id) && getDef(src.defName).tokenReplacement === 'double'
+  }).length
+  if (doublers && count > 0) {
+    const doubled = count * 2 ** doublers
+    logLine(state, `${state.players[ownerId]!.name} creates ${doubled} ${spec.name} tokens instead of ${count}.`)
+    count = doubled
+  }
   const created: ObjId[] = []
   for (let i = 0; i < count; i++) {
     const id = mintCardId()
@@ -1411,7 +1422,7 @@ export const returnSelfTappedFromGraveyard = (opts?: { plusOneCounter?: boolean 
   moveTo(ctx.state, ctx.sourceId, 'battlefield')
   obj.tapped = true
   obj.summoningSick = true // it returns as a new object
-  if (opts?.plusOneCounter) obj.counters['+1/+1'] = (obj.counters['+1/+1'] ?? 0) + 1
+  if (opts?.plusOneCounter) putCounters(ctx.state, ctx.sourceId, '+1/+1', 1)
   logLine(
     ctx.state,
     `${getDef(obj.defName).name} returns to the battlefield tapped${opts?.plusOneCounter ? ' with a +1/+1 counter' : ''}.`,

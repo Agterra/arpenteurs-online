@@ -545,6 +545,24 @@ export interface CardDefinition {
   transformsTo?: string
   /** engine-set on the back face — used to revert to the front when leaving the battlefield. */
   isBackFace?: boolean
+  /**
+   * Counter-placement REPLACEMENT effect (CR 616): "If one or more +1/+1 counters would be put on a
+   * creature you control, that many plus one / twice that many are put on it instead" (Hardened
+   * Scales, Branching Evolution, Corpsejack Menace) or, for ANY counter on ANY permanent you control,
+   * Doubling Season. Applied in `addCounters`, the single place counters are added.
+   */
+  counterReplacement?: {
+    mode: 'plusOne' | 'double'
+    /** absent = any counter kind (Doubling Season); '+1/+1' = only those */
+    only?: '+1/+1'
+    scope: 'creaturesYouControl' | 'permanentsYouControl'
+  }
+  /**
+   * Token-creation REPLACEMENT effect (CR 616): "If an effect would create one or more tokens under
+   * your control, it creates twice that many of those tokens instead" (Doubling Season, Parallel
+   * Lives, Anointed Procession). Applied in `spawnTokens`; several stack multiplicatively.
+   */
+  tokenReplacement?: 'double'
   /** "This permanent doesn't untap during your untap step." (Mana Vault, the Monoliths) */
   doesNotUntap?: boolean
   /**

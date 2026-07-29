@@ -4365,4 +4365,66 @@ export const STARTER_SET: CardDefinition[] = [
       { kind: 'activated', cost: { mana: '{3}' }, effect: untapSelf() },
     ],
   },
+  // --- Coverage batch CARD50: counter- and token-placement REPLACEMENT effects (CR 616) ---
+  {
+    name: 'Hardened Scales',
+    types: ['Enchantment'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "If one or more +1/+1 counters would be put on a creature you control, that many plus one
+    //  +1/+1 counters are put on it instead."
+    counterReplacement: { mode: 'plusOne', only: '+1/+1', scope: 'creaturesYouControl' },
+  },
+  {
+    name: 'Branching Evolution',
+    types: ['Enchantment'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    // "If one or more +1/+1 counters would be put on a creature you control, twice that many +1/+1
+    //  counters are put on that creature instead."
+    counterReplacement: { mode: 'double', only: '+1/+1', scope: 'creaturesYouControl' },
+  },
+  {
+    name: 'Corpsejack Menace',
+    types: ['Creature'],
+    subtypes: ['Fungus'],
+    manaCost: '{2}{B}{G}',
+    colors: ['B', 'G'],
+    power: 4,
+    toughness: 4,
+    // "If one or more +1/+1 counters would be put on a creature you control, twice that many +1/+1
+    //  counters are put on it instead."
+    counterReplacement: { mode: 'double', only: '+1/+1', scope: 'creaturesYouControl' },
+  },
+  {
+    name: 'Parallel Lives',
+    types: ['Enchantment'],
+    manaCost: '{3}{G}',
+    colors: ['G'],
+    // "If an effect would create one or more tokens under your control, it creates twice that many of
+    //  those tokens instead."
+    tokenReplacement: 'double',
+  },
+  {
+    name: 'Anointed Procession',
+    types: ['Enchantment'],
+    manaCost: '{3}{W}',
+    colors: ['W'],
+    // "If an effect would create one or more tokens under your control, it creates twice that many of
+    //  those tokens instead."
+    tokenReplacement: 'double',
+  },
+  {
+    name: 'Doubling Season',
+    types: ['Enchantment'],
+    manaCost: '{4}{G}',
+    colors: ['G'],
+    // "If an effect would create one or more tokens under your control, it creates twice that many of
+    //  those tokens instead. / If an effect would put one or more counters on a permanent you control,
+    //  it puts twice that many of those counters on that permanent instead."
+    //  (see addCounters: a planeswalker's starting loyalty is not modelled as counters, so it is not
+    //  doubled — a documented limitation)
+    tokenReplacement: 'double',
+    counterReplacement: { mode: 'double', scope: 'permanentsYouControl' },
+  },
 ]

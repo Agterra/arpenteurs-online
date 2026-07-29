@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**572 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**578 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -28,6 +28,7 @@
 - Angel of Mercy
 - Angelic Gift
 - Anguished Unmaking
+- Anointed Procession
 - Arcane Sanctum
 - Arcane Signet
 - Archmage Emeritus
@@ -85,6 +86,7 @@
 - Boseiju, Who Endures
 - Bountiful Promenade
 - Brainstorm
+- Branching Evolution
 - Breeding Pool
 - Brushland
 - Buried Alive
@@ -116,6 +118,7 @@
 - Commune with Lava
 - Concentrate
 - Consider
+- Corpsejack Menace
 - Counterspell
 - Craw Wurm
 - Crop Rotation
@@ -149,6 +152,7 @@
 - Disfigure
 - Divination
 - Doomed Traveler
+- Doubling Season
 - Dovin's Veto
 - Dragon Fodder
 - Dragonskull Summit
@@ -240,6 +244,7 @@
 - Gruul Turf
 - Guttersnipe
 - Hallowed Fountain
+- Hardened Scales
 - Harmonize
 - Harrow
 - Haunted Ridge
@@ -349,6 +354,7 @@
 - Pact of Negation
 - Paladin en-Vec
 - Pale Bears
+- Parallel Lives
 - Patchwork Banner
 - Path to Exile
 - Pearl Medallion

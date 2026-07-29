@@ -19,6 +19,7 @@ import { defIsAura, defIsCreature, defIsEquipment, defIsLand, defIsPermanent, de
 import type { Keyword, ManaColor } from '#shared/rules/types'
 import { handCardMatches, untapOwnLands } from './cards/effects'
 import {
+  putCounters,
   alivePlayers,
   apnapOrder,
   battlefieldCreatures,
@@ -1070,7 +1071,7 @@ function dealCombatDamage(state: RulesGameState, pass: 'first' | 'regular') {
         logLine(state, `${getDef(t.defName).name} is protected — ${hit.amount} damage prevented.`)
       } else if (infect || hasKw(state, hit.source, 'wither')) {
         // wither/infect deal damage to creatures as -1/-1 counters (CR 702.90a / 702.79a)
-        t.counters['-1/-1'] = (t.counters['-1/-1'] ?? 0) + hit.amount
+        putCounters(state, t.id, '-1/-1', hit.amount)
         dealt = true
         if (deadly && hit.amount > 0) t.deathtouched = true
         logLine(state, `${getDef(t.defName).name} gets ${hit.amount} -1/-1 counter${hit.amount === 1 ? '' : 's'}.`)

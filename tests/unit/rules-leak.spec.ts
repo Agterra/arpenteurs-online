@@ -978,6 +978,11 @@ const FUZZ_DECK = [
   // batch CARD49: Mana Vault — it does NOT untap in the untap step, opens a may-pay decision at every
   // upkeep of its controller (the mirror of the unless-pay branch the fuzzer already answers) and can
   // whittle its controller down at their draw step.
+  // batch CARD50: replacement effects — Hardened Scales makes every +1/+1 counter one bigger and
+  // Parallel Lives doubles every token, so the fuzzer's counter and token paths run through the new
+  // single funnel constantly (Bitterblossom / Rampaging Baloths / the Altars all feed it).
+  ...Array(2).fill('Hardened Scales'),
+  ...Array(2).fill('Parallel Lives'),
   ...Array(2).fill('Mana Vault'),
   ...Array(2).fill("Sensei's Divining Top"),
   ...Array(2).fill('Growth Spiral'),

@@ -75,7 +75,7 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
     if (def.entersTapped) obj.tapped = true
     // enters-with-counters (counters were just reset above) — before any SBA check so a
     // 0/0-with-counters creature survives; applies on ANY entry path (cast, tutor, move)
-    if (def.entersWithCounters) obj.counters['+1/+1'] = def.entersWithCounters
+    if (def.entersWithCounters) putCounters(state, obj.id, '+1/+1', def.entersWithCounters)
     // as-enters choice (CR 614.12, shocklands): QUEUE the pay-life-or-tapped decision for its
     // controller on ANY entry path (played, fetched, moved). It is opened by
     // `drainEntersChoices` once the current decision (e.g. the search being answered) is done, so
@@ -148,6 +148,44 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
  * an owner's CHOICE — auto-return is a documented M-R4 simplification; the
  * starter pool has no graveyard synergies that would make you want otherwise.)
  */
+/**
+ * Add `n` counters of `kind` to a permanent, applying every counter-placement REPLACEMENT effect its
+ * controller has (CR 616): Hardened Scales' "that many plus one", Doubling Season / Branching
+ * Evolution / Corpsejack Menace's "twice that many". CR 616.1 lets the affected object's controller
+ * order the replacements; "+1" first and doubling last is the ordering they would always choose, so
+ * that is what this does (Scales + Season on one counter → (1+1)×2 = 4).
+ *
+ * This is the ONE place counters are added, so every source (enters-with, undying/persist, an effect,
+ * wither damage) is covered. A manual override (r.mCounter) deliberately bypasses it: the players are
+ * hand-running something the engine doesn't know.
+ * LIMITATION: a planeswalker's starting loyalty is modelled as `obj.loyalty`, not as counters, so
+ * Doubling Season does not double it.
+ */
+export function putCounters(state: RulesGameState, objId: ObjId, kind: string, n: number): number {
+  const obj = state.objects[objId]
+  if (!obj || n <= 0) return 0
+  let total = n
+  const isCreature = defIsCreature(getDef(obj.defName))
+  const replacers: { mode: 'plusOne' | 'double' }[] = []
+  if (obj.zone === 'battlefield') {
+    for (const id of zoneArr(state, obj.controllerId, 'battlefield')) {
+      const src = state.objects[id]
+      if (!src || src.phasedOut || state.loseAbilities.includes(id)) continue
+      const rep = getDef(src.defName).counterReplacement
+      if (!rep) continue
+      if (rep.only && rep.only !== kind) continue
+      if (rep.scope === 'creaturesYouControl' && !isCreature) continue
+      replacers.push({ mode: rep.mode })
+    }
+  }
+  for (const r of replacers) if (r.mode === 'plusOne') total += 1
+  for (const r of replacers) if (r.mode === 'double') total *= 2
+  obj.counters[kind] = (obj.counters[kind] ?? 0) + total
+  if (total !== n)
+    logLine(state, `${getDef(obj.defName).name} gets ${total} ${kind} counters instead of ${n} (replacement effect).`)
+  return total
+}
+
 export function moveToGraveyard(state: RulesGameState, objId: ObjId) {
   const obj = state.objects[objId]
   if (obj?.isCommander) {
@@ -208,7 +246,7 @@ export function moveToGraveyard(state: RulesGameState, objId: ObjId) {
   if ((undying || persist) && obj && obj.zone === 'graveyard') {
     obj.controllerId = obj.ownerId
     moveTo(state, objId, 'battlefield')
-    obj.counters[undying ? '+1/+1' : '-1/-1'] = 1
+    putCounters(state, objId, undying ? '+1/+1' : '-1/-1', 1)
     obj.summoningSick = true // re-enters as a new object → summoning sick
     logLine(state, `${getDef(obj.defName).name} returns with a ${undying ? '+1/+1' : '-1/-1'} counter (${undying ? 'undying' : 'persist'}).`)
   }
