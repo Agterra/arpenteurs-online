@@ -250,6 +250,8 @@ export interface PlayerRState {
     /** Path of Ancestry: unrestricted mana that scries 1 when spent on a creature sharing a type
      *  with your commander */
     scryIfSharesCommanderType?: boolean
+    /** Three Tree City: spendable only on a CREATURE spell (any type) */
+    creatureSpellsOnly?: boolean
   }[]
   landsPlayedThisTurn: number
   /** "Activate only if you created a token this turn." (Idol of Oblivion) — reset at your untap step */
@@ -414,6 +416,8 @@ export interface RulesGameState {
     player: PlayerId
     sourceId: ObjId
     sourceName: string
+    /** the SOURCE CARD's def name: the permanent may already be gone when the choice is answered */
+    defName: string
     /** which trigger's ability carries the modes (any kind may — CR 700.2 on a trigger) */
     trigger: 'firstMain' | 'landfall'
     count: number
@@ -503,6 +507,12 @@ export interface RulesGameState {
   }[]
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
   entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number; chooseType?: boolean }[]
+  /**
+   * Roaming Throne: extra instances of a triggered ability that must go on the stack "an additional time".
+   * A non-targeted ability is simply pushed twice; one that opens a TARGET CHOICE waits here until that
+   * choice has been answered, because the engine holds a single pending at a time.
+   */
+  extraTriggerQueue: { sourceId: ObjId; kind: NonNullable<StackItem['trigger']>; targets: (ObjId | PlayerId)[] }[]
   /**
    * An "…unless that player pays {N}" decision (Rhystic Study, Esper Sentinel): a triggered ability
    * has resolved and `player` — the one who cast the spell — may pay `cost` to stop it. Declining

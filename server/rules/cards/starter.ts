@@ -4967,4 +4967,41 @@ export const STARTER_SET: CardDefinition[] = [
       abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['U'], effect: addMana('U') }],
     },
   },
+  // --- Coverage batch CARD66: Three Tree City + Roaming Throne (trigger doubling) ---
+  {
+    name: 'Roaming Throne',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Golem'],
+    manaCost: '{4}',
+    power: 4,
+    toughness: 4,
+    ward: '{2}',
+    // "Ward {2} / As this creature enters, choose a creature type. / This creature is the chosen type in
+    //  addition to its other types. / If a triggered ability of another creature you control of the chosen
+    //  type triggers, it triggers an additional time."
+    entersChooseType: true,
+    isChosenTypeItself: true,
+    doublesChosenTypeTriggers: true,
+  },
+  {
+    name: 'Three Tree City',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "As Three Tree City enters, choose a creature type. / {T}: Add {C}. / {2}, {T}: Choose a color. Add
+    //  an amount of mana of that color equal to the number of creatures you control of the chosen type."
+    entersChooseType: true,
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { mana: '{2}', tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        manaEqualToChosenTypeCount: true,
+        manaRestriction: { creatureSpellsOnly: true },
+        effect: addMana('W'),
+      },
+    ],
+  },
 ]

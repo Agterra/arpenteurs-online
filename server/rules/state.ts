@@ -433,6 +433,11 @@ export function removePlayersObjects(state: RulesGameState, pid: PlayerId) {
     if (item.controllerId !== pid && state.objects[item.id]?.ownerId !== pid) return true
     return false
   })
+  // a departing player's DEFERRED extra trigger instances (Roaming Throne) go with them, or they would be
+  // emitted later for a player who has left — or silently dropped with no log
+  state.extraTriggerQueue = (state.extraTriggerQueue ?? []).filter(
+    (e) => state.objects[e.sourceId] && state.objects[e.sourceId]!.controllerId !== pid,
+  )
   for (const obj of Object.values(state.objects)) {
     if (obj.ownerId === pid) {
       pullFromCurrentZone(state, obj)

@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**612 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**614 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -430,6 +430,7 @@
 - Return of the Wildspeaker
 - Revitalize
 - Rhystic Study
+- Roaming Throne
 - Rockfall Vale
 - Rogue's Passage
 - Rootbound Crag
@@ -542,6 +543,7 @@
 - Thought Scour
 - Thought Vessel
 - Thran Dynamo
+- Three Tree City
 - Three Visits
 - Thrill of Possibility
 - Thundering Falls

@@ -586,7 +586,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         // a dynamic source with nothing to copy produces nothing (Reflecting Pool with no lands)
         (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces, obj.id).length > 0) &&
         // a Saga's self-granted mana ability exists only from that chapter on (Urza's Saga)
-        (a.requiresLoreAtLeast == null || (obj.counters.lore ?? 0) >= a.requiresLoreAtLeast),
+        (a.requiresLoreAtLeast == null || (obj.counters.lore ?? 0) >= a.requiresLoreAtLeast) &&
+        // a mana ability with its OWN mana cost (Three Tree City's "{2}, {T}: …") is only usable when
+        // that cost is payable — otherwise the source was highlighted and then refused the tap
+        (!a.cost.mana || planPayment(parseManaCost(a.cost.mana), state.players[viewer]!.manaPool).covered),
     )
     if (!manaAbilities.length) continue
     manaSourceIds.push(obj.id)

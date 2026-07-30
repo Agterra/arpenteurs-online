@@ -379,12 +379,18 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       if (mine.length < sacCount) return false
       sacrifices = mine.slice(0, sacCount)
     }
-    applyRulesAction(state, actor, {
+    try {
+      applyRulesAction(state, actor, {
       type: 'r.tapMana',
       objId: src,
       ...(colors.length ? { color: pick(colors) } : {}),
       ...(sacrifices ? { sacrifices } : {}),
-    })
+      })
+    } catch {
+      // a mana ability can have its OWN mana cost (Three Tree City's "{2}, {T}: …"): if the pool
+      // cannot cover it the tap is refused, which is a legal outcome — move on
+      return false
+    }
     return true
   }
   // ~15% of the time, exercise an assisted-table manual override instead of a
@@ -1070,6 +1076,12 @@ const FUZZ_DECK = [
   // moves a COMMANDER command-zone→hand.
   // batch CARD65: Sink into Stupor — its front bounces a SPELL off the stack into its owner's HIDDEN hand
   // (a public→hidden re-mint the history-aware assertion watches) and its back is a pay-3-life land.
+  // batch CARD66: Roaming Throne — it DOUBLES the triggered abilities of your creatures of the type it
+  // chose, so fuzz games see doubled dies/ETB triggers (including targeted ones, whose extra instance
+  // waits in extraTriggerQueue for the first target choice to be answered), and Three Tree City, whose
+  // mana scales with your creatures of that type.
+  ...Array(2).fill('Roaming Throne'),
+  ...Array(2).fill('Three Tree City'),
   ...Array(3).fill('Sink into Stupor'),
   ...Array(2).fill('Tireless Provisioner'),
   ...Array(2).fill('Command Beacon'),

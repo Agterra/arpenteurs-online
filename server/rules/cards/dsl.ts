@@ -156,6 +156,12 @@ export interface ActivatedAbility {
    */
   manaEqualToDevotion?: boolean
   /**
+   * Three Tree City: "Choose a color. Add an amount of mana of that color equal to the number of creatures
+   * you control of the chosen type." The colour is chosen on tap (`chooseColor`) and the AMOUNT is that
+   * count — read off the source's as-enters `chosenType`, changeling included.
+   */
+  manaEqualToChosenTypeCount?: boolean
+  /**
    * RESTRICTED mana (CR 106.6): the mana this ability makes goes into a separate bucket that can only
    * pay for a matching spell. `chosenTypeOnly` = "only to cast a creature spell of the chosen type"
    * (reads the source's as-enters `chosenType`), `legendaryOnly` = "only to cast a legendary spell",
@@ -173,6 +179,12 @@ export interface ActivatedAbility {
     scryIfSharesCommanderType?: boolean
     /** Secluded Courtyard: "…or activate an ability of a creature source of the chosen type" */
     alsoTypeAbilities?: boolean
+    /**
+     * Three Tree City: "Spend this mana only to cast CREATURE spells" — any creature spell, not only the
+     * chosen type. NOTE: the local card catalog's oracle text is missing this final clause; the printed
+     * card has it, so the engine enforces it (being stricter than the catalog, never looser).
+     */
+    creatureSpellsOnly?: boolean
   }
   targets?: TargetSpec[]
   effect: Effect
@@ -634,6 +646,14 @@ export interface CardDefinition {
    * Cradle of Growth) — a GLOBAL type-adding static (CR 305.7), so every land on the battlefield, any
    * controller's, gains that basic land type and with it that type's intrinsic mana ability.
    */
+  /**
+   * Roaming Throne: "If a triggered ability of ANOTHER creature you control OF THE CHOSEN TYPE triggers, it
+   * triggers an additional time." Read as the ability is queued: a second instance is put on the stack (or,
+   * when the first one opened a target choice, queued behind it — see `extraTriggerQueue`).
+   */
+  doublesChosenTypeTriggers?: boolean
+  /** Roaming Throne: "this creature is the chosen type in addition to its other types" (CR 205.1b) */
+  isChosenTypeItself?: boolean
   grantsLandTypeToAll?: string
   /**
    * CUMULATIVE UPKEEP (CR 702.24 — Mystic Remora): "At the beginning of your upkeep, put an age counter

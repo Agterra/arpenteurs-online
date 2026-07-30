@@ -141,6 +141,8 @@ function restrictionAllows(
 ): boolean {
   // Path of Ancestry's mana carries a RIDER, not a restriction: it pays for anything
   if (bucket.scryIfSharesCommanderType) return true
+  // Three Tree City: "spend this mana only to cast creature spells" (any creature spell)
+  if (bucket.creatureSpellsOnly && !def.types.includes('Creature')) return false
   if (bucket.legendary && !(def.supertypes?.includes('Legendary') ?? false)) return false
   if (bucket.creatureType) {
     if (!def.types.includes('Creature')) return false
@@ -808,7 +810,7 @@ function repairControlFlow(state: RulesGameState) {
       // the chooser left → treat it as a decline (the permanent is tapped), then carry on
       const obj = entersChoiceObjId ? state.objects[entersChoiceObjId] : undefined
       if (obj && obj.zone === 'battlefield') obj.tapped = true
-      if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
     } else if (kind === 'ward') {
       // the payer left → they can't pay the ward → the triggering spell/ability is countered
       const item = wardTriggeringId ? state.zones.stack.find((s) => s.id === wardTriggeringId) : undefined
@@ -1300,7 +1302,7 @@ function resolveTop(state: RulesGameState) {
   state.passed = []
   if (item.kind === 'spell') resolveSpell(state, item)
   else if (item.kind === 'ability') resolveAbility(state, item)
-  drainEntersChoices(state) // a permanent that just entered may owe an as-enters choice
+  drainDecisions(state) // an as-enters choice, else a deferred extra trigger instance
   // a targeted trigger sets `pending` for its controller's choice — don't grant
   // priority until they've chosen (r.chooseTargets does it)
   if (!state.pending) grantPriority(state, state.activePlayer)
@@ -1396,6 +1398,7 @@ function resolveAbility(state: RulesGameState, item: StackItem) {
         player: item.controllerId,
         sourceId: item.sourceId,
         sourceName: def0.name,
+        defName: item.defName,
         trigger: item.trigger,
         count: ability.modeRule?.count ?? 1,
         oneOrMore: !!ability.modeRule?.oneOrMore,
@@ -1736,6 +1739,54 @@ function queueCastTriggers(state: RulesGameState, caster: PlayerId, spellDef: Ca
  * exists, CR 603.3c). The dies trigger keeps its own bespoke pusher in state.ts
  * (it must snapshot watchers BEFORE the zone change).
  */
+/** Does this PERMANENT have creature type `type`? (changeling, plus Roaming Throne's own chosen type) */
+export function objHasCreatureType(state: RulesGameState, obj: GameObject, type: string): boolean {
+  const def = getDef(obj.defName)
+  if (def.isChosenTypeItself && obj.chosenType === type) return true
+  return hasCreatureType(def, type)
+}
+
+/**
+ * How many extra instances a triggered ability from `sourceId` gets (Roaming Throne). The doubler must be a
+ * DIFFERENT permanent, under the same controller, and the source must be a creature of the type it chose.
+ */
+function extraTriggerInstances(state: RulesGameState, sourceId: ObjId): number {
+  const src = state.objects[sourceId]
+  if (!src || !defIsCreature(getDef(src.defName))) return 0
+  let extra = 0
+  for (const id of zoneArr(state, src.controllerId, 'battlefield')) {
+    if (id === sourceId) continue
+    const doubler = state.objects[id]
+    if (!doubler || doubler.phasedOut || state.loseAbilities.includes(id)) continue
+    const def = getDef(doubler.defName)
+    if (!def.doublesChosenTypeTriggers || !doubler.chosenType) continue
+    if (!defIsCreature(def)) continue // "another CREATURE you control" is the doubler's own requirement
+    if (objHasCreatureType(state, src, doubler.chosenType)) extra++
+  }
+  return extra
+}
+
+/**
+ * Put any extra trigger instances that were deferred (because the first one opened a target choice) on the
+ * stack now. Called wherever a pending is resolved, so they land as soon as the engine is free.
+ */
+export function drainExtraTriggers(state: RulesGameState): boolean {
+  const queue = state.extraTriggerQueue
+  while (queue.length && !state.pending) {
+    const next = queue.shift()!
+    // emit DIRECTLY: re-entering queueTriggeredAbility would re-run its gates — a once-per-turn ability
+    // (Morbid Opportunist) would be swallowed by its own `triggeredThisTurn` flag, and an intervening
+    // "if" would be re-checked against a board that has since changed (CR 603.4 checks it as it triggers)
+    emitTriggerInstance(state, next.sourceId, next.kind, next.targets)
+  }
+  return !!state.pending
+}
+
+/** Open the next queued decision: as-enters choices first, then any deferred extra trigger instances. */
+function drainDecisions(state: RulesGameState): boolean {
+  return drainEntersChoices(state) || drainExtraTriggers(state)
+}
+
 export function queueTriggeredAbility(
   state: RulesGameState,
   sourceId: ObjId,
@@ -1754,6 +1805,39 @@ export function queueTriggeredAbility(
     if (obj.triggeredThisTurn) return
     obj.triggeredThisTurn = true
   }
+  const label = TRIGGER_LABEL[kind]
+  const specs = flattenSpecs(ability.targets)
+  // Roaming Throne: "…it triggers an additional time" — the count is decided ONCE, as the ability
+  // triggers. The first instance is emitted now; a TARGETED extra waits in extraTriggerQueue, because the
+  // engine holds a single pending at a time, and is emitted as soon as the previous choice is answered.
+  const extra = extraTriggerInstances(state, sourceId)
+  emitTriggerInstance(state, sourceId, kind, implicitTargets)
+  if (extra > 0) {
+    for (let i = 0; i < extra; i++) {
+      if (specs.length) state.extraTriggerQueue.push({ sourceId, kind, targets: [...(implicitTargets ?? [])] })
+      else emitTriggerInstance(state, sourceId, kind, implicitTargets)
+    }
+    logLine(state, `${def.name}'s ${label} ability triggers an additional time.`)
+  }
+  return
+}
+
+/**
+ * Put ONE instance of a triggered ability on the stack (or open its target choice). The gates — the
+ * intervening "if", once-per-turn — live in `queueTriggeredAbility` and are deliberately NOT re-run here,
+ * so a doubled or deferred instance behaves like the one that triggered with it.
+ */
+function emitTriggerInstance(
+  state: RulesGameState,
+  sourceId: ObjId,
+  kind: NonNullable<StackItem['trigger']>,
+  implicitTargets?: (ObjId | PlayerId)[],
+) {
+  const obj = state.objects[sourceId]
+  if (!obj) return
+  const def = getDef(obj.defName)
+  const ability = abilityFor(def, kind)
+  if (!ability) return
   const controllerId = obj.controllerId
   const label = TRIGGER_LABEL[kind]
   const specs = flattenSpecs(ability.targets)
@@ -1805,18 +1889,26 @@ export function queueGrantedTrigger(state: RulesGameState, objId: ObjId, defName
   const ability = getDef(defName).grantedAbilities?.[key]
   if (!ability) return
   const controllerId = obj.controllerId
-  state.zones.stack.push({
-    id: mintCardId(),
-    kind: 'ability',
-    trigger: 'dies',
-    controllerId,
-    defName,
-    sourceId: objId,
-    abilityIndex: null,
-    grantedKey: key,
-    targets: [],
-  })
-  logLine(state, `${getDef(obj.defName).name}'s granted dies ability triggers.`)
+  // a GRANTED dies ability is still "a triggered ability of a creature you control", so Roaming Throne
+  // doubles it as well; these bodies never target, so no deferral is needed
+  const copies = 1 + extraTriggerInstances(state, objId)
+  for (let i = 0; i < copies; i++) {
+    state.zones.stack.push({
+      id: mintCardId(),
+      kind: 'ability',
+      trigger: 'dies',
+      controllerId,
+      defName,
+      sourceId: objId,
+      abilityIndex: null,
+      grantedKey: key,
+      targets: [],
+    })
+  }
+  logLine(
+    state,
+    `${getDef(obj.defName).name}'s granted dies ability triggers${copies > 1 ? ` ${copies} times` : ''}.`,
+  )
 }
 
 /**
@@ -1858,17 +1950,22 @@ function queueWardTriggers(state: RulesGameState, triggeringId: ObjId, targets: 
     if (!obj || obj.zone !== 'battlefield') continue
     const cost = getDef(obj.defName).ward
     if (!cost || obj.controllerId === caster) continue // ward only fires for an OPPONENT's spell/ability
-    state.zones.stack.push({
-      id: mintCardId(),
-      kind: 'ability',
-      ward: { triggeringId, cost, payer: caster },
-      controllerId: obj.controllerId,
-      defName: obj.defName,
-      sourceId: obj.id,
-      abilityIndex: null,
-      targets: [],
-    })
-    logLine(state, `${getDef(obj.defName).name}'s ward triggers.`)
+    // ward is a triggered ability of that permanent, so its controller's Roaming Throne doubles it: the
+    // caster then faces the cost twice (each ward ability is its own pay-or-counter decision)
+    const copies = 1 + extraTriggerInstances(state, obj.id)
+    for (let i = 0; i < copies; i++) {
+      state.zones.stack.push({
+        id: mintCardId(),
+        kind: 'ability',
+        ward: { triggeringId, cost, payer: caster },
+        controllerId: obj.controllerId,
+        defName: obj.defName,
+        sourceId: obj.id,
+        abilityIndex: null,
+        targets: [],
+      })
+    }
+    logLine(state, `${getDef(obj.defName).name}'s ward triggers${copies > 1 ? ` ${copies} times` : ''}.`)
   }
 }
 
@@ -2243,7 +2340,9 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
   const def = getDef(obj.defName)
   if (filter.types && !filter.types.some((t) => def.types.includes(t))) return false
   if (filter.excludeTypes && filter.excludeTypes.some((t) => def.types.includes(t))) return false
-  if (filter.subtypes && !filter.subtypes.some((st) => def.subtypes?.includes(st) ?? false)) return false
+  // object-aware: a CHANGELING is every creature type (CR 702.73) and Roaming Throne IS its own chosen
+  // type, so "target Goblin" must accept both. A printed-subtypes-only check missed them.
+  if (filter.subtypes && !filter.subtypes.some((st) => objHasCreatureType(state, obj, st))) return false
   if (filter.controller === 'you' && obj.controllerId !== byController) return false
   if (filter.controller === 'opponent' && obj.controllerId === byController) return false
   if (filter.minManaValue != null && defManaValue(def) < filter.minManaValue) return false
@@ -2579,6 +2678,26 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         const n = devotionTo(state, actor, msg.color!)
         state.players[actor]!.manaPool[msg.color!] += n
         logLine(state, `${name(state, actor)} adds ${n} {${msg.color}} (devotion).`)
+      } else if (ability.chooseColor && ability.manaEqualToChosenTypeCount) {
+        // Three Tree City: as many mana as you control creatures of the type IT chose as it entered, and
+        // that mana is spendable only on CREATURE spells (see manaRestriction.creatureSpellsOnly)
+        const chosen = obj.chosenType
+        // object-aware: a changeling counts, and so does a permanent that IS its own chosen type
+        // (Roaming Throne) — a def-level check would miss the latter
+        const n = chosen ? battlefieldCreatures(state, actor).filter((c) => objHasCreatureType(state, c, chosen)).length : 0
+        if (n > 0) {
+          ;(state.players[actor]!.restrictedMana ??= []).push({
+            color: msg.color!,
+            amount: n,
+            ...(ability.manaRestriction?.creatureSpellsOnly ? { creatureSpellsOnly: true } : {}),
+          })
+        }
+        logLine(
+          state,
+          `${name(state, actor)} adds ${n} {${msg.color}} (${chosen ?? 'no type'} creatures they control${
+            ability.manaRestriction?.creatureSpellsOnly ? '; only for creature spells' : ''
+          }).`,
+        )
       } else if (ability.manaRestriction) {
         // RESTRICTED mana (Cavern of Souls, Delighted Halfling): its own bucket, spendable only on a
         // matching spell. A chosenTypeOnly source with no type chosen yet makes nothing useful, which
@@ -2682,7 +2801,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
             bk.typeAbilities &&
             !!bk.creatureType &&
             srcDef.types.includes('Creature') &&
-            (srcDef.subtypes ?? []).includes(bk.creatureType),
+            // object-aware: a changeling / own-chosen-type source counts (CR 702.73)
+            objHasCreatureType(state, obj, bk.creatureType),
         )
         const merged = { ...state.players[actor]!.manaPool }
         for (const bk of buckets) merged[bk.color] += bk.amount
@@ -3778,7 +3898,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // the next queued as-enters choice first (two shocklands can enter together), else resume:
       // the active player gets priority (CR 117.3c) and checkSBA runs (paying to 0 life loses)
-      if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
       break
     }
 
@@ -3863,9 +3983,16 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (state.pending?.kind !== 'modes' || state.pending.player !== actor || !state.pendingModes)
         throw new RulesError('NOT_PENDING', 'Not waiting for your modes')
       const pm = state.pendingModes
-      const src = state.objects[pm.sourceId]
-      const srcDef = src ? getDef(src.defName) : undefined
-      const ability = pm.trigger === 'firstMain' ? srcDef?.firstMain : srcDef?.landEnters
+      // read the ability off the CARD, not the object: the permanent can be gone by now (it died while its
+      // trigger sat on the stack), and a trigger still resolves on last known information (CR 603.10)
+      const srcDef = getDef(pm.defName)
+      const ability = pm.trigger === 'firstMain' ? srcDef.firstMain : srcDef.landEnters
+      if (!ability?.modes?.length) {
+        state.pending = null
+        state.pendingModes = null
+        if (state.status === 'active') grantPriority(state, state.activePlayer)
+        break
+      }
       const ids = [...new Set(msg.modes)].sort((a, b) => a - b)
       // compare against the RAW list: comparing the deduped set with itself never catches a duplicate
       if (ids.length !== msg.modes.length) throw new RulesError('BAD_MODE', 'Each mode may be chosen only once')
@@ -3974,7 +4101,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         obj.chosenType = typeName
         logLine(state, `${name(state, actor)} chooses ${typeName} for ${objName(state, obj.id)}.`)
       }
-      if (!drainEntersChoices(state)) grantPriority(state, state.activePlayer)
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
       break
     }
 
@@ -4074,7 +4201,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       state.pendingTrigger = null
       // ward (CR 702.21): a targeted TRIGGERED ability an opponent controls also triggers ward
       queueWardTriggers(state, triggerStackId, msg.targets, pt.controllerId)
-      grantPriority(state, state.activePlayer)
+      // Roaming Throne: a doubled TARGETED trigger waited for this choice — its extra instance (which
+      // chooses its own targets) goes on the stack now
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
       break
     }
 
@@ -4203,10 +4332,11 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
     }
   }
 
-  // a permanent that entered by ANY path (including a manual r.mMove) may owe an as-enters choice;
-  // the per-site drains open it before priority is granted, this is the catch-all so a queued
-  // choice can never be left stranded. Safe: it only sets `pending` when nothing else is open.
-  drainEntersChoices(state)
+  // a permanent that entered by ANY path (including a manual r.mMove) may owe an as-enters choice, and a
+  // doubled TARGETED trigger may owe its extra instance (Roaming Throne); the per-site drains open those
+  // before priority is granted, and this is the catch-all so a queued decision can never be left
+  // stranded by a handler that has none. Safe: it only sets `pending` when nothing else is open.
+  drainDecisions(state)
   // if this action removed the player who owed a decision or held priority,
   // hand control off so the remaining players can continue (multiplayer).
   repairControlFlow(state)

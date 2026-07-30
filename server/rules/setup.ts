@@ -62,6 +62,7 @@ export function buildRulesGame(
     pendingOptionalPay: null,
     pendingPutBack: null,
     entersChoiceQueue: [],
+    extraTriggerQueue: [],
     delayedTriggers: [],
     // CR 103.8a/b: only two-player games skip the first draw
     firstTurnSkipDraw: ordered.length === 2,
