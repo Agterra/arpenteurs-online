@@ -710,6 +710,20 @@ function onBattlefieldClick(id: ObjId) {
     if (isCascadeTargetCard(id)) sendCascade(true, [id])
     return
   }
+  if (l.needsHideaway) {
+    // clicking one of the four looked-at cards hides it away
+    if (l.hideawayIds.includes(id)) sendHideaway(id)
+    return
+  }
+  if (l.needsFreePlay) {
+    if (isFreePlayTargetCard(id)) sendFreePlay(true, [id])
+    return
+  }
+  if (l.needsOpeningPlay) {
+    // clicking a hand card picks it as the one to exile
+    if (l.openingPlayExileIds.includes(id)) openingExilePick.value = openingExilePick.value === id ? null : id
+    return
+  }
   if (targeting.value) {
     if (isValidTarget(id)) beginPayment(cardOf(targeting.value.objId)!, [id], targeting.value.mode ?? null, targeting.value.alt, targeting.value.altCost)
     return
@@ -783,6 +797,7 @@ function onOpponentClick(pid: PlayerId) {
   if (canActivateTargetPlayer.value) return void sendActivate(pid)
   if (canTargetPlayerForTrigger.value) return void send({ type: 'r.chooseTargets', targets: [pid] })
   if (canCascadeTargetPlayer.value) return void sendCascade(true, [pid])
+  if (canFreePlayTargetPlayer.value) return void sendFreePlay(true, [pid])
   if (targetingPlayerOk.value) beginPayment(cardOf(targeting.value!.objId)!, [pid], targeting.value!.mode ?? null, targeting.value!.alt, targeting.value!.altCost)
 }
 
@@ -870,6 +885,37 @@ function isCascadeTargetCard(id: ObjId): boolean {
 /** true if a player-HUD click is a legal target for the cascade hit. */
 const canCascadeTargetPlayer = computed(
   () => !!legal.value?.needsCascade && (legal.value.cascadeTargetKind === 'player' || legal.value.cascadeTargetKind === 'anyTarget'),
+)
+
+// ---------- hideaway (CR 702.76) ----------
+/** exile one of the four looked-at cards face down */
+const sendHideaway = (id: ObjId) => send({ type: 'r.hideaway', objId: id })
+/** play the hidden card for free (or decline) */
+function sendFreePlay(play: boolean, targets: (ObjId | PlayerId)[] = []) {
+  send({ type: 'r.freePlay', play, targets: targets as string[] })
+}
+/** true if `id` is a legal battlefield target for the hidden card's single target */
+function isFreePlayTargetCard(id: ObjId): boolean {
+  const l = legal.value
+  if (!l?.needsFreePlay) return false
+  const card = cardOf(id)
+  if (!card || card.zone !== 'battlefield') return false
+  if (l.freePlayTargetKind === 'permanent') return true
+  if (l.freePlayTargetKind !== 'creature' && l.freePlayTargetKind !== 'anyTarget') return false
+  return (display.value[card.defName ?? '']?.typeLine ?? '').includes('Creature')
+}
+const canFreePlayTargetPlayer = computed(
+  () => !!legal.value?.needsFreePlay && (legal.value.freePlayTargetKind === 'player' || legal.value.freePlayTargetKind === 'anyTarget'),
+)
+// ---------- opening-hand offer (CR 103.6 — Gemstone Caverns) ----------
+const openingExilePick = ref<ObjId | null>(null)
+function sendOpeningPlay(play: boolean) {
+  const exileIds = play && legal.value?.openingPlayExileIds.length && openingExilePick.value ? [openingExilePick.value] : []
+  send({ type: 'r.openingPlay', play, exileIds: exileIds as string[] })
+  openingExilePick.value = null
+}
+const openingPlayReady = computed(
+  () => !legal.value?.openingPlayExileIds.length || !!openingExilePick.value,
 )
 
 // ---------- activated abilities ----------
@@ -1395,7 +1441,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsRetarget || l.needsEntersChoice || l.needsCascade || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsRetarget || l.needsEntersChoice || l.needsCascade || l.needsHideaway || l.needsFreePlay || l.needsOpeningPlay || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1558,7 +1604,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="flex items-center gap-2 rounded px-1"
                   :data-arrow="`player:${pid}`"
-                  :class="(legal?.needsAttackers && pendingAttacker) || targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer || canRetargetPlayer
+                  :class="(legal?.needsAttackers && pendingAttacker) || targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canFreePlayTargetPlayer || canActivateTargetPlayer || canRetargetPlayer
                     ? 'ring-2 ring-rose-400 cursor-crosshair'
                     : 'cursor-default'"
                   @click="onOpponentClick(pid)"
@@ -1748,6 +1794,34 @@ onBeforeUnmount(() => {
               <span v-else class="text-dimmed">(can't free-cast this here — decline)</span>
               <UButton size="xs" variant="ghost" color="neutral" @click="sendCascade(false)">Decline</UButton>
             </div>
+            <div v-if="legal?.needsHideaway" class="flex flex-wrap items-center gap-2 rounded-lg border border-teal-400 bg-teal-500/10 px-3 py-1.5 text-xs font-medium">
+              <span>{{ legal.hideawaySourceName }} — hide one away (the rest go to the bottom):</span>
+              <RulesCard
+                v-for="id in legal.hideawayIds"
+                :key="id"
+                :card="st.cards[id]!"
+                :display="display[st.cards[id]!.defName ?? '']"
+                size="sm"
+                class="cursor-pointer ring-1 ring-teal-400/60 rounded hover:ring-2"
+                @click="() => { sendHideaway(id) }"
+                @preview="hoverDisplay = $event"
+              />
+            </div>
+            <div v-if="legal?.needsFreePlay" class="flex items-center gap-2 rounded-lg border border-teal-400 bg-teal-500/10 px-3 py-1.5 text-xs font-medium">
+              <span>{{ legal.freePlaySourceName }} — play <b>{{ legal.freePlayCardId ? nameOf(legal.freePlayCardId) : '' }}</b> for free?</span>
+              <span v-if="legal.freePlayTargetKind" class="text-dimmed">click a {{ legal.freePlayTargetKind === 'permanent' ? 'permanent' : legal.freePlayTargetKind === 'player' ? 'player' : 'creature or player' }} target</span>
+              <UButton v-else-if="legal.freePlayCanPlay" size="xs" icon="i-lucide-sparkles" @click="() => { sendFreePlay(true) }">{{ legal.freePlayIsLand ? 'Play the land' : 'Cast free' }}</UButton>
+              <span v-else class="text-dimmed">(can't play this here — decline)</span>
+              <UButton size="xs" variant="ghost" color="neutral" @click="() => { sendFreePlay(false) }">Decline</UButton>
+            </div>
+            <div v-if="legal?.needsOpeningPlay" class="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-xs font-medium">
+              <span>Begin the game with <b>{{ legal.openingPlaySourceName }}</b> on the battlefield?</span>
+              <span v-if="legal.openingPlayExileIds.length" class="text-dimmed">
+                if you do, exile a card from your hand — {{ openingExilePick ? nameOf(openingExilePick) : 'click one in hand' }}
+              </span>
+              <UButton size="xs" :disabled="!openingPlayReady" icon="i-lucide-sparkles" @click="() => { sendOpeningPlay(true) }">Yes</UButton>
+              <UButton size="xs" variant="ghost" color="neutral" @click="() => { sendOpeningPlay(false) }">Keep it in hand</UButton>
+            </div>
             <div v-if="activating" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
               Activating {{ nameOf(activating.objId) }} — choose a target
               ({{ activating.targetKind === 'creature' ? 'creature' : activating.targetKind === 'permanent' ? 'permanent' : activating.targetKind === 'player' ? 'player' : 'creature or player' }})
@@ -1785,7 +1859,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="flex flex-col items-center rounded-lg px-3 py-1"
                 :data-arrow="`player:${you}`"
-                :class="targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canActivateTargetPlayer || canRetargetPlayer ? 'ring-2 ring-rose-400 cursor-crosshair' : 'cursor-default'"
+                :class="targetingPlayerOk || canTargetPlayerForTrigger || canCascadeTargetPlayer || canFreePlayTargetPlayer || canActivateTargetPlayer || canRetargetPlayer ? 'ring-2 ring-rose-400 cursor-crosshair' : 'cursor-default'"
                 @click="onSelfClick"
                 @mouseenter="setHover(you)"
                 @mouseleave="clearHover()"

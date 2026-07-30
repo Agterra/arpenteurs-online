@@ -159,6 +159,12 @@ export interface GameObject {
   enteredByCast?: boolean
   /** IMPRINT (CR 702.16): the def name of the card exiled onto this permanent (Chrome Mox / Isochron) */
   imprintedDefName?: string
+  /**
+   * HIDEAWAY (CR 702.76): this card is exiled FACE DOWN by that permanent's hideaway ability, and only
+   * that permanent's second ability can play it. Face-down exile is a hidden zone, so the id was
+   * re-minted on the way in (invariant #3) and only its owner sees what it is.
+   */
+  hiddenBy?: ObjId
 }
 
 export type StackItemKind = 'spell' | 'ability'
@@ -312,7 +318,8 @@ export interface PlayerRState {
 export type PendingKind =
   | 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward'
   | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay' | 'putBack' | 'typeChoice' | 'handChoice'
-  | 'proliferate' | 'revealTop' | 'mayDraw' | 'retarget' | 'modes'
+  | 'proliferate' | 'revealTop' | 'mayDraw' | 'retarget' | 'modes' | 'hideaway' | 'freePlay'
+  | 'openingPlay'
 
 export interface RulesGameState {
   id: string
@@ -510,6 +517,26 @@ export interface RulesGameState {
    */
   pendingPutBack: { player: PlayerId; count: number } | null
   /**
+   * HIDEAWAY (CR 702.76) — "look at the top four cards of your library, exile one face down, then put
+   * the rest on the bottom in a random order". `cardIds` is an actor-only peek at those four (the
+   * sanctioned window of invariant #2, like a scry); the pick is exiled face down and the rest are
+   * bottomed and re-minted.
+   */
+  pendingHideaway: { player: PlayerId; sourceId: ObjId; sourceName: string; cardIds: ObjId[] } | null
+  /**
+   * "You may PLAY the exiled card without paying its mana cost" (a hideaway land's second ability,
+   * once its condition is met). The player accepts or declines; a land is put onto the battlefield
+   * (it still uses their land drop, CR 305.2), anything else is cast for free with its targets.
+   * Declining leaves the card exiled face down for a later try.
+   */
+  pendingFreePlay: { player: PlayerId; cardId: ObjId; sourceId: ObjId; sourceName: string; isLand: boolean } | null
+  /**
+   * "If this card is in your OPENING HAND … you may begin the game with it on the battlefield"
+   * (CR 103.6 — Gemstone Caverns, the Leyline cycle). Offered after the last player keeps and before
+   * turn 1 begins, one eligible player at a time in turn order (`queue` holds the rest).
+   */
+  pendingOpeningPlay: { player: PlayerId; objId: ObjId; defName: string; queue: PlayerId[] } | null
+  /**
    * Scheduled DELAYED triggers (CR 603.7) — "at the beginning of your next upkeep / main phase".
    * `defName` + `key` point at the body in `CardDefinition.delayed` (functions can't be serialised);
    * `x` carries any value captured when it was scheduled (Mana Drain's mana value). It fires at the
@@ -692,6 +719,8 @@ export interface RulesClientState {
   scry: { cardIds: ObjId[]; surveil?: boolean; reorder?: boolean } | null
   /** YOUR active library search — actor-only; the ids you may pick and how many */
   search: { matchIds: ObjId[]; dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'; count: number } | null
+  /** YOUR active hideaway look (the top four) — actor-only, like the scry peek */
+  hideaway: { cardIds: ObjId[]; sourceName: string } | null
 }
 
 /** What `you` may currently do (client uses this to enable/disable affordances). */
@@ -843,6 +872,26 @@ export interface LegalActions {
   entersChoiceName: string
   entersChoiceAffordable: boolean
   /** a cascade hit is waiting on YOU: cast the revealed card free or decline (CR 702.85) */
+  /** a HIDEAWAY choice is waiting (r.hideaway): the four cards you're looking at, pick one to exile */
+  needsHideaway: boolean
+  hideawayIds: ObjId[]
+  hideawaySourceName: string
+  /** a "you may play the exiled card for free" decision is waiting (r.freePlay) */
+  needsFreePlay: boolean
+  freePlayCardId: ObjId | null
+  freePlaySourceName: string
+  /** true when the hidden card is a LAND: it's put onto the battlefield and needs no targets */
+  freePlayIsLand: boolean
+  /** the card's single client-deliverable target kind, as for cascade; null when it needs none */
+  freePlayTargetKind: TargetClassKind | null
+  /** true when it can be played with no client input at all (a land, or a non-modal zero-target spell) */
+  freePlayCanPlay: boolean
+  /** a start-of-game "begin with this on the battlefield" offer is waiting (r.openingPlay) */
+  needsOpeningPlay: boolean
+  openingPlayObjId: ObjId | null
+  openingPlaySourceName: string
+  /** cards in your opening hand you may exile as the cost of taking the offer (Gemstone Caverns) */
+  openingPlayExileIds: ObjId[]
   needsCascade: boolean
   /** the exiled nonland "hit" you may cast for free */
   cascadeHitId: ObjId | null

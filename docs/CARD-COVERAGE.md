@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**614 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**616 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -225,6 +225,7 @@
 - Gamble
 - Game Trail
 - Garruk's Uprising
+- Gemstone Caverns
 - Generous Gift
 - Ghostly Prison
 - Giant Growth
@@ -337,6 +338,7 @@
 - Morbid Opportunist
 - Morphic Pool
 - Mortify
+- Mosswort Bridge
 - Mountain
 - Mox Amber
 - Mox Opal

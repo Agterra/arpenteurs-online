@@ -82,6 +82,8 @@ import {
   impulseExile,
   lookAndReorder,
   lookTopTakeIfChosenType,
+  hideaway,
+  playHiddenCard,
   lookTransformIfInstantSorcery,
   loseAllAbilities,
   loseLife,
@@ -5003,6 +5005,42 @@ export const STARTER_SET: CardDefinition[] = [
         chooseColor: true,
         manaEqualToChosenTypeCount: true,
         manaRestriction: { creatureSpellsOnly: true },
+        effect: addMana('W'),
+      },
+    ],
+  },
+  {
+    name: 'Mosswort Bridge',
+    types: ['Land'],
+    // "Hideaway 4 (When this permanent enters, look at the top four cards of your library, exile one
+    //  face down, then put the rest on the bottom in a random order.) / Mosswort Bridge enters tapped.
+    //  / {T}: Add {G}. / {G}, {T}: You may play the exiled card without paying its mana cost if
+    //  creatures you control have total power 10 or greater."
+    entersTapped: true,
+    enters: { effect: hideaway(4) },
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') },
+      { kind: 'activated', cost: { mana: '{G}', tap: true }, effect: playHiddenCard({ kind: 'totalPower', n: 10 }) },
+    ],
+  },
+  {
+    name: 'Gemstone Caverns',
+    types: ['Land'],
+    supertypes: ['Legendary'],
+    // "If Gemstone Caverns is in your opening hand and you're not the starting player, you may begin
+    //  the game with Gemstone Caverns on the battlefield with a luck counter on it. If you do, exile a
+    //  card from your hand. / {T}: Add {C}. / {T}: Add one mana of any color. Activate only if Gemstone
+    //  Caverns has a luck counter on it."
+    beginGameOnBattlefield: { onlyIfNotStartingPlayer: true, counter: 'luck', exileFromHand: 1 },
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['C'], effect: addMana('C') },
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['W', 'U', 'B', 'R', 'G'],
+        chooseColor: true,
+        requiresCounter: { kind: 'luck', min: 1 },
         effect: addMana('W'),
       },
     ],

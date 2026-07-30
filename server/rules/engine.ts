@@ -757,10 +757,54 @@ export function chaosWarpPermanent(state: RulesGameState, objId: ObjId) {
   checkSBA(state)
 }
 
+/**
+ * CR 103.6: after the last player keeps and BEFORE turn 1 begins, a player holding a card that says
+ * "if this card is in your opening hand, you may begin the game with it on the battlefield" is offered
+ * that choice. Gemstone Caverns adds "and you're not the starting player". Offered one player at a
+ * time in turn order; `queue` holds the rest.
+ */
+function openingPlayOffer(state: RulesGameState, pid: PlayerId): ObjId | null {
+  const starting = state.turnOrder[0]
+  for (const id of zoneArr(state, pid, 'hand')) {
+    const def = getDef(state.objects[id]!.defName)
+    const bg = def.beginGameOnBattlefield
+    if (!bg) continue
+    if (bg.onlyIfNotStartingPlayer && pid === starting) continue
+    return id
+  }
+  return null
+}
+
+/** Open the next eligible player's opening-hand offer; returns false when nobody is left to ask. */
+function advanceOpeningPlays(state: RulesGameState, queue: PlayerId[]): boolean {
+  const rest = [...queue]
+  while (rest.length) {
+    const pid = rest.shift()!
+    if (state.players[pid]!.hasLost) continue
+    const objId = openingPlayOffer(state, pid)
+    if (!objId) continue
+    state.pending = { kind: 'openingPlay', player: pid }
+    state.pendingOpeningPlay = { player: pid, objId, defName: state.objects[objId]!.defName, queue: rest }
+    return true
+  }
+  return false
+}
+
 /** Leave the mulligan phase and begin turn 1 once every remaining player has kept. */
 function finishMulligans(state: RulesGameState) {
-  state.status = 'active'
   logLine(state, 'All players have kept — the game begins.')
+  // the opening-hand offers happen while the game is still in its pre-game state, so an accepted
+  // permanent is on the battlefield before turn 1's untap step
+  if (advanceOpeningPlays(state, state.turnOrder)) return
+  state.status = 'active'
+  startGame(state)
+}
+
+/** Every opening-hand offer answered → begin turn 1. */
+function finishOpeningPlays(state: RulesGameState) {
+  state.pending = null
+  state.pendingOpeningPlay = null
+  state.status = 'active'
   startGame(state)
 }
 function maybeFinishMulligans(state: RulesGameState) {
@@ -793,6 +837,11 @@ function repairControlFlow(state: RulesGameState) {
     state.pendingCascade = null
     state.pendingEntersChoice = null
     state.pendingOptionalPay = null
+    // a departed player's hideaway look / free-play offer lapses: the cards they were looking at stay
+    // in their library, which leaves the game with them (removePlayersObjects)
+    state.pendingHideaway = null
+    state.pendingFreePlay = null
+    state.pendingOpeningPlay = null
     if (kind === 'optionalPay') {
       // the payer left → they can't pay, so the ability happens for its controller
       if (optionalPay && !state.players[optionalPay.beneficiary]!.hasLost) {
@@ -2037,7 +2086,7 @@ function freeCastFromExile(
   controllerId: PlayerId,
   targets: (ObjId | PlayerId)[],
   mode: number | undefined,
-  opts: { reason?: 'cascade' | 'suspend'; suspendHaste?: boolean } = {},
+  opts: { reason?: 'cascade' | 'suspend' | 'hideaway'; suspendHaste?: boolean } = {},
 ) {
   const obj = state.objects[cardId]
   if (!obj || obj.zone !== 'exile') throw new RulesError('BAD_CASCADE', 'That card is no longer exiled')
@@ -2501,7 +2550,14 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
   if (!state.players[actor]) throw new RulesError('NOT_SEATED', 'You are not in this game')
   if (state.players[actor]!.hasLost) throw new RulesError('LOST', 'You are out of the game')
   // during the mulligan phase only mulligan/keep/concede are legal
-  if (state.status === 'mulligans' && msg.type !== 'r.mulligan' && msg.type !== 'r.keep' && msg.type !== 'r.concede')
+  // r.openingPlay is the one action that belongs to the window AFTER the last keep but BEFORE turn 1
+  if (
+    state.status === 'mulligans' &&
+    msg.type !== 'r.mulligan' &&
+    msg.type !== 'r.keep' &&
+    msg.type !== 'r.openingPlay' &&
+    msg.type !== 'r.concede'
+  )
     throw new RulesError('MULLIGANS', 'Keep or mulligan your opening hand first')
 
   switch (msg.type) {
@@ -2645,6 +2701,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       // metalcraft (Mox Opal)
       if (ability.requiresArtifactsAtLeast != null && controlledArtifacts(state, actor) < ability.requiresArtifactsAtLeast)
         throw new RulesError('NOT_ACTIVE', `Needs ${ability.requiresArtifactsAtLeast} artifacts`)
+      // a counter condition on a MANA ability (Gemstone Caverns' any-colour half needs its luck counter)
+      if (ability.requiresCounter && (obj.counters[ability.requiresCounter.kind] ?? 0) < ability.requiresCounter.min)
+        throw new RulesError('NOT_ACTIVE', `Needs ${ability.requiresCounter.min} ${ability.requiresCounter.kind} counter(s)`)
       // a "Sacrifice a creature" cost on a MANA ability (Ashnod's Altar, Phyrexian Altar/Tower):
       // validated before any mutation, paid below once the colour choice is known
       const manaSacCost = ability.cost.sacrifice
@@ -2756,6 +2815,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const ability = getDef(obj.defName).abilities?.[msg.abilityIndex]
       if (!ability || ability.kind !== 'activated' || ability.isMana)
         throw new RulesError('NO_ABILITY', 'No such activated ability')
+      // "Activate only if this permanent has a luck counter on it." (Gemstone Caverns)
+      if (ability.requiresCounter && (obj.counters[ability.requiresCounter.kind] ?? 0) < ability.requiresCounter.min)
+        throw new RulesError('NOT_ACTIVE', `Needs ${ability.requiresCounter.min} ${ability.requiresCounter.kind} counter(s)`)
       if (ability.requiresCreatedToken && !state.players[actor]!.createdTokenThisTurn)
         throw new RulesError('NO_ABILITY', 'You have not created a token this turn')
       // a Saga chapter's self-granted ability exists only once that chapter has been reached
@@ -4102,6 +4164,109 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} chooses ${typeName} for ${objName(state, obj.id)}.`)
       }
       if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.hideaway': {
+      if (state.pending?.kind !== 'hideaway' || state.pending.player !== actor || !state.pendingHideaway)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your hideaway choice')
+      const ph = state.pendingHideaway
+      if (!ph.cardIds.includes(msg.objId)) throw new RulesError('BAD_HIDEAWAY', 'Not one of the cards you are looking at')
+      const chosen = state.objects[msg.objId]
+      if (!chosen || chosen.zone !== 'library') throw new RulesError('BAD_HIDEAWAY', 'That card is no longer there')
+      state.pending = null
+      state.pendingHideaway = null
+      // exile it FACE DOWN. No re-mint: library ids are never serialised to anyone, the peek that
+      // revealed this one went to its owner alone, and the face-down exile id opponents now see
+      // carries no identity (invariants #2/#3) — the same reasoning as foretell.
+      moveTo(state, chosen.id, 'exile')
+      chosen.faceDown = true
+      chosen.hiddenBy = ph.sourceId
+      // the rest go to the BOTTOM in a random order, then the library is re-minted so the ids the
+      // looking player just saw can't be tracked
+      const lib = zoneArr(state, actor, 'library')
+      const rest = shuffleInPlace(ph.cardIds.filter((id) => id !== chosen.id && state.objects[id]?.zone === 'library'))
+      for (const id of rest) {
+        const i = lib.indexOf(id)
+        if (i >= 0) lib.splice(i, 1)
+        lib.push(id)
+      }
+      remintLibrary(state, actor)
+      logLine(state, `${name(state, actor)} hides a card away with ${ph.sourceName} and puts ${rest.length} card${rest.length === 1 ? '' : 's'} on the bottom.`)
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.freePlay': {
+      if (state.pending?.kind !== 'freePlay' || state.pending.player !== actor || !state.pendingFreePlay)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your free play')
+      const pfp = state.pendingFreePlay
+      const card = state.objects[pfp.cardId]
+      if (!msg.play || !card || card.zone !== 'exile') {
+        // declined (or the card vanished): it simply stays hidden away
+        state.pending = null
+        state.pendingFreePlay = null
+        if (msg.play === false) logLine(state, `${name(state, actor)} declines to play ${pfp.sourceName}'s hidden card.`)
+        if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
+        break
+      }
+      const cardDef = getDef(card.defName)
+      if (defIsLand(cardDef)) {
+        // playing a land is still a land play (CR 305.2b: one per turn unless an effect says otherwise)
+        const p = state.players[actor]!
+        if (p.landsPlayedThisTurn >= 1 + (p.extraLandsThisTurn ?? 0))
+          throw new RulesError('LAND_DROP', 'You have already played a land this turn')
+        state.pending = null
+        state.pendingFreePlay = null
+        card.faceDown = undefined
+        delete card.hiddenBy
+        p.landsPlayedThisTurn++
+        moveTo(state, card.id, 'battlefield')
+        logLine(state, `${name(state, actor)} plays ${cardDef.name} from under ${pfp.sourceName}.`)
+      } else {
+        // validate the targets BEFORE clearing the decision, so a bad choice can be retried
+        card.faceDown = undefined
+        freeCastFromExile(state, card.id, actor, msg.targets ?? [], msg.mode, { reason: 'hideaway' })
+        delete card.hiddenBy
+        state.pending = null
+        state.pendingFreePlay = null
+      }
+      if (!drainDecisions(state) && state.status === 'active') grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.openingPlay': {
+      if (state.pending?.kind !== 'openingPlay' || state.pending.player !== actor || !state.pendingOpeningPlay)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your opening-hand choice')
+      const pop = state.pendingOpeningPlay
+      const obj = state.objects[pop.objId]
+      const def = getDef(pop.defName)
+      const bg = def.beginGameOnBattlefield!
+      const hand = zoneArr(state, actor, 'hand')
+      if (msg.play) {
+        if (!obj || !hand.includes(obj.id)) throw new RulesError('BAD_OPENING', 'That card is not in your hand')
+        const exileCount = bg.exileFromHand ?? 0
+        const exiles = [...new Set(msg.exileIds ?? [])]
+        if (exiles.length !== exileCount)
+          throw new RulesError('BAD_OPENING', `Exile exactly ${exileCount} card${exileCount === 1 ? '' : 's'} from your hand`)
+        for (const id of exiles)
+          if (id === obj.id || !hand.includes(id)) throw new RulesError('BAD_OPENING', 'Not another card in your hand')
+        // CR 103.6: it is PUT onto the battlefield before the game begins, so nothing triggers
+        hand.splice(hand.indexOf(obj.id), 1)
+        obj.zone = 'battlefield'
+        zoneArr(state, actor, 'battlefield').push(obj.id)
+        if (bg.counter) putCounters(state, obj.id, bg.counter, 1)
+        logLine(state, `${name(state, actor)} begins the game with ${def.name} on the battlefield.`)
+        for (const id of exiles) {
+          moveTo(state, id, 'exile') // face up: "exile a card from your hand" reveals it
+          logLine(state, `${name(state, actor)} exiles ${getDef(state.objects[id]!.defName).name} for ${def.name}.`)
+        }
+      } else {
+        logLine(state, `${name(state, actor)} keeps ${def.name} in hand.`)
+      }
+      state.pending = null
+      state.pendingOpeningPlay = null
+      if (!advanceOpeningPlays(state, pop.queue)) finishOpeningPlays(state)
       break
     }
 

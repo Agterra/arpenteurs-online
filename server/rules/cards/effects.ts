@@ -1955,6 +1955,54 @@ export const earthquakeX = (): Effect => (ctx) => {
   logLine(ctx.state, `${sourceName(ctx)} deals ${n} damage to each non-flying creature and each player.`)
 }
 
+/**
+ * HIDEAWAY N (CR 702.76): "look at the top N cards of your library, exile one face down, then put the
+ * rest on the bottom of your library in a random order." Opens the actor-only look; `r.hideaway`
+ * finishes it (the exile is face down, so its id is re-minted on the way in — invariant #3).
+ */
+export const hideaway = (n: number): Effect => (ctx) => {
+  const lib = ctx.state.zones.perPlayer[ctx.controllerId]!.library
+  const cardIds = lib.slice(0, n)
+  const src = ctx.state.objects[ctx.sourceId]
+  const sourceName = src ? getDef(src.defName).name : 'Hideaway'
+  if (!cardIds.length) {
+    logLine(ctx.state, `${sourceName}'s hideaway finds an empty library.`)
+    return
+  }
+  ctx.state.pending = { kind: 'hideaway', player: ctx.controllerId }
+  ctx.state.pendingHideaway = { player: ctx.controllerId, sourceId: ctx.sourceId, sourceName, cardIds }
+}
+
+/**
+ * A hideaway land's second ability: "You may play the exiled card without paying its mana cost if
+ * <condition>." The condition is checked as the ability RESOLVES (CR 702.76b) — if it doesn't hold,
+ * nothing happens and the card stays hidden for a later attempt.
+ */
+export const playHiddenCard = (condition: { kind: 'totalPower'; n: number }): Effect => (ctx) => {
+  const src = ctx.state.objects[ctx.sourceId]
+  const sourceName = src ? getDef(src.defName).name : 'Hideaway'
+  const hidden = Object.values(ctx.state.objects).find(
+    (o) => o.hiddenBy === ctx.sourceId && o.zone === 'exile' && o.ownerId === ctx.controllerId,
+  )
+  if (!hidden) {
+    logLine(ctx.state, `${sourceName} has no card hidden away.`)
+    return
+  }
+  const total = battlefieldCreatures(ctx.state, ctx.controllerId).reduce((n, c) => n + Math.max(0, currentPower(ctx.state, c)), 0)
+  if (total < condition.n) {
+    logLine(ctx.state, `${sourceName}: your creatures' total power is only ${total} (needs ${condition.n}) — nothing happens.`)
+    return
+  }
+  ctx.state.pending = { kind: 'freePlay', player: ctx.controllerId }
+  ctx.state.pendingFreePlay = {
+    player: ctx.controllerId,
+    cardId: hidden.id,
+    sourceId: ctx.sourceId,
+    sourceName,
+    isLand: getDef(hidden.defName).types.includes('Land'),
+  }
+}
+
 /** Run several effects in order. */
 export const sequence = (...effects: Effect[]): Effect => (ctx) => {
   for (const e of effects) e(ctx)

@@ -31,6 +31,9 @@ function ownPeek(state: RulesGameState, viewer: PlayerId): Set<string> {
   const s = new Set<string>()
   if (state.pendingScry?.player === viewer) for (const id of state.pendingScry.cardIds) s.add(id)
   if (state.pendingSearch?.player === viewer) for (const id of state.pendingSearch.matchIds) s.add(id)
+  // hideaway (CR 702.76) — "look at the top four cards of your library" is the same sanctioned
+  // actor-only window; every OTHER viewer must still never see these ids
+  if (state.pendingHideaway?.player === viewer) for (const id of state.pendingHideaway.cardIds) s.add(id)
   return s
 }
 
@@ -74,6 +77,8 @@ let pwLoyaltyFired = 0
 let pwAttacked = 0
 let pwBurned = 0 // a spell/ability aimed its damage at a planeswalker ("any target" — CR 115.4)
 let impulsePlayed = 0 // a card exiled by an impulse effect was played straight out of exile (fuzz-only telemetry)
+let hidAway = 0 // a hideaway land exiled a card face down (the look → face-down-exile path)
+let beganWithPermanent = 0 // a player took the CR 103.6 pre-game offer (Gemstone Caverns)
 
 /** One random-but-legal action for whoever must act; returns false when stuck. */
 function randomAction(state: RulesGameState, rnd: () => number): boolean {
@@ -115,6 +120,32 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       // DECLINE — the exiled (publicly-revealed) cards go to the bottom re-minted, exercising
       // the leak-critical exile→library path; must handle this pending or the fuzzer stalls.
       applyRulesAction(state, p, { type: 'r.cascade', cast: false, targets: [] })
+      return true
+    }
+    if (state.pending.kind === 'hideaway') {
+      // HIDE ONE AWAY — the looked-at ids were published to this player alone; the pick goes to
+      // face-down exile and the other three to the bottom re-minted (the leak-critical path)
+      const ids = legal.hideawayIds
+      if (ids.length) {
+        applyRulesAction(state, p, { type: 'r.hideaway', objId: pick(ids) })
+        hidAway++ // coverage guard
+      }
+      return true
+    }
+    if (state.pending.kind === 'freePlay') {
+      // play the hidden card when it needs no input, else decline (it stays hidden away)
+      const play = legal.freePlayCanPlay && rnd() < 0.5
+      applyRulesAction(state, p, { type: 'r.freePlay', play, targets: [] })
+      return true
+    }
+    if (state.pending.kind === 'openingPlay') {
+      // the CR 103.6 pre-game offer. ACCEPT: that is the leak-relevant path (a card leaves the hidden
+      // hand for the battlefield, and another for face-up exile, before turn 1). Declining is covered
+      // by the deterministic CARD67 spec.
+      const take = true
+      const exileIds = legal.openingPlayExileIds.length ? [pick(legal.openingPlayExileIds)] : []
+      applyRulesAction(state, p, { type: 'r.openingPlay', play: take, exileIds })
+      if (take) beganWithPermanent++ // coverage guard
       return true
     }
     if (state.pending.kind === 'attackers') {
@@ -1082,6 +1113,8 @@ const FUZZ_DECK = [
   // mana scales with your creatures of that type.
   ...Array(2).fill('Roaming Throne'),
   ...Array(2).fill('Three Tree City'),
+  ...Array(3).fill('Mosswort Bridge'),
+  ...Array(2).fill('Gemstone Caverns'),
   ...Array(3).fill('Sink into Stupor'),
   ...Array(2).fill('Tireless Provisioner'),
   ...Array(2).fill('Command Beacon'),
@@ -1134,6 +1167,8 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     pwAttacked = 0
     pwBurned = 0
     impulsePlayed = 0
+    hidAway = 0
+    beganWithPermanent = 0
     try {
       for (const [nPlayers, seed] of cases) {
         const rnd = mulberry32(seed)
@@ -1141,7 +1176,16 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
         // minting AND action choices) from the same stream so the game replays
         // identically from `seed` — a failure here is reproducible/bisectable.
         __setDeterministicRng(rnd)
-        const { state } = makeGameN(nPlayers, FUZZ_DECK)
+        // answerOpeningPlays: false → the fuzzer drives the CR 103.6 pre-game offer itself, and
+        // preKeep guarantees the offer HAPPENS: drawing a Gemstone Caverns into a non-starting
+        // player's opening hand off a shuffled 100-card deck is pure seed luck, which would leave
+        // the beganWithPermanent coverage guard below asserting nothing (the Nissa trick, again)
+        const { state } = makeGameN(nPlayers, FUZZ_DECK, {
+          answerOpeningPlays: false,
+          preKeep: (s) => {
+            for (const pid of s.turnOrder.slice(1)) putCard(s, pid, 'Gemstone Caverns', 'hand')
+          },
+        })
         // Give EVERY player a planeswalker up front so "an opponent's planeswalker is attackable"
         // holds from turn 1. Casting Nissa off the shuffled deck and keeping her alive until
         // someone's declare-attackers is pure seed luck (it silently dropped to zero when this
@@ -1155,7 +1199,8 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
         const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
         assertNoLeaks(state, `(${nPlayers}p seed ${seed}, initial)`, seen)
         let steps = 0
-        while (state.status === 'active' && steps < 1500) {
+        // 'mulligans' is still a live state here: the opening-hand offer is answered before turn 1
+        while (state.status !== 'ended' && steps < 1500) {
           steps++
           if (!randomAction(state, rnd)) break
           assertNoLeaks(state, `(${nPlayers}p seed ${seed}, action ${steps}, step ${state.step})`, seen)
@@ -1169,6 +1214,8 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // as dead code (a planeswalker never castable / never attacked)
     expect(pwLoyaltyFired).toBeGreaterThan(0)
     expect(pwAttacked).toBeGreaterThan(0)
+    expect(hidAway).toBeGreaterThan(0) // the hideaway look → face-down exile path really ran
+    expect(beganWithPermanent).toBeGreaterThan(0) // a player really took the pre-game offer
     // (pwBurned is telemetry, not a guard: a fuzz game's planeswalkers are attacked to death long
     //  before an any-target burn spell happens to be castable — measured at 0 of 6 such casts — so the
     //  planeswalker-damage path is pinned by the deterministic test below instead.)

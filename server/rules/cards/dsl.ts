@@ -128,6 +128,11 @@ export interface ActivatedAbility {
   /** "Activate only if you created a token this turn." (Idol of Oblivion) */
   requiresCreatedToken?: boolean
   /**
+   * "Activate only if this permanent has a luck counter on it." (Gemstone Caverns) — a declarative
+   * counter condition so redact can hide the ability until it holds, like the other requires* gates.
+   */
+  requiresCounter?: { kind: string; min: number }
+  /**
    * An ability a SAGA chapter granted to itself — "I — This Saga gains '{T}: Add {C}.'" (Urza's Saga).
    * The ability exists once the Saga has that many lore counters, which is exactly when the chapter has
    * been reached; declaring it this way keeps redact able to hide it until then.
@@ -514,6 +519,21 @@ export interface CardDefinition {
    * ability has left the stack. Give the card `types: ['Enchantment']`, `subtypes: ['Saga']`.
    */
   saga?: { chapters: SagaChapter[] }
+  /**
+   * "If this card is in your OPENING HAND, you may begin the game with it on the battlefield"
+   * (CR 103.6 — Gemstone Caverns, the Leyline cycle). Offered once, after the last player keeps and
+   * before turn 1 begins; the permanent is simply PUT onto the battlefield, so nothing triggers
+   * (the game hasn't begun).
+   *
+   * `onlyIfNotStartingPlayer` is Gemstone Caverns' "and you're not the starting player";
+   * `counter` is the luck counter it enters with; `exileFromHand` is its "if you do, exile a card
+   * from your hand" cost.
+   */
+  beginGameOnBattlefield?: {
+    onlyIfNotStartingPlayer?: boolean
+    counter?: string
+    exileFromHand?: number
+  }
   /**
    * Adventure (CR 715): the card is a creature (the main def carries its creature body/cost) that
    * may instead be cast as this instant/sorcery "adventure". When the adventure resolves it is

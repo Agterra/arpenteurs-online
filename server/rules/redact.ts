@@ -156,6 +156,12 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
       ? { matchIds: [...state.pendingSearch.matchIds], dest: state.pendingSearch.dest, count: state.pendingSearch.count }
       : null
   if (search) for (const id of search.matchIds) if (state.objects[id]) cards[id] = toClientCard(state.objects[id]!)
+  // hideaway look (CR 702.76): the four cards are shown to the looking player alone, like a scry
+  const hideaway =
+    state.pendingHideaway && state.pendingHideaway.player === viewer
+      ? { cardIds: [...state.pendingHideaway.cardIds], sourceName: state.pendingHideaway.sourceName }
+      : null
+  if (hideaway) for (const id of hideaway.cardIds) if (state.objects[id]) cards[id] = toClientCard(state.objects[id]!)
   // reveal-top peek (Herald's Horn): the ONE card is shown to its owner alone, never to an opponent
   if (state.pendingRevealTop && state.pendingRevealTop.player === viewer) {
     const id = state.pendingRevealTop.cardId
@@ -217,6 +223,7 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     seq: state.seq,
     scry,
     search,
+    hideaway,
   }
 }
 
@@ -299,6 +306,19 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     entersChoiceLife: 0,
     entersChoiceName: '',
     entersChoiceAffordable: false,
+    needsHideaway: false,
+    hideawayIds: [],
+    hideawaySourceName: '',
+    needsFreePlay: false,
+    freePlayCardId: null,
+    freePlaySourceName: '',
+    freePlayIsLand: false,
+    freePlayTargetKind: null,
+    freePlayCanPlay: false,
+    needsOpeningPlay: false,
+    openingPlayObjId: null,
+    openingPlaySourceName: '',
+    openingPlayExileIds: [],
     needsCascade: false,
     cascadeHitId: null,
     cascadeTargetKind: null,
@@ -314,6 +334,19 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     playableExileLandIds: [],
     playableBackLandIds: [],
     buybackable: [],
+  }
+  // the CR 103.6 opening-hand offer is answered while the game is still pre-game ('mulligans'), so it
+  // is the one decision published before the game becomes active
+  if (state.status === 'mulligans' && state.pending?.kind === 'openingPlay' && state.pendingOpeningPlay?.player === viewer) {
+    const pop = state.pendingOpeningPlay
+    const needsExile = (getDef(pop.defName).beginGameOnBattlefield?.exileFromHand ?? 0) > 0
+    return {
+      ...none,
+      needsOpeningPlay: true,
+      openingPlayObjId: pop.objId,
+      openingPlaySourceName: getDef(pop.defName).name,
+      openingPlayExileIds: needsExile ? zoneArr(state, viewer, 'hand').filter((id) => id !== pop.objId) : [],
+    }
   }
   if (state.status !== 'active' || state.players[viewer]?.hasLost) return none
 
@@ -535,6 +568,35 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         entersChoiceAffordable: state.players[viewer]!.life >= pec.life,
       }
     }
+    if (state.pending.kind === 'hideaway' && state.pendingHideaway) {
+      // the four cards themselves ride along in `cards` (actor-only, above)
+      return {
+        ...none,
+        needsHideaway: true,
+        hideawayIds: [...state.pendingHideaway.cardIds],
+        hideawaySourceName: state.pendingHideaway.sourceName,
+      }
+    }
+    if (state.pending.kind === 'freePlay' && state.pendingFreePlay) {
+      // same client-deliverable-target reasoning as cascade: one battlefield/player target or none
+      const pfp = state.pendingFreePlay
+      const card = state.objects[pfp.cardId]
+      const def = card ? getDef(card.defName) : null
+      const modal = !!def?.modes?.length
+      const specs = modal ? [] : (def?.spell?.targets ?? [])
+      const totalTargets = specs.reduce((n, sp) => n + sp.count, 0)
+      const single = !modal && specs.length === 1 && specs[0]!.count === 1 ? specs[0]!.kind : null
+      const clientKind = single === 'creature' || single === 'permanent' || single === 'anyTarget' || single === 'player' ? single : null
+      return {
+        ...none,
+        needsFreePlay: true,
+        freePlayCardId: pfp.cardId,
+        freePlaySourceName: pfp.sourceName,
+        freePlayIsLand: pfp.isLand,
+        freePlayTargetKind: clientKind,
+        freePlayCanPlay: pfp.isLand || (!modal && totalTargets === 0),
+      }
+    }
     if (state.pending.kind === 'cascade' && state.pendingCascade) {
       // the caster may cast the revealed hit for free. The client can deliver a single target of
       // a battlefield/player kind, or no target at all; modal / multi-target / spell / graveyardCard
@@ -589,6 +651,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         (!a.dynamicProduces || dynamicManaColors(state, viewer, a.dynamicProduces, obj.id).length > 0) &&
         // a Saga's self-granted mana ability exists only from that chapter on (Urza's Saga)
         (a.requiresLoreAtLeast == null || (obj.counters.lore ?? 0) >= a.requiresLoreAtLeast) &&
+        // "Activate only if this permanent has a luck counter on it" (Gemstone Caverns)
+        (!a.requiresCounter || (obj.counters[a.requiresCounter.kind] ?? 0) >= a.requiresCounter.min) &&
         // a mana ability with its OWN mana cost (Three Tree City's "{2}, {T}: …") is only usable when
         // that cost is payable — otherwise the source was highlighted and then refused the tap
         (!a.cost.mana || planPayment(parseManaCost(a.cost.mana), state.players[viewer]!.manaPool).covered),
@@ -646,6 +710,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       if (ab.requiresCreatedToken && !state.players[viewer]!.createdTokenThisTurn) return
       // a Saga's self-granted ability (Urza's Saga) — hidden until that chapter is reached
       if (ab.requiresLoreAtLeast != null && (obj.counters.lore ?? 0) < ab.requiresLoreAtLeast) return
+      // "Activate only if this permanent has a luck counter on it" (Gemstone Caverns)
+      if (ab.requiresCounter && (obj.counters[ab.requiresCounter.kind] ?? 0) < ab.requiresCounter.min) return
       // a sacrifice cost is only payable if the player controls enough creatures
       const sacCost = ab.cost.sacrifice?.count ?? 0
       // "Sacrifice a Treasure" is paid with Treasures, not creatures — the picker needs to know which

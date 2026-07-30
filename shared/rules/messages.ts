@@ -128,6 +128,19 @@ export const RulesMsg = z.discriminatedUnion('type', [
   // ---- London mulligan (pre-game) ----
   z.object({ type: z.literal('r.mulligan') }),
   z.object({ type: z.literal('r.keep'), toBottom: z.array(Id).max(20) }),
+  /** CR 103.6 pre-game offer: begin the game with this card on the battlefield (Gemstone Caverns) */
+  z.object({ type: z.literal('r.openingPlay'), play: z.boolean(), exileIds: z.array(Id).max(4).optional() }),
+
+  // ---- hideaway (CR 702.76) ----
+  /** which of the four looked-at cards is exiled face down */
+  z.object({ type: z.literal('r.hideaway'), objId: Id }),
+  /** play the hidden card for free (or decline) — targets/mode as for a cascade free cast */
+  z.object({
+    type: z.literal('r.freePlay'),
+    play: z.boolean(),
+    targets: z.array(Id).max(4).optional(),
+    mode: z.number().int().min(0).max(9).optional(),
+  }),
 
   // ---- manual overrides (assisted table): hand-run effects the engine can't ----
   z.object({

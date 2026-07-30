@@ -23,7 +23,11 @@ const COMMANDERS = ['Isamaru, Hound of Konda', 'Jerrard of the Closed Fist', 'Ba
 /** Build an N-player enforced Commander game (default 2). Returns players in turn
  *  order. `cards` overrides the shared deck (the leak fuzzer passes a deck that
  *  includes scry/search cards to exercise those re-mint paths). */
-export function makeGameN(n = 2, cards: string[] = DECK_CARDS) {
+export function makeGameN(
+  n = 2,
+  cards: string[] = DECK_CARDS,
+  opts: { answerOpeningPlays?: boolean; preKeep?: (state: RulesGameState) => void } = {},
+) {
   const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, seat: i, name: `P${i}` }))
   const decks = new Map(
     players.map((p, i) => [p.id, { commander: COMMANDERS[i]!, cards: [...cards] }]),
@@ -32,7 +36,15 @@ export function makeGameN(n = 2, cards: string[] = DECK_CARDS) {
   // auto-complete the London mulligan phase (everyone keeps 7) so tests that
   // predate mulligans still begin at turn 1. Mulligan-specific tests build the
   // game and drive r.mulligan/r.keep themselves via makeGameNMulligan.
+  // a hook to arrange OPENING HANDS (the CR 103.6 offer is decided by what's in hand at the last keep)
+  opts.preKeep?.(state)
   for (const pid of state.turnOrder) applyRulesAction(state, pid, { type: 'r.keep', toBottom: [] })
+  // a CR 103.6 "begin the game with this on the battlefield" offer (Gemstone Caverns) pauses the game
+  // between the last keep and turn 1 — decline it by default so every pre-existing test still starts at
+  // turn 1. The leak fuzzer passes answerOpeningPlays: false and drives the offer itself.
+  if (opts.answerOpeningPlays !== false)
+    while (state.pending?.kind === 'openingPlay')
+      applyRulesAction(state, state.pending.player, { type: 'r.openingPlay', play: false })
   return { state, players: state.turnOrder }
 }
 
@@ -149,8 +161,24 @@ export function until(state: RulesGameState, pred: (s: RulesGameState) => boolea
       act(state, state.pending.player, { type: 'r.scry', toBottom: [] }) // keep everything on top
     } else if (state.pending?.kind === 'madness') {
       act(state, state.pending.player, { type: 'r.madness', cast: false, targets: [] }) // decline
+    } else if (state.pending?.kind === 'optionalPay') {
+      // "unless that player pays {N}" (Smothering Tithe / Rhystic Study): decline
+      act(state, state.pending.player, { type: 'r.optionalPay', pay: false })
+    } else if (state.pending?.kind === 'hideaway') {
+      // hide the first of the four away, so a hideaway land in the deck can't stall a test
+      const ph = state.pendingHideaway!
+      act(state, ph.player, { type: 'r.hideaway', objId: ph.cardIds[0]! })
+    } else if (state.pending?.kind === 'freePlay') {
+      act(state, state.pending.player, { type: 'r.freePlay', play: false, targets: [] }) // decline
+    } else if (state.pending?.kind === 'openingPlay') {
+      act(state, state.pending.player, { type: 'r.openingPlay', play: false }) // keep it in hand
     } else if (state.priorityPlayer) pass(state, state.priorityPlayer)
-    else throw new Error(`engine stalled before ${label} (step ${state.step})`)
+    else
+      throw new Error(
+        // the log tail makes a stall diagnosable: it names the last thing the engine did before it
+        // stopped granting priority
+        `engine stalled before ${label} (step ${state.step}); log tail: ${state.log.slice(-8).join(' | ')}`,
+      )
   }
   throw new Error(`never reached ${label} (step ${state.step}, turn ${state.turnNumber})`)
 }
