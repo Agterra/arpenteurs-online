@@ -54,7 +54,8 @@ export interface PromptOptions {
 export interface MenuItem {
   label?: string
   icon?: string
-  color?: string
+  /** Nuxt UI's colour union — a plain string doesn't satisfy UDropdownMenu's item typing */
+  color?: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
   disabled?: boolean
   type?: 'separator' | 'label'
   children?: MenuItem[]

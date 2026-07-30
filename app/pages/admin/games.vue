@@ -28,7 +28,8 @@ const { data } = await useAsyncData<Page>(
 )
 const totalPages = computed(() => Math.max(1, Math.ceil((data.value?.total ?? 0) / (data.value?.pageSize ?? 25))))
 
-const statusColor: Record<string, string> = {
+type BadgeColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
+const statusColor: Record<string, BadgeColor> = {
   ACTIVE: 'success',
   FINISHED: 'neutral',
   ABANDONED: 'error',
@@ -47,9 +48,9 @@ function formatDuration(seconds: number | null): string {
     <div class="mb-4 flex items-center justify-between">
       <h2 class="font-semibold">Games <span v-if="data" class="text-dimmed font-normal">({{ data.total }})</span></h2>
       <div class="flex items-center gap-2 text-sm">
-        <UButton size="xs" variant="outline" color="neutral" :disabled="page <= 1" @click="page--">Prev</UButton>
+        <UButton size="xs" variant="outline" color="neutral" :disabled="page <= 1" @click="() => { page-- }">Prev</UButton>
         <span class="text-dimmed">{{ page }} / {{ totalPages }}</span>
-        <UButton size="xs" variant="outline" color="neutral" :disabled="page >= totalPages" @click="page++">Next</UButton>
+        <UButton size="xs" variant="outline" color="neutral" :disabled="page >= totalPages" @click="() => { page++ }">Next</UButton>
       </div>
     </div>
 

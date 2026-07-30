@@ -55,6 +55,9 @@ describe('CARD65 — Force of Will', () => {
   it('is not offered with no blue card to exile, and can still be cast for mana', () => {
     const { state, A, B } = makeDuel()
     const fow = putCard(state, B, 'Force of Will', 'hand')
+    // the shared test deck holds Divination ({2}{U}), so a random opening hand can contain a blue card
+    // and make the pitch legal — strip the hand to the Force of Will so "no blue card" is deterministic
+    for (const id of [...state.zones.perPlayer[B]!.hand]) if (id !== fow) act(state, B, { type: 'r.mMove', objId: id, zone: 'library' })
     const shock = putCard(state, A, 'Shock', 'hand')
     toStep(state, 'main1')
     addMana(state, A, 'R', 1)

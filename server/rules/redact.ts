@@ -246,6 +246,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     sacrificeableIds: [],
     needsTriggerTargets: false,
     triggerTargetKind: null,
+    triggerTargetOptional: false,
+    triggerGraveyardIds: [],
     triggerSourceName: null,
     activations: [],
     equippableIds: [],

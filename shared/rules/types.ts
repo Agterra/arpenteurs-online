@@ -147,9 +147,35 @@ export interface GameObject {
    *  attached to a creature (not itself a creature). If the host leaves it becomes a creature
    *  (this flag clears). While set, it's excluded from the creature helpers. */
   bestowed?: boolean
+  /**
+   * LAST KNOWN INFORMATION (CR 608.2h) captured as the permanent left the battlefield: the counters it
+   * had and the host it was attached to. A leaves-the-battlefield / dies trigger resolves after the
+   * object is already gone, so effects that read "the number of counters on it" (Blood Fountain's
+   * ilk) or "the creature it was enchanting" (Animate Dead) read these instead of the live fields.
+   */
+  lastCounters?: Record<string, number>
+  lastAttachedTo?: ObjId
+  /** this permanent entered the battlefield by RESOLVING AS A SPELL ("if you cast it" — The One Ring) */
+  enteredByCast?: boolean
+  /** IMPRINT (CR 702.16): the def name of the card exiled onto this permanent (Chrome Mox / Isochron) */
+  imprintedDefName?: string
 }
 
 export type StackItemKind = 'spell' | 'ability'
+
+/**
+ * What a target picker may be aimed at — the client's picker mode for a pending target choice. Mirrors
+ * the DSL's TargetSpec.kind, which is the authority; a new spec kind must be added here too or the
+ * client can't render its picker.
+ */
+export type TargetClassKind =
+  | 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard'
+  | 'spellOrAbility' | 'spellOrPermanent'
+
+/** Which triggered ability a stack item / pending decision came from. */
+export type TriggerKind =
+  | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
+  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain'
 
 /** A spell or ability on the stack. */
 export interface StackItem {
@@ -160,9 +186,7 @@ export interface StackItem {
   sourceId: ObjId // the card object this originated from
   abilityIndex: number | null // for activated abilities
   /** which triggered ability this is (for kind: 'ability') */
-  trigger?:
-    | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-    | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain'
+  trigger?: TriggerKind
   targets: (ObjId | PlayerId)[]
   /** chosen X for an {X} spell (resolves the effect with this value) */
   x?: number
@@ -221,8 +245,6 @@ export interface StackItem {
   evoke?: boolean
   /** Overload (CR 702.96): cast for the overload cost → resolves its untargeted "each" body. */
   overloaded?: boolean
-  /** Morph (CR 702.37): this spell is being cast face down → it enters as a 2/2 face-down creature. */
-  faceDown?: boolean
 }
 
 export interface PlayerRState {
@@ -282,6 +304,16 @@ export interface PlayerRState {
   keptHand: boolean
 }
 
+/**
+ * Every kind of decision the engine can be waiting on. Each one has a matching `pendingX` payload on
+ * the state, a `needsX` flag in LegalActions and an `r.x` action — adding a decision means adding all
+ * four (plus a leak-fuzzer branch, per invariant #4).
+ */
+export type PendingKind =
+  | 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward'
+  | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay' | 'putBack' | 'typeChoice' | 'handChoice'
+  | 'proliferate' | 'revealTop' | 'mayDraw' | 'retarget' | 'modes'
+
 export interface RulesGameState {
   id: string
   mode: 'enforced'
@@ -295,9 +327,9 @@ export interface RulesGameState {
   /** players who have passed priority since the last stack change / step start */
   passed: PlayerId[]
   /** engine is waiting for a player decision (no priority until it's made) */
-  pending: { kind: 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward' | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay' | 'putBack'; player: PlayerId } | null
+  pending: { kind: PendingKind; player: PlayerId } | null
   /** details of a triggered ability awaiting its controller's target choice */
-  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: 'etb' | 'dies' | 'attacks' | 'upkeep'; sagaChapter?: number } | null
+  pendingTrigger: { sourceId: ObjId; defName: string; controllerId: PlayerId; trigger: TriggerKind; sagaChapter?: number } | null
   /** an active scry: the top-N library ids (top first) the scrying player is looking at */
   /**
    * An active scry. `thenDraw` is the "…then draw a card" half of Opt / Preordain: it MUST wait for
@@ -592,8 +624,8 @@ export interface RulesClientCard {
   /** current loyalty (planeswalkers only; null otherwise) */
   loyalty: number | null
   isCommander: boolean
-  /** the creature type chosen as this permanent entered, if any (Cavern of Souls) */
-  chosenType?: string
+  /** the creature type chosen as this permanent entered (null when none) — Cavern of Souls */
+  chosenType?: string | null
   /** IMPRINT (CR 702.61 — Chrome Mox): the def name of the card exiled by this permanent */
   imprintedDefName?: string
   /**
@@ -659,7 +691,7 @@ export interface RulesClientState {
   /** YOUR active scry (top-N ids you're looking at) — actor-only; null for everyone else */
   scry: { cardIds: ObjId[]; surveil?: boolean; reorder?: boolean } | null
   /** YOUR active library search — actor-only; the ids you may pick and how many */
-  search: { matchIds: ObjId[]; dest: 'battlefield' | 'hand'; count: number } | null
+  search: { matchIds: ObjId[]; dest: 'battlefield' | 'hand' | 'libraryTop' | 'graveyard'; count: number } | null
 }
 
 /** What `you` may currently do (client uses this to enable/disable affordances). */
@@ -699,7 +731,7 @@ export interface LegalActions {
   /** a "choose new targets" decision is waiting (r.retarget): the item and what it can be aimed at */
   needsRetarget: boolean
   retargetItemId: ObjId | null
-  retargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+  retargetKind: TargetClassKind | null
   retargetCount: number
   retargetSourceName: string
   /** a "you may draw up to N cards" decision is waiting (r.mayDraw) */
@@ -732,7 +764,7 @@ export interface LegalActions {
   sacrificeableIds: ObjId[]
   /** a triggered ability of yours needs a target chosen */
   needsTriggerTargets: boolean
-  triggerTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+  triggerTargetKind: TargetClassKind | null
   /** the trigger's target is optional ("you may…", "up to one…") → the client offers Decline */
   triggerTargetOptional: boolean
   /** for a graveyardCard trigger target: the graveyard cards that are legal picks right now */
@@ -742,7 +774,7 @@ export interface LegalActions {
   activations: {
     objId: ObjId
     abilityIndex: number
-    targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+    targetKind: TargetClassKind | null
     cost: string
     sacCost: number
     /** what that sacrifice cost accepts ('creature' by default; 'treasure' for Face-Breaker) */
@@ -781,7 +813,7 @@ export interface LegalActions {
    * a creature; Thrill of Possibility: discard a card). The client collects the picks and passes
    * them to r.cast as `sacrifices` / `discards`.
    */
-  castExtraCost: { objId: ObjId; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature'; discard: number }[]
+  castExtraCost: { objId: ObjId; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature' | 'land'; discard: number }[]
   /**
    * Hand cards castable for a PITCH alternative cost right now (Force of Will) — the life, the colour to
    * exile and the eligible cards in your hand, which is your own information.
@@ -816,7 +848,7 @@ export interface LegalActions {
   cascadeHitId: ObjId | null
   /** the hit's single client-deliverable target kind (creature/permanent/anyTarget/player); null when
    *  the hit needs no target OR needs input the client can't yet supply (modal / multi-target / spell / graveyardCard) */
-  cascadeTargetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
+  cascadeTargetKind: TargetClassKind | null
   /** true when the hit can be free-cast with NO client input (non-modal, zero targets) → offer a plain "Cast free" */
   cascadeCanFreeCast: boolean
   // ---- alternative / other-zone casts the client renders as extra cast buttons ----

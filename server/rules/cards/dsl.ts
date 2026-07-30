@@ -223,6 +223,21 @@ export type ModalTriggeredAbility = TriggeredAbility & {
   modeRule?: { count?: number; oneOrMore?: boolean }
 }
 
+/**
+ * A WATCHER trigger — "whenever a player casts a spell / draws a card" (`castSpell`, `drawnCard`).
+ * Each declares its own `watch` narrowing on top of this shape. `unlessPay` makes it the tax shape
+ * (Rhystic Study): the watched player may pay, and `effect` happens only if they don't;
+ * `unlessPayFromPower` computes that cost as {X} = the source's current power (Esper Sentinel).
+ * The engine resolves these through the same path as any other triggered ability, so they can take
+ * targets too.
+ */
+export interface WatcherTriggeredAbility {
+  unlessPay?: string
+  unlessPayFromPower?: boolean
+  targets?: TargetSpec[]
+  effect: Effect
+}
+
 /** A triggered ability body (CR 603): optional targets chosen when it goes on the stack. */
 export interface TriggeredAbility {
   /**
@@ -425,7 +440,7 @@ export interface CardDefinition {
    * this permanent's controller). `unlessPayFromPower` computes the cost as {X} = the source's
    * current power instead of a fixed string.
    */
-  castSpell?: {
+  castSpell?: WatcherTriggeredAbility & {
     watch?: {
       opponentsOnly?: boolean
       selfOnly?: boolean
@@ -437,19 +452,14 @@ export interface CardDefinition {
       chosenTypeOnly?: boolean
       firstEachTurn?: boolean
     }
-    unlessPay?: string
-    unlessPayFromPower?: boolean
-    effect: Effect
   }
   /**
    * "Whenever an opponent draws a card, …" (Smothering Tithe) — same shape as `castSpell`: the
    * trigger goes on the stack and, with `unlessPay`, opens the pay-or-it-happens decision for the
    * player who drew. Fires once per card drawn, and never during the pre-game draws.
    */
-  drawnCard?: {
+  drawnCard?: WatcherTriggeredAbility & {
     watch?: { opponentsOnly?: boolean }
-    unlessPay?: string
-    effect: Effect
   }
   /**
    * "As an additional cost to cast this spell, pay X life." (Toxic Deluge) — the caster chooses X

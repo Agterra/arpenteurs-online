@@ -61,7 +61,8 @@ const { data } = await useAsyncData<Page>(
 )
 const totalPages = computed(() => Math.max(1, Math.ceil((data.value?.total ?? 0) / (data.value?.pageSize ?? 50))))
 
-const legalityColor: Record<string, string> = {
+type BadgeColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
+const legalityColor: Record<string, BadgeColor> = {
   LEGAL: 'success',
   BANNED: 'error',
   RESTRICTED: 'warning',
@@ -80,9 +81,9 @@ function hideBrokenImage(e: Event) {
         Catalog <span v-if="data" class="text-dimmed font-normal">({{ data.total.toLocaleString('en-US') }} cards)</span>
       </h2>
       <div class="ml-auto flex items-center gap-2 text-sm">
-        <UButton size="xs" variant="outline" color="neutral" :disabled="page <= 1" @click="page--">Prev</UButton>
+        <UButton size="xs" variant="outline" color="neutral" :disabled="page <= 1" @click="() => { page-- }">Prev</UButton>
         <span class="text-dimmed">{{ page }} / {{ totalPages }}</span>
-        <UButton size="xs" variant="outline" color="neutral" :disabled="page >= totalPages" @click="page++">Next</UButton>
+        <UButton size="xs" variant="outline" color="neutral" :disabled="page >= totalPages" @click="() => { page++ }">Next</UButton>
       </div>
     </div>
 

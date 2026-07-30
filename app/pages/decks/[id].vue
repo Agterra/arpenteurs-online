@@ -205,7 +205,7 @@ async function savePick() {
         </template>
         <template #footer>
           <div class="flex w-full justify-end gap-2">
-            <UButton variant="ghost" @click="pickerOpen = false">Cancel</UButton>
+            <UButton variant="ghost" @click="() => { pickerOpen = false }">Cancel</UButton>
             <UButton :disabled="!picked.length" :loading="pickerBusy" @click="savePick">
               Save ({{ picked.length }}/2)
             </UButton>

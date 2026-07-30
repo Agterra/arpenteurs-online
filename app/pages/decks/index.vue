@@ -277,7 +277,7 @@ async function onDelete(deck: DeckListItem) {
       </template>
       <template #footer>
         <div class="flex w-full justify-end gap-2">
-          <UButton variant="ghost" @click="importOpen = false">Cancel</UButton>
+          <UButton variant="ghost" @click="() => { importOpen = false }">Cancel</UButton>
           <UButton
             variant="soft"
             :loading="importBusy"

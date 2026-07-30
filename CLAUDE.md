@@ -10,6 +10,7 @@ Online MTG Commander table (Cockatrice replacement). `docs/PLAN.md` is the archi
 - `pnpm tokens:import` — fetch representative token art (Beast/Soldier/Treasure/…) into the `TokenImage` table (idempotent, needs network). Tokens aren't in AtomicCards, so this is separate from `cards:import` and survives a card re-import; `/api/cards/display` resolves `itok:`/`tok:` defNames to this art via `shared/utils/tokenDefName.ts`.
 - `node tests/e2e/game-flow.mjs http://localhost:3998` — full ws e2e (server must be running with an imported catalog).
 - `pnpm build && pnpm start` — always verify a Nitro/Prisma-touching change builds; dev-mode success does not guarantee prod bundling.
+- `pnpm typecheck` — **part of the gate, not optional**. Neither `vitest` (type-stripping) nor `nuxt build` typechecks, so the shared types can silently drift away from the engine that uses them: `shared/rules/types.ts` is the client contract, and a stale union there means `redact` publishes something the client can't represent. Run it with the tests on any change to `shared/rules/`, `server/rules/` or the board components.
 
 ## Invariants (violating these = bug, no exceptions)
 

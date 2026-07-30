@@ -8,7 +8,8 @@
  * (click attacker → click an opponent panel; auto-assigns when there's only one
  * opponent). Command zones + commander tax + commander damage are rendered.
  */
-import type { ManaColor, ObjId, PlayerId, RulesClientCard } from '#shared/rules/types'
+import type { LegalActions, ManaColor, ObjId, PlayerId, PlayerRState, RulesClientCard } from '#shared/rules/types'
+import { emptyPool } from '#shared/rules/types'
 import { shouldAutoPassPriority } from '#shared/rules/autopass'
 // which picker resolves each targeted spell — shared so a unit test can assert full coverage
 import {
@@ -48,6 +49,13 @@ const opponents = computed<PlayerId[]>(() => {
   const rotated = [...s.turnOrder.slice(i + 1), ...s.turnOrder.slice(0, i)]
   return rotated.filter((p) => p !== you.value)
 })
+
+/**
+ * A seated player's public state. Every id the board renders comes from `turnOrder`, so the entry is
+ * always there; this keeps the templates free of non-null assertions.
+ */
+const pl = (pid: PlayerId): PlayerRState =>
+  st.value?.players[pid] ?? { id: pid, seat: 0, name: '', life: 0, poison: 0, manaPool: emptyPool(), restrictedMana: [], landsPlayedThisTurn: 0, noncreatureSpellsThisTurn: 0, extraLandsThisTurn: 0, spellsThisTurn: 0, hasLost: false, commanderId: null, commanderTax: 0, commanderDamage: {}, mullCount: 0, keptHand: false }
 
 const cardOf = (id: ObjId): RulesClientCard | null => st.value?.cards[id] ?? null
 const bf = (pid: PlayerId) => st.value?.zones.perPlayer[pid]?.battlefield ?? []
@@ -113,7 +121,7 @@ const selSacrifice = ref<Set<ObjId>>(new Set())
 const costSac = ref<{ objId: ObjId; abilityIndex: number; count: number; filter: 'creature' | 'treasure' } | null>(null)
 // cast-time additional cost (Village Rites / Thrill of Possibility): the permanents to sacrifice
 // and/or the cards to discard, collected before the mana payment panel opens
-const castExtra = ref<{ card: RulesClientCard; targets: (ObjId | PlayerId)[]; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature'; discard: number; free: boolean } | null>(null)
+const castExtra = ref<{ card: RulesClientCard; targets: (ObjId | PlayerId)[]; sacrifice: number; sacFilter: LegalActions['castExtraCost'][number]['sacFilter']; discard: number; free: boolean } | null>(null)
 const castExtraSacPick = ref<Set<ObjId>>(new Set())
 const castExtraDiscardPick = ref<Set<ObjId>>(new Set())
 const costSacPick = ref<Set<ObjId>>(new Set())
@@ -327,7 +335,7 @@ function confirmCast() {
 }
 /** first land card in your hand — discarded as the retrace additional cost (CR 702.81). */
 function firstLandInHand(): ObjId | undefined {
-  const ids = st.value?.zones.perPlayer[you.value]?.hand ?? []
+  const ids = myHandIds.value
   return ids.find((id) => (display.value[cardOf(id)?.defName ?? '']?.typeLine ?? '').includes('Land'))
 }
 /** first N cards in your graveyard other than `exclude` — exiled as the escape cost (CR 702.139). */
@@ -865,18 +873,8 @@ const canCascadeTargetPlayer = computed(
 )
 
 // ---------- activated abilities ----------
-type Activation = {
-  objId: ObjId
-  abilityIndex: number
-  targetKind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'graveyardCard' | null
-  cost: string
-  sacCost: number
-  sacFilter?: 'creature' | 'treasure'
-  taps?: boolean
-  sacSelf?: boolean
-  lifeCost: number
-  graveyardIds?: ObjId[]
-}
+/** exactly what redact publishes — derived so a new field/union never drifts out of sync here */
+type Activation = LegalActions['activations'][number]
 const activating = ref<Activation | null>(null)
 const extraCostOf = (id: ObjId) => legal.value?.castExtraCost.find((c) => c.objId === id) ?? null
 /** open the additional-cost picker; returns false when the card needs none */
@@ -1552,7 +1550,7 @@ onBeforeUnmount(() => {
               class="flex min-w-0 flex-1 basis-64 flex-col rounded-lg border p-2"
               :class="[
                 isActive(pid) ? 'border-primary/60 bg-primary/5' : 'border-default',
-                st.players[pid].hasLost ? 'opacity-40 grayscale' : '',
+                pl(pid).hasLost ? 'opacity-40 grayscale' : '',
               ]"
             >
               <div class="flex items-center gap-2">
@@ -1567,10 +1565,10 @@ onBeforeUnmount(() => {
                   @mouseenter="setHover(pid)"
                   @mouseleave="clearHover()"
                 >
-                  <span class="text-2xl font-bold tabular-nums">{{ st.players[pid].life }}</span>
-                  <span v-if="st.players[pid].poison" class="text-xs font-semibold text-green-500" title="Poison counters (10 = loss)">☠ {{ st.players[pid].poison }}</span>
+                  <span class="text-2xl font-bold tabular-nums">{{ pl(pid).life }}</span>
+                  <span v-if="pl(pid).poison" class="text-xs font-semibold text-green-500" title="Poison counters (10 = loss)">☠ {{ pl(pid).poison }}</span>
                   <span class="flex items-center gap-1 text-xs text-dimmed">
-                    {{ st.players[pid].name }}
+                    {{ pl(pid).name }}
                     <span
                       class="inline-block size-1.5 rounded-full"
                       :class="connected(pid) ? 'bg-success' : 'bg-neutral-500'"
@@ -1603,7 +1601,7 @@ onBeforeUnmount(() => {
                     :display="display[st.cards[id]!.defName ?? '']"
                     size="sm"
                     class="ring-1 ring-amber-500/50 rounded"
-                    :title="`${st.players[pid].name}'s commander · tax +${2 * cmdTax(pid)}`"
+                    :title="`${pl(pid).name}'s commander · tax +${2 * cmdTax(pid)}`"
                     @preview="hoverDisplay = $event"
                   />
                 </div>
@@ -1643,7 +1641,7 @@ onBeforeUnmount(() => {
             <div v-if="targeting" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
               Casting {{ nameOf(targeting.objId) }} — select a target
               ({{ targeting.spec === 'any' ? 'creature, player or planeswalker' : targeting.spec === 'player' ? 'a player' : targeting.spec === 'player-or-pw' ? 'a player or planeswalker' : targeting.spec === 'spell' ? 'a spell on the stack' : targeting.spec === 'permanent' ? 'any permanent' : 'creature' }})
-              <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="targeting = null">Cancel</UButton>
+              <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="() => { targeting = null }">Cancel</UButton>
             </div>
             <!-- mana payment: tap your own sources to pay, then Cast -->
             <div v-if="casting" class="flex flex-wrap items-center gap-2 rounded-lg border border-primary bg-primary/10 px-3 py-1.5 text-xs font-medium">
@@ -1725,7 +1723,7 @@ onBeforeUnmount(() => {
                 />
               </div>
               <div v-if="legal.triggerTargetOptional" class="flex justify-end">
-                <UButton size="xs" variant="ghost" color="neutral" @click="send({ type: 'r.chooseTargets', targets: [] })">
+                <UButton size="xs" variant="ghost" color="neutral" @click="() => { send({ type: 'r.chooseTargets', targets: [] }) }">
                   Decline
                 </UButton>
               </div>
@@ -1740,7 +1738,7 @@ onBeforeUnmount(() => {
                 size="xs"
                 variant="ghost"
                 color="neutral"
-                @click="send({ type: 'r.chooseTargets', targets: [] })"
+                @click="() => { send({ type: 'r.chooseTargets', targets: [] }) }"
               >Decline</UButton>
             </div>
             <div v-if="legal?.needsCascade" class="flex items-center gap-2 rounded-lg border border-violet-400 bg-violet-500/10 px-3 py-1.5 text-xs font-medium">
@@ -1753,7 +1751,7 @@ onBeforeUnmount(() => {
             <div v-if="activating" class="rounded-lg border border-rose-400 bg-rose-500/10 px-3 py-1.5 text-xs font-medium">
               Activating {{ nameOf(activating.objId) }} — choose a target
               ({{ activating.targetKind === 'creature' ? 'creature' : activating.targetKind === 'permanent' ? 'permanent' : activating.targetKind === 'player' ? 'player' : 'creature or player' }})
-              <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="activating = null">Cancel</UButton>
+              <UButton size="xs" variant="ghost" color="neutral" class="ml-2" @click="() => { activating = null }">Cancel</UButton>
             </div>
             <div v-if="equipping" class="rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-xs font-medium">
               Equipping {{ nameOf(equipping) }} — click one of your creatures
@@ -1905,7 +1903,7 @@ onBeforeUnmount(() => {
                 <UButton
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   icon="i-lucide-mountain"
-                  @click.stop="send({ type: 'r.playLand', objId: id })"
+                  @click.stop="() => { send({ type: 'r.playLand', objId: id }) }"
                 >Play land</UButton>
               </div>
             </div>
@@ -1933,7 +1931,7 @@ onBeforeUnmount(() => {
                   v-if="canPlayBackLand(id)"
                   size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
                   icon="i-lucide-mountain"
-                  @click.stop="send({ type: 'r.playLand', objId: id, back: true })"
+                  @click.stop="() => { send({ type: 'r.playLand', objId: id, back: true }) }"
                 >Play land side</UButton>
                 <UButton
                   v-if="channelOf(id)"
@@ -2037,7 +2035,7 @@ onBeforeUnmount(() => {
                 <span class="text-xs font-medium">
                   Select {{ mullNeed }} card{{ mullNeed > 1 ? 's' : '' }} to put on the bottom ({{ bottoming.size }}/{{ mullNeed }})
                 </span>
-                <UButton size="sm" variant="ghost" color="neutral" @click="bottomingActive = false">Back</UButton>
+                <UButton size="sm" variant="ghost" color="neutral" @click="() => { bottomingActive = false }">Back</UButton>
                 <UButton size="sm" :disabled="bottoming.size !== mullNeed" icon="i-lucide-check" @click="confirmKeep">
                   Bottom {{ mullNeed }} &amp; keep
                 </UButton>
@@ -2063,14 +2061,14 @@ onBeforeUnmount(() => {
                 v-else-if="legal?.needsPutBack"
                 color="primary"
                 :disabled="selPutBack.length !== legal.putBackCount"
-                @click="send({ type: 'r.putBack', objIds: selPutBack })"
+                @click="() => { send({ type: 'r.putBack', objIds: selPutBack }) }"
               >
                 Put back {{ selPutBack.length }}/{{ legal.putBackCount }} (first = top)
               </UButton>
               <UButton v-else-if="legal?.needsDiscard" color="warning" :disabled="selDiscard.size !== legal.discardCount" @click="confirmDiscard">
                 Discard {{ selDiscard.size }}/{{ legal.discardCount }}
               </UButton>
-              <UButton v-else :disabled="!legal?.canPass" :color="st.priorityPlayer === you ? 'primary' : 'neutral'" @click="send({ type: 'r.pass' })">
+              <UButton v-else :disabled="!legal?.canPass" :color="st.priorityPlayer === you ? 'primary' : 'neutral'" @click="() => { send({ type: 'r.pass' }) }">
                 {{ passLabel }}
               </UButton>
 
@@ -2168,7 +2166,7 @@ onBeforeUnmount(() => {
             New target for {{ legal.retargetSourceName }}
             <template v-if="legal.retargetKind">({{ legal.retargetKind === 'anyTarget' ? 'creature, player or planeswalker' : legal.retargetKind }})</template>
           </span>
-          <UButton size="xs" variant="ghost" color="neutral" @click="send({ type: 'r.retarget', targets: [] })">Keep current</UButton>
+          <UButton size="xs" variant="ghost" color="neutral" @click="() => { send({ type: 'r.retarget', targets: [] }) }">Keep current</UButton>
         </div>
       </div>
 
@@ -2183,7 +2181,7 @@ onBeforeUnmount(() => {
             variant="soft"
             @click="pickPitchExile(cid)"
           >{{ nameOf(cid) }}</UButton>
-          <UButton size="xs" variant="ghost" color="neutral" @click="pitching = null">Cancel</UButton>
+          <UButton size="xs" variant="ghost" color="neutral" @click="() => { pitching = null }">Cancel</UButton>
         </div>
       </div>
 
@@ -2200,7 +2198,7 @@ onBeforeUnmount(() => {
               :key="n"
               size="xs"
               :variant="n === legal.mayDrawMax ? 'solid' : 'soft'"
-              @click="send({ type: 'r.mayDraw', count: n })"
+              @click="() => { send({ type: 'r.mayDraw', count: n }) }"
             >{{ n === 0 ? 'None' : `Draw ${n}` }}</UButton>
           </div>
         </div>
@@ -2217,8 +2215,8 @@ onBeforeUnmount(() => {
             @preview="hoverDisplay = $event"
           />
           <div class="flex gap-2">
-            <UButton size="xs" @click="send({ type: 'r.revealTop', take: true })">Reveal and take</UButton>
-            <UButton size="xs" variant="ghost" color="neutral" @click="send({ type: 'r.revealTop', take: false })">Leave it</UButton>
+            <UButton size="xs" @click="() => { send({ type: 'r.revealTop', take: true }) }">Reveal and take</UButton>
+            <UButton size="xs" variant="ghost" color="neutral" @click="() => { send({ type: 'r.revealTop', take: false }) }">Leave it</UButton>
           </div>
         </div>
       </div>
@@ -2470,7 +2468,7 @@ onBeforeUnmount(() => {
             </template>
           </div>
           <div class="mt-3 flex justify-end">
-            <UButton size="sm" variant="ghost" color="neutral" @click="manaFilter = null">Cancel</UButton>
+            <UButton size="sm" variant="ghost" color="neutral" @click="() => { manaFilter = null }">Cancel</UButton>
           </div>
         </div>
       </div>

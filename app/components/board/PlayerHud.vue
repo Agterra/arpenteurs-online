@@ -70,7 +70,8 @@ const allCommanders = computed(() => {
   const rows: { key: string; label: string }[] = []
   for (const p of store.seatedPlayers) {
     p.commanderIds.forEach((cardId, slot) => {
-      const name = store.state!.cards[cardId]?.display?.name ?? `${p.name}'s commander ${slot + 1}`
+      // an empty commander slot has no card id yet — fall back to the seat label
+      const name = (cardId ? store.state!.cards[cardId]?.display?.name : null) ?? `${p.name}'s commander ${slot + 1}`
       rows.push({ key: `${p.id}#${slot}`, label: name })
     })
   }

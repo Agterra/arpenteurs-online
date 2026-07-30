@@ -183,6 +183,9 @@ const fetchLand = (name: string, a: string, b: string): CardDefinition => ({
  * plus "As this land enters, you may pay 2 life. If you don't, it enters tapped." The real basic
  * land subtypes matter — a fetch land can find one.
  */
+/** display names for the five colours (a colour CHOICE never offers colourless) */
+const COLOR_NAMES: Record<ManaColor, string> = { W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green', C: 'colorless' }
+
 const shockland = (name: string, a: ManaColor, b: ManaColor, subtypes: [string, string]): CardDefinition => ({
   name,
   types: ['Land'],
@@ -1139,7 +1142,7 @@ export const STARTER_SET: CardDefinition[] = [
     // "Target creature you control gains protection from the color of your choice until end of turn. Scry 1."
     // Modelled as 5 modes (one per colour) — reuses the modal mode-picker for the colour choice.
     modes: (['W', 'U', 'B', 'R', 'G'] as ManaColor[]).map((color) => ({
-      label: `Protection from ${({ W: 'white', U: 'blue', B: 'black', R: 'red', G: 'green' } as const)[color]}`,
+      label: `Protection from ${COLOR_NAMES[color]}`,
       targets: [{ kind: 'creature' as const, count: 1, filter: { controller: 'you' as const } }],
       effect: sequence(grantProtection([color]), scry(1)),
     })),

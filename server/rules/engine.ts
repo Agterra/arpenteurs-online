@@ -3208,7 +3208,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         }
         if (tax > 0) {
           const pool = state.players[actor]!.manaPool
-          const payment = planPayment({ generic: tax, colored: emptyPool() }, pool)
+          const payment = planPayment({ generic: tax, colored: emptyPool(), symbols: [], hasX: false }, pool)
           if (!payment.covered) throw new RulesError('CANT_PAY', `Attacking costs {${tax}} (short ${payment.shortfall})`)
           for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) pool[c] -= payment.deduct[c]
           logLine(state, `${name(state, actor)} pays {${tax}} to attack.`)

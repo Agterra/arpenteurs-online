@@ -3,7 +3,7 @@
  * the ONLY way card code mutates the game (they defer to state.ts helpers so
  * zone/SBA invariants hold). Grows every milestone.
  */
-import type { Ability, EffectContext, Effect } from './dsl'
+import type { Ability, CardDefinition, EffectContext, Effect } from './dsl'
 import { hasCreatureType } from './dsl'
 import type { CardType, Keyword, ManaColor, ObjId, PlayerId } from '#shared/rules/types'
 import { parseManaCost } from '#shared/utils/manaCost'
@@ -450,7 +450,10 @@ export const searchLibrary = (opts: {
       return true
     }
     if (!def.types.includes('Land')) return false
-    if (typeof opts.filter === 'object') return (def.subtypes ?? []).some((st) => opts.filter.landSubtypes.includes(st))
+    if (typeof opts.filter === 'object' && 'landSubtypes' in opts.filter) {
+      const wanted = opts.filter.landSubtypes
+      return (def.subtypes ?? []).some((st) => wanted.includes(st))
+    }
     return def.supertypes?.includes('Basic') ?? false // 'basicLand'
   })
   const who = ctx.state.players[ctx.controllerId]!.name
