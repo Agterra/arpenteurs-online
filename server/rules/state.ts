@@ -118,6 +118,15 @@ export function moveTo(state: RulesGameState, objId: ObjId, zone: RulesZone, opt
     // choice and a shockland's pay-life choice entering together are asked one after the other
     if (def.entersChooseType)
       (state.entersChoiceQueue ??= []).push({ player: obj.controllerId, objId: obj.id, life: 0, chooseType: true })
+    // Mox Diamond (CR 614.12): "if this would enter, you may discard a land card instead; if you
+    // don't, put it into its owner's graveyard" — the same queue, on every entry path
+    if (def.entersUnlessDiscard)
+      (state.entersChoiceQueue ??= []).push({
+        player: obj.controllerId,
+        objId: obj.id,
+        life: 0,
+        discardOrBin: def.entersUnlessDiscard,
+      })
     // check lands: "enters tapped UNLESS you control an Island or a Mountain" — evaluated here so
     // every entry path (played, fetched, reanimated, moved by hand) agrees
     const need = def.entersTappedUnlessControlLandType

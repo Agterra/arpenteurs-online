@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**619 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**622 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -342,6 +342,7 @@
 - Mosswort Bridge
 - Mountain
 - Mox Amber
+- Mox Diamond
 - Mox Opal
 - Mulldrifter
 - Murder
@@ -450,6 +451,7 @@
 - Savannah Lions
 - Scalding Tarn
 - Scrubland
+- Scute Swarm
 - Sea of Clouds
 - Search for Tomorrow
 - Seaside Citadel
@@ -542,6 +544,7 @@
 - Temple of Triumph
 - Terminate
 - Terramorphic Expanse
+- The Great Henge
 - The One Ring
 - The Ozolith
 - Thought Scour

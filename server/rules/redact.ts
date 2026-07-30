@@ -548,7 +548,10 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
           phc.filter === 'land'
             ? phc.dest === 'battlefield'
               ? 'put a land from your hand onto the battlefield'
-              : 'exile a land from your hand'
+              : phc.dest === 'graveyard'
+                ? // Mox Diamond: declining bins the permanent, so say what is at stake
+                  `discard a land from your hand${phc.binSourceIfNone && phc.sourceId && state.objects[phc.sourceId] ? ` to keep ${getDef(state.objects[phc.sourceId]!.defName).name}` : ''}`
+                : 'exile a land from your hand'
             : phc.filter === 'nonartifactNonland'
               ? 'exile a nonartifact, nonland card from your hand'
               : 'choose a card from your hand',
@@ -792,7 +795,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     // player then picks X up to what their pool covers. Apply any dynamic generic cost
     // reduction (e.g. Blasphemous Act) so the reduced affordability is reflected here.
     const castCost = parseManaCost(def.manaCost)
-    if (def.costReduction) castCost.generic = Math.max(0, castCost.generic - def.costReduction(state))
+    if (def.costReduction) castCost.generic = Math.max(0, castCost.generic - def.costReduction(state, viewer))
     // and the reduction the viewer's own permanents give it (Foundry Inspector, the Medallions) —
     // same function as r.cast, so the highlight can't drift from what the server will accept
     const fromPermanents = permanentCostReduction(state, viewer, def)

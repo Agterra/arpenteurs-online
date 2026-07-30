@@ -565,6 +565,21 @@ function drainEntersChoices(state: RulesGameState): boolean {
       state.pendingTypeChoice = { player: next.player, objId: next.objId }
       return true
     }
+    if (next.discardOrBin) {
+      // Mox Diamond (CR 614.12): "you may discard a land card instead; if you don't, put it into its
+      // owner's graveyard" — the hand-choice machinery already renders the picker
+      state.pending = { kind: 'handChoice', player: next.player }
+      state.pendingHandChoice = {
+        player: next.player,
+        count: next.discardOrBin.count,
+        filter: next.discardOrBin.filter,
+        dest: 'graveyard',
+        optional: true,
+        sourceId: next.objId,
+        binSourceIfNone: true,
+      }
+      return true
+    }
     if (next.riot) {
       // RIOT (CR 702.137): a +1/+1 counter or haste (r.riot)
       state.pending = { kind: 'riot', player: next.player }
@@ -1763,16 +1778,20 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
       if (getDef(p.defName).landEnters && defIsLand(getDef(subject.defName)) && subject.controllerId === p.controllerId)
         queueTriggeredAbility(state, p.id, 'landfall')
       const ab = getDef(p.defName).enters
-      if (!ab) continue
       const isSelf = p.id === subjectId
-      const w = ab.watch
-      const fires = !w
-        ? isSelf && !subject.faceDown // plain ETB — a face-down creature has no own ETB (CR 707.2)
-        : subjectIsCreature &&
-          !(w.excludeSelf && isSelf) &&
-          !(w.controllerOnly && subject.controllerId !== p.controllerId) &&
-          // "whenever a creature WITH POWER 4 OR GREATER you control enters" (Garruk's Uprising)
-          (w.minPower == null || currentPower(state, subject) >= w.minPower)
+      const w = ab?.watch
+      // NOTE: this must NOT bail out when the permanent has no `enters` ability — a card whose only
+      // ETB-adjacent ability is the separate `entersWatch` below (The Great Henge) would never fire.
+      const fires = !ab
+        ? false
+        : !w
+          ? isSelf && !subject.faceDown // plain ETB — a face-down creature has no own ETB (CR 707.2)
+          : subjectIsCreature &&
+            !(w.excludeSelf && isSelf) &&
+            !(w.controllerOnly && subject.controllerId !== p.controllerId) &&
+            // "whenever a creature WITH POWER 4 OR GREATER you control enters" (Garruk's Uprising)
+            (w.minPower == null || currentPower(state, subject) >= w.minPower) &&
+            !(w.nontokenOnly && isTokenDefName(subject.defName))
       if (fires) queueTriggeredAbility(state, p.id, 'etb')
       // a separate ETB WATCHER, for a card that also has its own enters trigger (Garruk's Uprising)
       const watcher = getDef(p.defName).entersWatch
@@ -1783,9 +1802,12 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
         subjectIsCreature &&
         !(ww.excludeSelf && isSelf) &&
         !(ww.controllerOnly && subject.controllerId !== p.controllerId) &&
-        (ww.minPower == null || currentPower(state, subject) >= ww.minPower)
+        (ww.minPower == null || currentPower(state, subject) >= ww.minPower) &&
+        !(ww.nontokenOnly && isTokenDefName(subject.defName))
       )
-        queueTriggeredAbility(state, p.id, 'etbWatch')
+        // the ENTERING creature rides along as an implicit target, so a watcher can act on it
+        // ("put a +1/+1 counter on it and draw a card" — The Great Henge)
+        queueTriggeredAbility(state, p.id, 'etbWatch', [subjectId])
     }
   }
 }
@@ -3148,7 +3170,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       }
       // static generic cost reduction (CR 601.2f) — e.g. Blasphemous Act "{1} less per creature".
       // Applied after cost increases, before convoke; floored at 0, coloured pips untouched.
-      if (!adv && !splitHalf && def.costReduction) cost.generic = Math.max(0, cost.generic - def.costReduction(state))
+      if (!adv && !splitHalf && def.costReduction) cost.generic = Math.max(0, cost.generic - def.costReduction(state, actor))
       // cost reduction from the caster's PERMANENTS (Foundry Inspector, the Medallions)
       if (!adv && !splitHalf) {
         const fromPermanents = permanentCostReduction(state, actor, def)
@@ -4101,12 +4123,15 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           state.objects[phc.sourceId]!.imprintedDefName = state.objects[id]!.defName
         }
         const what = objName(state, id)
-        moveTo(state, id, phc.dest)
+        if (phc.dest === 'graveyard') moveToGraveyard(state, id) // a DISCARD (Mox Diamond's cost)
+        else moveTo(state, id, phc.dest)
         logLine(
           state,
           phc.dest === 'battlefield'
             ? `${name(state, actor)} puts ${what} onto the battlefield.`
-            : `${name(state, actor)} exiles ${what}${phc.imprint ? ' (imprint)' : ''}.`,
+            : phc.dest === 'graveyard'
+              ? `${name(state, actor)} discards ${what}.`
+              : `${name(state, actor)} exiles ${what}${phc.imprint ? ' (imprint)' : ''}.`,
         )
         if (phc.dest === 'battlefield') {
           fireEntersTriggers(state, id)
@@ -4114,7 +4139,17 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         }
       }
       if (!ids.length) logLine(state, `${name(state, actor)} declines.`)
-      if (!state.pending) grantPriority(state, state.activePlayer)
+      // Mox Diamond: the discard WAS the cost of entering — without it the permanent is put into its
+      // owner's graveyard (CR 614.12; it was never really on the battlefield, so nothing triggers off
+      // its "death" beyond the usual graveyard move)
+      if (phc.binSourceIfNone && !ids.length && phc.sourceId) {
+        const src = state.objects[phc.sourceId]
+        if (src && src.zone === 'battlefield') {
+          logLine(state, `${objName(state, src.id)} is put into its owner's graveyard (nothing discarded).`)
+          moveToGraveyard(state, src.id)
+        }
+      }
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
       break
     }
 
@@ -4220,6 +4255,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         remintForHiddenEntry(state, prt.cardId, false)
         logLine(state, `${name(state, actor)} reveals ${label} and puts it into their hand (${prt.sourceName}).`)
       } else {
+        // the card stays on top — but its id was published to this player during the peek, so it must
+        // be re-minted or that player could keep tracking it while it is hidden again (invariant #3,
+        // the same reason the scry handler re-mints the library once its peek closes)
+        remintForHiddenEntry(state, prt.cardId, true)
         logLine(state, `${name(state, actor)} leaves the card on top of their library.`)
       }
       if (!state.pending) grantPriority(state, state.activePlayer)

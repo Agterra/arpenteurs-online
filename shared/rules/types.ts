@@ -425,10 +425,15 @@ export interface RulesGameState {
     player: PlayerId
     count: number
     filter: 'land' | 'nonartifactNonland' | 'any'
-    dest: 'battlefield' | 'exile'
+    dest: 'battlefield' | 'exile' | 'graveyard'
     optional: boolean
     sourceId?: ObjId
     imprint?: boolean
+    /**
+     * Mox Diamond: the choice IS the permanent's as-enters cost — if the player discards nothing,
+     * `sourceId` is put into its owner's graveyard instead of staying on the battlefield.
+     */
+    binSourceIfNone?: boolean
   } | null
   /**
    * PROLIFERATE (CR 701.28): "Choose any number of permanents and/or players with a counter on them,
@@ -573,7 +578,15 @@ export interface RulesGameState {
     anyPlayersTurn?: boolean
   }[]
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
-  entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number; chooseType?: boolean; riot?: boolean }[]
+  entersChoiceQueue: {
+    player: PlayerId
+    objId: ObjId
+    life: number
+    chooseType?: boolean
+    riot?: boolean
+    /** Mox Diamond: "you may discard a land card instead; if you don't, put it into the graveyard" */
+    discardOrBin?: { filter: 'land'; count: number }
+  }[]
   /**
    * Roaming Throne: extra instances of a triggered ability that must go on the stack "an additional time".
    * A non-targeted ability is simply pushed twice; one that opens a TARGET CHOICE waits here until that

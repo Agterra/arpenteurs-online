@@ -84,6 +84,7 @@ import {
   lookTopTakeIfChosenType,
   hideaway,
   playHiddenCard,
+  copySelfIfLandsAtLeast,
   lookTransformIfInstantSorcery,
   loseAllAbilities,
   loseLife,
@@ -5022,6 +5023,58 @@ export const STARTER_SET: CardDefinition[] = [
       { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') },
       { kind: 'activated', cost: { mana: '{G}', tap: true }, effect: playHiddenCard({ kind: 'totalPower', n: 10 }) },
     ],
+  },
+  {
+    name: 'The Great Henge',
+    types: ['Artifact'],
+    supertypes: ['Legendary'],
+    manaCost: '{8}{G}{G}',
+    colors: ['G'],
+    // "This spell costs {X} less to cast, where X is the greatest power among creatures you control.
+    //  {T}: You gain 2 life and add {G}{G}. / Whenever a nontoken creature you control enters, put a
+    //  +1/+1 counter on it and draw a card."
+    costReduction: (state, controllerId) =>
+      battlefieldCreatures(state, controllerId).reduce((n, c) => Math.max(n, currentPower(state, c)), 0),
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['G'],
+        effect: sequence(gainLife(2), addMana('G'), addMana('G')),
+      },
+    ],
+    entersWatch: {
+      watch: { scope: 'anyCreature', controllerOnly: true, nontokenOnly: true },
+      // the entering creature arrives as this trigger's implicit target
+      effect: sequence(addCounters('+1/+1', 1), drawCards(1)),
+    },
+  },
+  {
+    name: 'Mox Diamond',
+    types: ['Artifact'],
+    supertypes: ['Legendary'],
+    manaCost: '{0}',
+    // "If Mox Diamond would enter, you may discard a land card instead. If you don't, put it into its
+    //  owner's graveyard. / {T}: Add one mana of any color."
+    entersUnlessDiscard: { filter: 'land', count: 1 },
+    abilities: [
+      { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['W', 'U', 'B', 'R', 'G'], chooseColor: true, effect: addMana('W') },
+    ],
+  },
+  {
+    name: 'Scute Swarm',
+    types: ['Creature'],
+    subtypes: ['Insect'],
+    manaCost: '{2}{G}',
+    colors: ['G'],
+    power: 1,
+    toughness: 1,
+    // "Landfall — Whenever a land you control enters, if you control six or more lands, create a token
+    //  that's a copy of Scute Swarm. Otherwise, create a 1/1 green Insect creature token."
+    landEnters: {
+      effect: copySelfIfLandsAtLeast(6, { name: 'Insect', power: 1, toughness: 1, subtypes: ['Insect'] }),
+    },
   },
   {
     name: 'Wild Growth',

@@ -814,7 +814,21 @@ export const counterTargetGrantingTreasures = (count: number): Effect => counter
 
 /** Mint `count` real (mortal) tokens onto `ownerId`'s battlefield. */
 function spawnTokens(state: EffectContext['state'], ownerId: PlayerId, spec: TokenSpec, count: number) {
-  const defName = registerImplementedToken(spec)
+  spawnTokensByDefName(state, ownerId, registerImplementedToken(spec), spec.name, count)
+}
+
+/**
+ * Mint `count` tokens of an ALREADY-REGISTERED token definition. Shared by the plain token effects and
+ * by the copy-token ones (Scute Swarm, Helm of the Host), so a copy token goes through the same
+ * doubling replacement effects (CR 616) and fires the same ETB triggers.
+ */
+function spawnTokensByDefName(
+  state: EffectContext['state'],
+  ownerId: PlayerId,
+  defName: string,
+  label: string,
+  count: number,
+) {
   if (count > 0) state.players[ownerId]!.createdTokenThisTurn = true // Idol of Oblivion's condition
   // token-creation REPLACEMENT effects (CR 616): Doubling Season / Parallel Lives / Anointed
   // Procession each double the count, and several stack multiplicatively
@@ -824,7 +838,7 @@ function spawnTokens(state: EffectContext['state'], ownerId: PlayerId, spec: Tok
   }).length
   if (doublers && count > 0) {
     const doubled = count * 2 ** doublers
-    logLine(state, `${state.players[ownerId]!.name} creates ${doubled} ${spec.name} tokens instead of ${count}.`)
+    logLine(state, `${state.players[ownerId]!.name} creates ${doubled} ${label} tokens instead of ${count}.`)
     count = doubled
   }
   const created: ObjId[] = []
@@ -847,7 +861,7 @@ function spawnTokens(state: EffectContext['state'], ownerId: PlayerId, spec: Tok
     state.zones.perPlayer[ownerId]!.battlefield.push(id)
     created.push(id)
   }
-  logLine(state, `${state.players[ownerId]!.name} creates ${count} ${spec.name} token${count > 1 ? 's' : ''}.`)
+  logLine(state, `${state.players[ownerId]!.name} creates ${count} ${label} token${count > 1 ? 's' : ''}.`)
   // Tokens ENTER the battlefield → fire ETB triggers (self + "whenever a creature
   // you control/another creature enters" watchers: Soul Warden, Impact Tremors…).
   for (const id of created) fireEntersTriggers(state, id)
@@ -2001,6 +2015,26 @@ export const playHiddenCard = (condition: { kind: 'totalPower'; n: number }): Ef
     sourceName,
     isLand: getDef(hidden.defName).types.includes('Land'),
   }
+}
+
+/**
+ * Scute Swarm: "Landfall — Whenever a land you control enters, if you control six or more lands,
+ * create a token that's a copy of Scute Swarm. Otherwise, create a 1/1 green Insect creature token."
+ * The copy is a full definition copy (registerCopyToken), so each copy has the landfall trigger too —
+ * which is the card's whole point.
+ */
+export const copySelfIfLandsAtLeast = (n: number, otherwise: TokenSpec): Effect => (ctx) => {
+  const src = ctx.state.objects[ctx.sourceId]
+  const lands = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.filter((id) =>
+    getDef(ctx.state.objects[id]!.defName).types.includes('Land'),
+  ).length
+  if (lands < n || !src) {
+    spawnTokens(ctx.state, ctx.controllerId, otherwise, 1)
+    return
+  }
+  const selfName = getDef(src.defName).name
+  logLine(ctx.state, `${selfName} creates a token copy of itself (${lands} lands).`)
+  spawnTokensByDefName(ctx.state, ctx.controllerId, registerCopyToken(getDef(src.defName), {}), `${selfName} copy`, 1)
 }
 
 /** Run several effects in order. */

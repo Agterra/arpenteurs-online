@@ -76,7 +76,12 @@ describe("CARD56 — Herald's Horn", () => {
     putOnTop(state, A, bear)
     until(state, (s) => s.pending?.kind === 'revealTop', 'the upkeep look')
     act(state, A, { type: 'r.revealTop', take: false })
-    expect(state.objects[bear]!.zone).toBe('library')
+    // the card stays on top of the library — under a FRESH id, because the peek published the old one
+    // to this player (invariant #3; the leak fuzzer caught the version that kept it — see CARD69)
+    expect(state.objects[bear]).toBeUndefined()
+    const top = state.zones.perPlayer[A]!.library[0]!
+    expect(state.objects[top]!.zone).toBe('library')
+    expect(getDef(state.objects[top]!.defName).name).toBe('Grizzly Bears')
     expect(state.log.some((l) => /leaves the card on top/.test(l))).toBe(true)
   })
 

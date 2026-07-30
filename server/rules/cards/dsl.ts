@@ -271,6 +271,8 @@ export interface TriggeredAbility {
     excludeSelf?: boolean
     /** "whenever a creature WITH POWER 4 OR GREATER you control enters" (Garruk's Uprising) */
     minPower?: number
+    /** "whenever a NONTOKEN creature you control enters" (The Great Henge) */
+    nontokenOnly?: boolean
   }
   /**
    * An "intervening if" clause (Land Tax: "if an opponent controls more lands than you"). Checked as
@@ -812,6 +814,13 @@ export interface CardDefinition {
    */
   entersTappedUnlessPayLife?: number
   /**
+   * As-enters replacement with a COST IN CARDS (CR 614.12 — Mox Diamond): "If this permanent would
+   * enter, you may discard a land card instead. If you don't, put it into its owner's graveyard."
+   * The engine queues a hand choice for its controller on any entry path; declining (or holding no
+   * matching card) puts the permanent into the graveyard.
+   */
+  entersUnlessDiscard?: { filter: 'land'; count: number }
+  /**
    * Aura / Equipment: the continuous bonus granted to the ATTACHED host while this
    * permanent is attached to it (CR 613 layers 7c P/T + 6 keywords), plus optional
    * can't-attack / can't-block restrictions (Pacifism). An Aura (subtype 'Aura')
@@ -853,7 +862,7 @@ export interface CardDefinition {
    * cost increases (tax / X / kicker / buyback), before convoke. Mirrored in redact's
    * castability check so the client highlights the reduced affordability.
    */
-  costReduction?: (state: RulesGameState) => number
+  costReduction?: (state: RulesGameState, controllerId: PlayerId) => number
   /**
    * Ward (CR 702.21): "Whenever this permanent becomes the target of a spell or ability an
    * opponent controls, counter it unless that player pays [cost]." Set to the mana part of

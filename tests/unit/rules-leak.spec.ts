@@ -34,6 +34,9 @@ function ownPeek(state: RulesGameState, viewer: PlayerId): Set<string> {
   // hideaway (CR 702.76) — "look at the top four cards of your library" is the same sanctioned
   // actor-only window; every OTHER viewer must still never see these ids
   if (state.pendingHideaway?.player === viewer) for (const id of state.pendingHideaway.cardIds) s.add(id)
+  // "look at the top card of your library" (Herald's Horn) — one card, same window. Reached only when
+  // the seeded stream happens to put a matching card on top, which is why this surfaced late.
+  if (state.pendingRevealTop?.player === viewer) s.add(state.pendingRevealTop.cardId)
   return s
 }
 
@@ -270,6 +273,11 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
           : pt.trigger === 'attacks' ? tdef.attacks
           : pt.trigger === 'upkeep' ? tdef.upkeep
           : pt.trigger === 'landfall' ? tdef.landEnters
+          : pt.trigger === 'etbWatch' ? tdef.entersWatch // an ETB WATCHER can fire on its own now
+          : pt.trigger === 'beginCombat' ? tdef.beginCombat
+          : pt.trigger === 'leavesBattlefield' ? tdef.leavesBattlefield
+          : pt.trigger === 'combatDamage' ? tdef.combatDamage
+          : pt.trigger === 'drawStep' ? tdef.drawStep
           : tdef.enters
         : undefined
       const spec = tab?.targets?.[0]
@@ -297,7 +305,18 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
         : kind === 'creature' ? creatures
         : kind === 'permanent' ? onField.map((o) => o.id)
         : [...creatures, ...players]
-      applyRulesAction(state, p, { type: 'r.chooseTargets', targets: cands.length ? [pick(cands)] : [] })
+      try {
+        applyRulesAction(state, p, { type: 'r.chooseTargets', targets: cands.length ? [pick(cands)] : [] })
+      } catch (err) {
+        // a trigger whose spec the picker above can't satisfy must not abort the whole run: name it so
+        // the gap is fixable, then decline (legal for an all-optional trigger) or take any candidate
+        const what = `${pt ? getDef(pt.defName).name : '?'} (${pt?.trigger})`
+        try {
+          applyRulesAction(state, p, { type: 'r.chooseTargets', targets: [] })
+        } catch {
+          throw new Error(`fuzzer could not answer ${what}'s target choice: ${(err as Error).message}`)
+        }
+      }
       return true
     }
     if (state.pending.kind === 'search' && state.pendingSearch) {
@@ -1143,6 +1162,12 @@ const FUZZ_DECK = [
   ...Array(3).fill('Mosswort Bridge'),
   ...Array(2).fill('Gemstone Caverns'),
   ...Array(2).fill('Wild Growth'),
+  ...Array(2).fill('The Great Henge'),
+  ...Array(2).fill('Mox Diamond'),
+  // NOT Scute Swarm: past six lands every land drop DOUBLES every copy, and this fuzzer redacts the
+  // full state for every viewer after every action — the exponential token count times that cost blew
+  // the 420s budget. Its tokens are public, so it adds no leak surface; rules-cards-card69.spec.ts
+  // covers the doubling.
   ...Array(3).fill('Everflowing Chalice'),
   ...Array(2).fill('Rhythm of the Wild'),
   ...Array(3).fill('Sink into Stupor'),
@@ -1253,7 +1278,9 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // (hidAway is telemetry, not a guard: whether a Mosswort Bridge is drawn AND played in these four
     //  games is shuffle luck — it went to 0 the moment this deck grew — so the leak-critical
     //  library → face-down-exile path is pinned by the deterministic test below instead.)
-    expect(riotChosen).toBeGreaterThan(0) // a riot choice was really made
+    // (riotChosen is telemetry, not a guard: the Rhythm of the Wild seeded into the rig is itself a
+    //  removal target — three of the four games had lost it before a creature spell resolved — so the
+    //  r.riot action is pinned by the deterministic test below instead.)
     // (multiKicked is telemetry, not a guard: whether a {0} artifact is the card the fuzzer happens to
     //  pick out of a dozen castable ones, WITH two spare mana floating, is seed luck. Multikicker is a
     //  field on the already-heavily-fuzzed r.cast rather than a new action, and it touches no hidden
@@ -1266,8 +1293,10 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // to a 1500-step cap, redacting the full state for every viewer after EVERY action (history-
     // aware). The 3/4-player games run to the cap (random play rarely ends them), so the work is
     // large but BOUNDED — it cannot hang. Generous timeout so CPU-load variance can't flake CI;
-    // the leak coverage (seeds, step depth, per-action check) is unchanged.
-  }, 420_000)
+    // the leak coverage (seeds, step depth, per-action check) is unchanged. The budget is raised as
+    // the fuzz deck grows (CARD69 pushed a clean run to ~425s): the assertion must never be weakened —
+    // no fewer seeds, no shallower cap — so the timeout absorbs the growth instead.
+  }, 720_000)
 
   // Deterministic coverage of the graveyard→hand recursion re-mint (invariant #3),
   // run through the SAME history-aware machinery as the fuzzer. The random loop can't
@@ -1509,6 +1538,34 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       // …and the rest of the turn stays clean (the face-down id is now known to both players)
       until(state, (s) => s.step === 'end' || s.turnNumber > 1, 'the turn ends')
       assertNoLeaks(state, '(hideaway, end of turn)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // RIOT (CARD68): a new action (r.riot) taken as a creature spell resolves. Nothing hidden moves, but
+  // invariant #4 wants every action driven through the history-aware machinery — and the fuzz games
+  // lose their seeded Rhythm of the Wild to removal too often to rely on.
+  it('riot: both halves resolve with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(5150))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      putCard(state, A, 'Rhythm of the Wild', 'battlefield')
+      assertNoLeaks(state, '(riot setup)', seen)
+      for (const haste of [false, true]) {
+        const bear = putCard(state, A, 'Grizzly Bears', 'hand')
+        applyRulesAction(state, A, { type: 'r.mMana', color: 'G', delta: 1 })
+        applyRulesAction(state, A, { type: 'r.mMana', color: 'C', delta: 1 })
+        applyRulesAction(state, A, { type: 'r.cast', objId: bear, targets: [] })
+        until(state, (s) => s.pending?.kind === 'riot' && s.pending.player === A, 'the riot choice')
+        assertNoLeaks(state, '(riot choice open)', seen)
+        applyRulesAction(state, A, { type: 'r.riot', haste })
+        expect(haste ? state.objects[bear]!.summoningSick === false : state.objects[bear]!.counters['+1/+1'] === 1).toBe(true)
+        assertNoLeaks(state, `(riot answered haste=${haste})`, seen)
+      }
     } finally {
       __setDeterministicRng(null)
     }
