@@ -351,12 +351,25 @@ export function drawOne(state: RulesGameState, player: PlayerId) {
   // never for the pre-game draws (status is 'mulligans' then). Pushed straight onto the stack like
   // the dies triggers above; `castPayer` is the player who drew, i.e. who may pay the tax.
   if (state.status !== 'active') return
+  // count each player's draws inside their OWN draw step: "except the first card they draw in each of
+  // their draw steps" (Orcish Bowmasters) means the turn-based draw is free and every extra one fires
+  const inOwnDrawStep = state.step === 'draw' && state.activePlayer === player
+  if (inOwnDrawStep) state.players[player]!.drawsThisDrawStep = (state.players[player]!.drawsThisDrawStep ?? 0) + 1
+  const isFirstDrawStepDraw = inOwnDrawStep && state.players[player]!.drawsThisDrawStep === 1
   for (const pid of state.turnOrder) {
     for (const id of state.zones.perPlayer[pid]!.battlefield) {
       const p = state.objects[id]
       const ab = p && getDef(p.defName).drawnCard
       if (!p || !ab || p.phasedOut) continue
       if (ab.watch?.opponentsOnly && p.controllerId === player) continue
+      if (ab.watch?.exceptFirstInDrawStep && isFirstDrawStepDraw) continue
+      // a TARGETED draw watcher (Orcish Bowmasters: "deals 1 damage to any target") has to go through
+      // the normal trigger path so its controller is asked to choose; the untargeted "unless that
+      // player pays" shape (Smothering Tithe) keeps the direct push, which carries `castPayer`
+      if (ab.targets?.length) {
+        queueTriggeredAbility(state, p.id, 'draw')
+        continue
+      }
       state.zones.stack.push({
         id: mintCardId(),
         kind: 'ability',

@@ -284,6 +284,12 @@ export interface PlayerRState {
     creatureSpellsOnly?: boolean
   }[]
   landsPlayedThisTurn: number
+  /**
+   * How many cards this player has drawn inside their OWN draw step this turn — the counter behind
+   * "except the first card they draw in each of their draw steps" (Orcish Bowmasters). Reset when their
+   * draw step begins, so an extra draw step (Howling Mine effects) starts counting again.
+   */
+  drawsThisDrawStep?: number
   /** "Activate only if you created a token this turn." (Idol of Oblivion) — reset at your untap step */
   createdTokenThisTurn?: boolean
   /**

@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**622 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**625 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -335,6 +335,7 @@
 - Mind Spring
 - Mind Stone
 - Misty Rainforest
+- Mithril Coat
 - Monastery Swiftspear
 - Morbid Opportunist
 - Morphic Pool
@@ -367,6 +368,7 @@
 - Nyxborn Rollicker
 - Opt
 - Opulent Palace
+- Orcish Bowmasters
 - Ornithopter of Paradise
 - Orzhov Basilica
 - Orzhov Guildgate
@@ -379,6 +381,7 @@
 - Pact of Negation
 - Paladin en-Vec
 - Pale Bears
+- Panharmonicon
 - Parallel Lives
 - Patchwork Banner
 - Path of Ancestry

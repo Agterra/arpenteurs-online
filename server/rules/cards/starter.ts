@@ -85,6 +85,8 @@ import {
   hideaway,
   playHiddenCard,
   copySelfIfLandsAtLeast,
+  amass,
+  attachToTarget,
   lookTransformIfInstantSorcery,
   loseAllAbilities,
   loseLife,
@@ -5023,6 +5025,51 @@ export const STARTER_SET: CardDefinition[] = [
       { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') },
       { kind: 'activated', cost: { mana: '{G}', tap: true }, effect: playHiddenCard({ kind: 'totalPower', n: 10 }) },
     ],
+  },
+  {
+    name: 'Panharmonicon',
+    types: ['Artifact'],
+    manaCost: '{4}',
+    // "If an artifact or creature entering the battlefield causes a triggered ability of a permanent you
+    //  control to trigger, that ability triggers an additional time."
+    doublesEnterTriggers: true,
+  },
+  {
+    name: 'Orcish Bowmasters',
+    types: ['Creature'],
+    subtypes: ['Orc', 'Archer'],
+    manaCost: '{1}{B}',
+    colors: ['B'],
+    power: 1,
+    toughness: 1,
+    keywords: ['flash'],
+    // "Flash. When Orcish Bowmasters enters and whenever an opponent draws a card except the first one
+    //  they draw in each of their draw steps, this creature deals 1 damage to any target. Then amass
+    //  Orcs 1."
+    enters: {
+      targets: [{ kind: 'anyTarget', count: 1 }],
+      effect: sequence(dealDamage(1), amass('Orc', 1)),
+    },
+    drawnCard: {
+      watch: { opponentsOnly: true, exceptFirstInDrawStep: true },
+      targets: [{ kind: 'anyTarget', count: 1 }],
+      effect: sequence(dealDamage(1), amass('Orc', 1)),
+    },
+  },
+  {
+    name: 'Mithril Coat',
+    types: ['Artifact'],
+    subtypes: ['Equipment'],
+    manaCost: '{3}',
+    keywords: ['flash'],
+    // "Flash. When Mithril Coat enters, attach it to target legendary creature you control. / Equipped
+    //  creature gets +0/+1 and has indestructible. / Equip {3}"
+    enters: {
+      targets: [{ kind: 'creature', count: 1, filter: { controller: 'you', supertypes: ['Legendary'] } }],
+      effect: attachToTarget(),
+    },
+    grantsToHost: { power: 0, toughness: 1, keywords: ['indestructible'] },
+    equipCost: '{3}',
   },
   {
     name: 'The Great Henge',

@@ -2037,6 +2037,38 @@ export const copySelfIfLandsAtLeast = (n: number, otherwise: TokenSpec): Effect 
   spawnTokensByDefName(ctx.state, ctx.controllerId, registerCopyToken(getDef(src.defName), {}), `${selfName} copy`, 1)
 }
 
+/**
+ * AMASS N (CR 701.44): "put N +1/+1 counters on an Army you control. If you don't control an Army,
+ * create a 0/0 black <type> Army creature token first." The token is a real token, so it goes through
+ * the shared minting path (doublers, ETB triggers).
+ */
+export const amass = (type: string, n: number): Effect => (ctx) => {
+  const mine = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield
+  let army = mine.find((id) => (getDef(ctx.state.objects[id]!.defName).subtypes ?? []).includes('Army'))
+  if (!army) {
+    spawnTokens(ctx.state, ctx.controllerId, { name: `${type} Army`, power: 0, toughness: 0, subtypes: [type, 'Army'] }, 1)
+    army = ctx.state.zones.perPlayer[ctx.controllerId]!.battlefield.find((id) =>
+      (getDef(ctx.state.objects[id]!.defName).subtypes ?? []).includes('Army'),
+    )
+  }
+  if (!army) return
+  putCounters(ctx.state, army, '+1/+1', n)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} amasses ${type} ${n}.`)
+}
+
+/**
+ * "When this Equipment enters, attach it to target creature you control" (Mithril Coat). Attaching is
+ * not equipping, so it ignores the equip cost and timing; the target is this trigger's own target.
+ */
+export const attachToTarget = (): Effect => (ctx) => {
+  const equipment = ctx.state.objects[ctx.sourceId]
+  const target = ctx.targets.find((t) => !isPlayerId(ctx, t)) as ObjId | undefined
+  const host = target ? ctx.state.objects[target] : undefined
+  if (!equipment || equipment.zone !== 'battlefield' || !host || host.zone !== 'battlefield') return
+  equipment.attachedTo = host.id
+  logLine(ctx.state, `${getDef(equipment.defName).name} is attached to ${getDef(host.defName).name}.`)
+}
+
 /** Run several effects in order. */
 export const sequence = (...effects: Effect[]): Effect => (ctx) => {
   for (const e of effects) e(ctx)

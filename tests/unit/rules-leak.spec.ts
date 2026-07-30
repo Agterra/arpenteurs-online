@@ -274,6 +274,8 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
           : pt.trigger === 'upkeep' ? tdef.upkeep
           : pt.trigger === 'landfall' ? tdef.landEnters
           : pt.trigger === 'etbWatch' ? tdef.entersWatch // an ETB WATCHER can fire on its own now
+          : pt.trigger === 'draw' ? tdef.drawnCard // a TARGETED draw watcher (Orcish Bowmasters)
+          : pt.trigger === 'cast' ? tdef.castSpell
           : pt.trigger === 'beginCombat' ? tdef.beginCombat
           : pt.trigger === 'leavesBattlefield' ? tdef.leavesBattlefield
           : pt.trigger === 'combatDamage' ? tdef.combatDamage
@@ -1164,6 +1166,9 @@ const FUZZ_DECK = [
   ...Array(2).fill('Wild Growth'),
   ...Array(2).fill('The Great Henge'),
   ...Array(2).fill('Mox Diamond'),
+  ...Array(2).fill('Panharmonicon'),
+  ...Array(3).fill('Orcish Bowmasters'),
+  ...Array(2).fill('Mithril Coat'),
   // NOT Scute Swarm: past six lands every land drop DOUBLES every copy, and this fuzzer redacts the
   // full state for every viewer after every action — the exponential token count times that cost blew
   // the 420s budget. Its tokens are public, so it adds no leak surface; rules-cards-card69.spec.ts

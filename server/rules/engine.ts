@@ -1052,6 +1052,8 @@ function beginStep(state: RulesGameState) {
       return
     }
     case 'draw': {
+      // "except the first card they draw in EACH of their draw steps" — count afresh per draw step
+      state.players[ap]!.drawsThisDrawStep = 0
       // "At the beginning of your draw step, …" (Mana Vault's self-damage) — before the draw
       for (const id of [...state.zones.perPlayer[ap]!.battlefield]) {
         if (!getDef(state.objects[id]?.defName ?? '').drawStep) continue
@@ -1792,7 +1794,7 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
             // "whenever a creature WITH POWER 4 OR GREATER you control enters" (Garruk's Uprising)
             (w.minPower == null || currentPower(state, subject) >= w.minPower) &&
             !(w.nontokenOnly && isTokenDefName(subject.defName))
-      if (fires) queueTriggeredAbility(state, p.id, 'etb')
+      if (fires) queueTriggeredAbility(state, p.id, 'etb', undefined, subjectId)
       // a separate ETB WATCHER, for a card that also has its own enters trigger (Garruk's Uprising)
       const watcher = getDef(p.defName).entersWatch
       const ww = watcher?.watch
@@ -1807,7 +1809,7 @@ export function fireEntersTriggers(state: RulesGameState, subjectId: ObjId) {
       )
         // the ENTERING creature rides along as an implicit target, so a watcher can act on it
         // ("put a +1/+1 counter on it and draw a card" — The Great Henge)
-        queueTriggeredAbility(state, p.id, 'etbWatch', [subjectId])
+        queueTriggeredAbility(state, p.id, 'etbWatch', [subjectId], subjectId)
     }
   }
 }
@@ -1873,16 +1875,28 @@ export function objHasCreatureType(state: RulesGameState, obj: GameObject, type:
  * How many extra instances a triggered ability from `sourceId` gets (Roaming Throne). The doubler must be a
  * DIFFERENT permanent, under the same controller, and the source must be a creature of the type it chose.
  */
-function extraTriggerInstances(state: RulesGameState, sourceId: ObjId): number {
+function extraTriggerInstances(state: RulesGameState, sourceId: ObjId, enteringSubjectId?: ObjId): number {
   const src = state.objects[sourceId]
-  if (!src || !defIsCreature(getDef(src.defName))) return 0
+  if (!src) return 0
+  const srcIsCreature = defIsCreature(getDef(src.defName))
+  // Panharmonicon: "if an ARTIFACT OR CREATURE ENTERING causes a triggered ability of a permanent you
+  // control to trigger, that ability triggers an additional time". Only the ETB paths pass the entering
+  // object, so its presence IS the "caused by something entering" test; its types do the rest.
+  const subject = enteringSubjectId ? state.objects[enteringSubjectId] : undefined
+  const subjectDef = subject ? getDef(subject.defName) : undefined
+  const enteringQualifies = !!subjectDef && (subjectDef.types.includes('Artifact') || subjectDef.types.includes('Creature'))
   let extra = 0
   for (const id of zoneArr(state, src.controllerId, 'battlefield')) {
-    if (id === sourceId) continue
     const doubler = state.objects[id]
     if (!doubler || doubler.phasedOut || state.loseAbilities.includes(id)) continue
     const def = getDef(doubler.defName)
+    if (def.doublesEnterTriggers && enteringQualifies) {
+      extra++ // Panharmonicon doubles its OWN ETB-caused triggers too (it is "a permanent you control")
+      continue
+    }
+    if (id === sourceId) continue // the chosen-type doubler says "ANOTHER creature you control"
     if (!def.doublesChosenTypeTriggers || !doubler.chosenType) continue
+    if (!srcIsCreature) continue
     if (!defIsCreature(def)) continue // "another CREATURE you control" is the doubler's own requirement
     if (objHasCreatureType(state, src, doubler.chosenType)) extra++
   }
@@ -1915,6 +1929,8 @@ export function queueTriggeredAbility(
   sourceId: ObjId,
   kind: NonNullable<StackItem['trigger']>,
   implicitTargets?: (ObjId | PlayerId)[],
+  /** for an ETB trigger: the object whose entry caused it (Panharmonicon reads its types) */
+  subjectId?: ObjId,
 ) {
   const obj = state.objects[sourceId]
   if (!obj) return
@@ -1933,7 +1949,7 @@ export function queueTriggeredAbility(
   // Roaming Throne: "…it triggers an additional time" — the count is decided ONCE, as the ability
   // triggers. The first instance is emitted now; a TARGETED extra waits in extraTriggerQueue, because the
   // engine holds a single pending at a time, and is emitted as soon as the previous choice is answered.
-  const extra = extraTriggerInstances(state, sourceId)
+  const extra = extraTriggerInstances(state, sourceId, subjectId)
   emitTriggerInstance(state, sourceId, kind, implicitTargets)
   if (extra > 0) {
     for (let i = 0; i < extra; i++) {
@@ -1990,6 +2006,15 @@ function emitTriggerInstance(
     logLine(state, `${def.name}'s trigger has no legal target and is removed.`)
     return
   }
+  // only ONE decision can be open at a time, so a targeted instance that arrives while another is
+  // pending waits in extraTriggerQueue (drained by drainDecisions). Several instances of the same
+  // trigger can arrive back-to-back — a doubled trigger, or one watcher firing per card of a
+  // multi-card draw (Orcish Bowmasters vs Divination) — and clobbering the open pending lost one.
+  if (state.pending) {
+    state.extraTriggerQueue.push({ sourceId, kind, targets: [...(implicitTargets ?? [])] })
+    logLine(state, `${def.name}'s ${label} ability triggers (waiting for the current choice).`)
+    return
+  }
   state.pending = { kind: 'trigger', player: controllerId }
   state.pendingTrigger = { sourceId, defName: obj.defName, controllerId, trigger: kind }
   logLine(state, `${def.name}'s ${label} ability triggers — ${name(state, controllerId)} chooses a target.`)
@@ -2014,6 +2039,7 @@ export function queueGrantedTrigger(state: RulesGameState, objId: ObjId, defName
   const controllerId = obj.controllerId
   // a GRANTED dies ability is still "a triggered ability of a creature you control", so Roaming Throne
   // doubles it as well; these bodies never target, so no deferral is needed
+  // a granted DIES ability isn't caused by anything entering, so no subject → no Panharmonicon
   const copies = 1 + extraTriggerInstances(state, objId)
   for (let i = 0; i < copies; i++) {
     state.zones.stack.push({
@@ -2075,6 +2101,7 @@ function queueWardTriggers(state: RulesGameState, triggeringId: ObjId, targets: 
     if (!cost || obj.controllerId === caster) continue // ward only fires for an OPPONENT's spell/ability
     // ward is a triggered ability of that permanent, so its controller's Roaming Throne doubles it: the
     // caster then faces the cost twice (each ward ability is its own pay-or-counter decision)
+    // ward is a "becomes the target" trigger, not an entry one → only the chosen-type doubler applies
     const copies = 1 + extraTriggerInstances(state, obj.id)
     for (let i = 0; i < copies; i++) {
       state.zones.stack.push({
@@ -2466,6 +2493,8 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
   // object-aware: a CHANGELING is every creature type (CR 702.73) and Roaming Throne IS its own chosen
   // type, so "target Goblin" must accept both. A printed-subtypes-only check missed them.
   if (filter.subtypes && !filter.subtypes.some((st) => objHasCreatureType(state, obj, st))) return false
+  // "target LEGENDARY creature you control" (Mithril Coat)
+  if (filter.supertypes && !filter.supertypes.every((sup) => (def.supertypes ?? []).includes(sup))) return false
   if (filter.controller === 'you' && obj.controllerId !== byController) return false
   if (filter.controller === 'opponent' && obj.controllerId === byController) return false
   if (filter.minManaValue != null && defManaValue(def) < filter.minManaValue) return false

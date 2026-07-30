@@ -37,6 +37,8 @@ export interface TargetFilter {
   excludeBasic?: boolean
   /** only a creature currently attacking or blocking (Eiganjo) */
   attackingOrBlocking?: boolean
+  /** "target LEGENDARY creature you control" (Mithril Coat) */
+  supertypes?: string[]
 }
 
 export interface TargetSpec {
@@ -471,7 +473,15 @@ export interface CardDefinition {
    * player who drew. Fires once per card drawn, and never during the pre-game draws.
    */
   drawnCard?: WatcherTriggeredAbility & {
-    watch?: { opponentsOnly?: boolean }
+    watch?: {
+      opponentsOnly?: boolean
+      /**
+       * "…except the first card they draw in each of their draw steps" (Orcish Bowmasters). The engine
+       * counts each player's draws per draw step, so the turn-based draw is free and every extra one
+       * (a cantrip, a Rhystic Study, a second draw step draw) fires the ability.
+       */
+      exceptFirstInDrawStep?: boolean
+    }
   }
   /**
    * "As an additional cost to cast this spell, pay X life." (Toxic Deluge) — the caster chooses X
@@ -559,6 +569,20 @@ export interface CardDefinition {
   grantsRiotToYourCreatureSpells?: boolean
   /** RIOT printed on the card itself (CR 702.137 — Gruul Spellbreaker) */
   riot?: boolean
+  /**
+   * Panharmonicon: "If an ARTIFACT OR CREATURE entering the battlefield causes a triggered ability of a
+   * permanent you control to trigger, that ability triggers an additional time." Shares the trigger-
+   * doubling machinery with Roaming Throne (`doublesChosenTypeTriggers`), but keys off the ENTERING
+   * object's card types rather than a chosen creature type — and, unlike the Throne's "another
+   * creature", it doubles the triggers of every permanent you control including itself.
+   */
+  doublesEnterTriggers?: boolean
+  /**
+   * AMASS (CR 701.44) as a triggered/spell effect is an ordinary effect, but the ARMY token it may need
+   * is declared here so the registry can mint it: "if you don't control an Army, create a 0/0 black
+   * <type> Army creature token first, then put N +1/+1 counters on an Army you control."
+   */
+  amass?: { type: string; count: number }
   /**
    * "If this card is in your OPENING HAND, you may begin the game with it on the battlefield"
    * (CR 103.6 — Gemstone Caverns, the Leyline cycle). Offered once, after the last player keeps and
