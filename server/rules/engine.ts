@@ -658,6 +658,32 @@ function advanceDiscardQueue(state: RulesGameState) {
  * a public→hidden move today. Commanders keep their id — their identity is
  * public and `player.commanderId` references it.
  */
+/**
+ * Re-mint a COMMANDER's id as it enters a hidden zone (Command Beacon: command zone → hand). The plain
+ * re-mint declines for a commander because commander identity is public and several tallies are keyed on
+ * its object id — so this one migrates that bookkeeping (`commanderId` and every player's commander-damage
+ * tally) onto the new id. Without it the old, publicly-seen id would sit in a hidden hand, which the
+ * leak fuzzer flagged: an opponent who noted the command-zone id could follow the card into the hand.
+ */
+export function remintCommanderForHand(state: RulesGameState, oldId: ObjId) {
+  const obj = state.objects[oldId]
+  if (!obj || (obj.zone !== 'hand' && obj.zone !== 'library')) return
+  const newId = mintCardId()
+  const arr = zoneArr(state, obj.ownerId, obj.zone)
+  const i = arr.indexOf(oldId)
+  if (i >= 0) arr[i] = newId
+  obj.id = newId
+  state.objects[newId] = obj
+  delete state.objects[oldId]
+  for (const p of Object.values(state.players)) {
+    if (p.commanderId === oldId) p.commanderId = newId
+    if (Object.hasOwn(p.commanderDamage, oldId)) {
+      p.commanderDamage[newId] = p.commanderDamage[oldId]!
+      delete p.commanderDamage[oldId]
+    }
+  }
+}
+
 export function remintForHiddenEntry(state: RulesGameState, oldId: ObjId, fromPublic: boolean) {
   const obj = state.objects[oldId]
   if (!obj || obj.isCommander || !fromPublic) return
@@ -2231,6 +2257,14 @@ function matchesFilter(state: RulesGameState, obj: GameObject, filter: TargetFil
 export function hasAnyLegalTarget(state: RulesGameState, spec: TargetSpec, byController: PlayerId, srcColors: readonly ManaColor[] = []): boolean {
   // "target spell or ability" (Deflecting Swat): anything on the stack that HAS targets to re-aim
   if (spec.kind === 'spellOrAbility') return state.zones.stack.some((s) => s.targets.length > 0)
+  // "target spell or nonland permanent an opponent controls" (Sink into Stupor)
+  if (spec.kind === 'spellOrPermanent') {
+    if (state.zones.stack.some((s) => s.kind === 'spell')) return true
+    for (const pid of state.turnOrder)
+      for (const id of state.zones.perPlayer[pid]!.battlefield)
+        if (isLegalTarget(state, spec, id, byController, srcColors)) return true
+    return false
+  }
   if (spec.kind === 'spell')
     return state.zones.stack.some(
       (s) =>
@@ -2265,6 +2299,14 @@ export function isLegalTarget(state: RulesGameState, spec: TargetSpec, t: ObjId 
     // a spell OR a triggered/activated ability on the stack, and only one that actually has targets
     const item = state.zones.stack.find((s) => s.id === (t as ObjId))
     return !!item && item.targets.length > 0
+  }
+  if (spec.kind === 'spellOrPermanent') {
+    // a SPELL on the stack, or a permanent matching the filter (Sink into Stupor: nonland, theirs)
+    const item = state.zones.stack.find((s) => s.kind === 'spell' && s.id === (t as ObjId))
+    if (item) return true
+    const obj = Object.hasOwn(state.objects, t) ? state.objects[t as ObjId] : undefined
+    if (!obj || obj.zone !== 'battlefield') return false
+    return matchesFilter(state, obj, spec.filter, byController)
   }
   if (spec.kind === 'spell') {
     const item = state.zones.stack.find((s) => s.kind === 'spell' && s.id === (t as ObjId))
@@ -2901,6 +2943,29 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           const g = state.objects[id]
           if (id === obj.id || !g || g.zone !== 'graveyard' || g.ownerId !== actor)
             throw new RulesError('BAD_ESCAPE', 'Escape exiles other cards from your graveyard')
+        }
+      }
+      // a PITCH alternative cost (Force of Will): 1 life + exiling a card of the right colour from your
+      // hand REPLACES the mana cost entirely (CR 118.9)
+      const pitch = def.pitchCost
+      const castingPitch = !adv && !castingBestow && !!msg.pitch
+      if (castingPitch) {
+        if (!pitch) throw new RulesError('NO_PITCH', 'That spell has no alternative cost')
+        const ids = [...new Set(msg.exiles ?? [])]
+        if (ids.length !== 1) throw new RulesError('BAD_PITCH', 'Exile exactly one card')
+        const hand = zoneArr(state, actor, 'hand')
+        for (const id of ids) {
+          if (!hand.includes(id) || id === obj.id) throw new RulesError('BAD_PITCH', 'That card is not in your hand')
+          if (!(getDef(state.objects[id]!.defName).colors ?? []).includes(pitch.color))
+            throw new RulesError('BAD_PITCH', `Exile a ${pitch.color} card`)
+        }
+        if (state.players[actor]!.life < pitch.life) throw new RulesError('CANT_PAY', `Not enough life (need ${pitch.life})`)
+        cost.generic = 0
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] = 0
+        changeLife(state, actor, -pitch.life)
+        for (const id of ids) {
+          logLine(state, `${name(state, actor)} exiles ${objName(state, id)} and pays ${pitch.life} life (alternative cost).`)
+          moveTo(state, id, 'exile')
         }
       }
       // a free cast (commander alternative cost) pays no mana at all

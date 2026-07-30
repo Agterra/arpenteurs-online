@@ -56,6 +56,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
     // additional costs chosen as the spell is cast: permanents sacrificed / cards discarded
     sacrifices: z.array(Id).max(20).optional(),
     discards: z.array(Id).max(20).optional(),
+    // a PITCH alternative cost (Force of Will): the card exiled from hand instead of paying mana
+    exiles: z.array(Id).max(4).optional(),
+    pitch: z.boolean().optional(),
     faceDown: z.boolean().optional(), // cast face down as a 2/2 for {3} (morph, CR 702.37)
   }),
   z.object({

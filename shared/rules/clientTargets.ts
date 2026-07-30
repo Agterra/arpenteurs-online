@@ -43,6 +43,8 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'titanic growth': 'creature',
   ovinize: 'creature',
   damn: 'creature', // overloaded, it destroys each creature (no target — the Overload button)
+  'force of will': 'spell', // also castable by pitching a blue card (see pitchCastable)
+  'sink into stupor': 'spell', // a SPELL or a nonland permanent an opponent controls; its back is a land
   'deflecting swat': 'spell', // a spell OR an ability on the stack (also castable free with a commander)
   'arcane denial': 'spell', // its controller may draw two at the next turn's upkeep; you draw one
   counterspell: 'spell',

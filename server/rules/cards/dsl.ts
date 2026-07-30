@@ -45,7 +45,7 @@ export interface TargetSpec {
    * enchantment, …); player; anyTarget = creature or player; spell = a spell on
    * the stack (counters); graveyardCard = a card in a graveyard (recursion).
    */
-  kind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'spellOrAbility' | 'graveyardCard'
+  kind: 'creature' | 'permanent' | 'player' | 'anyTarget' | 'spell' | 'spellOrAbility' | 'spellOrPermanent' | 'graveyardCard'
   count: number
   /** optional narrowing for creature/permanent targets */
   filter?: TargetFilter
@@ -709,6 +709,12 @@ export interface CardDefinition {
    * engine verifies a commander permanent is on the caster's battlefield and skips the mana entirely.
    */
   freeIfCommander?: boolean
+  /**
+   * A PITCH alternative cost (CR 118.9 — Force of Will): "You may pay 1 life and exile a blue card from
+   * your hand rather than pay this spell's mana cost." Paid as the spell is cast, so the exiled card comes
+   * in on r.cast (`exiles`), like the sacrifice/discard additional costs.
+   */
+  pitchCost?: { life: number; color: ManaColor }
   /**
    * As-enters replacement CHOICE (CR 614.12) — the shocklands' "As this land enters, you may pay N
    * life. If you don't, it enters tapped." Set to the life amount. The engine opens an

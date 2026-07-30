@@ -45,7 +45,12 @@ function assertNoLeaks(state: RulesGameState, context: string, seen: Map<PlayerI
           expect(json.includes(id), `library id ${id} leaked to ${viewer} ${context}`).toBe(false)
       if (pid !== viewer)
         for (const id of state.zones.perPlayer[pid]!.hand)
-          expect(json.includes(id), `${pid} hand id ${id} leaked to ${viewer} ${context}`).toBe(false)
+          expect(
+            json.includes(id),
+            // the card NAME and the log tail make a fuzz failure identifiable: this assertion is how
+            // Command Beacon's missing commander re-mint was found
+            `${pid} hand id ${id} (${state.objects[id] ? getDef(state.objects[id]!.defName).name : '?'}) leaked to ${viewer} ${context}; log tail: ${state.log.slice(-6).join(' | ')}`,
+          ).toBe(false)
     }
     for (const pid of state.turnOrder) {
       const hand = view.zones.perPlayer[pid]!.hand
@@ -669,6 +674,9 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
           ...players,
           ...planeswalkers,
         ]
+        // "target spell or nonland permanent an opponent controls" (Sink into Stupor): a spell on the
+        // stack, else a permanent matching the filter — `perms` already honours the controller filter
+        const stackSpells = state.zones.stack.filter((x) => x.kind === 'spell').map((x) => x.id)
         const cands =
           spec.kind === 'creature'
             ? creatures
@@ -678,7 +686,9 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
                 ? players
                 : spec.kind === 'graveyardCard'
                   ? graveyardCards
-                  : anyCands
+                  : spec.kind === 'spellOrPermanent'
+                    ? [...stackSpells, ...perms.filter((id) => !getDef(state.objects[id]!.defName).types.includes('Land'))]
+                    : anyCands
         if (!cands.length) return tryPass()
         // deliberately bias toward a planeswalker when one is on the board: burn is the only way
         // this new target class is reached, and a fuzz game's planeswalkers are attacked to death
@@ -1058,6 +1068,9 @@ const FUZZ_DECK = [
   // batch CARD64: Tireless Provisioner — a MODAL landfall trigger, so the fuzzer answers a mode choice on
   // every land drop (the most frequent trigger in a fuzz game), and Command Beacon, whose sac ability
   // moves a COMMANDER command-zone→hand.
+  // batch CARD65: Sink into Stupor — its front bounces a SPELL off the stack into its owner's HIDDEN hand
+  // (a public→hidden re-mint the history-aware assertion watches) and its back is a pay-3-life land.
+  ...Array(3).fill('Sink into Stupor'),
   ...Array(2).fill('Tireless Provisioner'),
   ...Array(2).fill('Command Beacon'),
   ...Array(2).fill('Victimize'),

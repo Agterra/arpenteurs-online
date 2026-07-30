@@ -92,7 +92,15 @@ const POOL_COLORS: ManaColor[] = ['W', 'U', 'B', 'R', 'G', 'C']
 /** which alternative cast is being paid for (extra r.cast flag / other zone / other action) */
 type AltKind = 'flashback' | 'retrace' | 'escape' | 'evoke' | 'bestow' | 'adventure' | 'exile' | 'suspend' | 'overload' | 'freeCmd'
 
-const targeting = ref<{ objId: ObjId; spec: TargetClass; mode?: number; alt?: AltKind; altCost?: string } | null>(null)
+const targeting = ref<{
+  objId: ObjId
+  spec: TargetClass
+  mode?: number
+  alt?: AltKind
+  altCost?: string
+  /** a PITCH cast: the card being exiled to pay for it (Force of Will) */
+  pitchExile?: ObjId
+} | null>(null)
 const attackAssign = ref<{ attackerId: ObjId; defenderId: PlayerId }[]>([])
 const pendingAttacker = ref<ObjId | null>(null)
 const selDiscard = ref<Set<ObjId>>(new Set())
@@ -411,6 +419,25 @@ const overloadCostOf = (id: ObjId): string | null => legal.value?.overloadable.f
 const canCastFree = (id: ObjId): boolean => legal.value?.freeCastable.includes(id) ?? false
 const adventureOf = (id: ObjId) => legal.value?.adventurable.find((f) => f.objId === id) ?? null
 const canCastFromExile = (id: ObjId): boolean => legal.value?.castExileIds.includes(id) ?? false
+/** a PITCH alternative cost available on this hand card (Force of Will) */
+const pitchFor = (id: ObjId) => legal.value?.pitchCastable.find((p) => p.objId === id) ?? null
+// collecting the card to exile for a pitch cast, then the spell's own target
+const pitching = ref<{ objId: ObjId; candidateIds: ObjId[] } | null>(null)
+function startPitch(id: ObjId) {
+  const p = pitchFor(id)
+  if (p) pitching.value = { objId: id, candidateIds: [...p.candidateIds] }
+}
+/** the player picked which card to exile → collect the spell's target (or cast it straight away) */
+function pickPitchExile(exileId: ObjId) {
+  const pit = pitching.value
+  if (!pit || !pit.candidateIds.includes(exileId)) return
+  const card = cardOf(pit.objId)
+  pitching.value = null
+  if (!card) return
+  const spec = TARGETED_SPELLS[card.defName ?? '']
+  if (spec) targeting.value = { objId: card.id, spec, pitchExile: exileId }
+  else send({ type: 'r.cast', objId: card.id, targets: [], pitch: true, exiles: [exileId] })
+}
 /** a hand card whose modal-DFC land back face can be played right now */
 const canPlayBackLand = (id: ObjId): boolean => legal.value?.playableBackLandIds.includes(id) ?? false
 /** graveyard cards with a flashback or retrace cast available right now (shown in a small strip). */
@@ -753,7 +780,15 @@ function onOpponentClick(pid: PlayerId) {
 
 /** clicking a spell on the stack while casting a counter (targeting.spec === 'spell'). */
 function onStackTarget(stackId: ObjId) {
-  if (targeting.value?.spec === 'spell') beginPayment(cardOf(targeting.value.objId)!, [stackId], targeting.value.mode ?? null, targeting.value.alt, targeting.value.altCost)
+  const t = targeting.value
+  if (t?.spec !== 'spell') return
+  if (t.pitchExile) {
+    // a PITCH cast pays no mana: send it straight away with the exiled card
+    send({ type: 'r.cast', objId: t.objId, targets: [stackId], pitch: true, exiles: [t.pitchExile] })
+    targeting.value = null
+    return
+  }
+  beginPayment(cardOf(t.objId)!, [stackId], t.mode ?? null, t.alt, t.altCost)
 }
 
 function onSelfClick() {
@@ -1887,6 +1922,12 @@ onBeforeUnmount(() => {
                   @menu="openMenu($event, id)"
                   @preview="hoverDisplay = $event"
                 />
+                <UButton
+                  v-if="pitchFor(id)"
+                  size="xs" variant="soft" color="neutral" class="px-1.5 py-0 text-[10px]"
+                  icon="i-lucide-recycle"
+                  @click.stop="startPitch(id)"
+                >Pitch ({{ pitchFor(id)!.life }} life)</UButton>
                 <!-- modal DFC: play the LAND back face instead of casting the front (CR 712.4) -->
                 <UButton
                   v-if="canPlayBackLand(id)"
@@ -2128,6 +2169,21 @@ onBeforeUnmount(() => {
             <template v-if="legal.retargetKind">({{ legal.retargetKind === 'anyTarget' ? 'creature, player or planeswalker' : legal.retargetKind }})</template>
           </span>
           <UButton size="xs" variant="ghost" color="neutral" @click="send({ type: 'r.retarget', targets: [] })">Keep current</UButton>
+        </div>
+      </div>
+
+      <!-- a PITCH cost: pick which card to exile from your hand (Force of Will) -->
+      <div v-if="pitching" class="fixed inset-x-0 bottom-24 z-40 flex justify-center">
+        <div class="flex items-center gap-2 rounded-lg border border-primary bg-default px-3 py-2 text-sm shadow-xl">
+          <span>Exile a card to pay for {{ nameOf(pitching.objId) }}:</span>
+          <UButton
+            v-for="cid in pitching.candidateIds"
+            :key="cid"
+            size="xs"
+            variant="soft"
+            @click="pickPitchExile(cid)"
+          >{{ nameOf(cid) }}</UButton>
+          <UButton size="xs" variant="ghost" color="neutral" @click="pitching = null">Cancel</UButton>
         </div>
       </div>
 

@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**610 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**612 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -210,6 +210,7 @@
 - Flooded Grove
 - Flooded Strand
 - Flux Channeler
+- Force of Will
 - Foreboding Ruins
 - Forest
 - Forgotten Cave
@@ -471,6 +472,7 @@
 - Simic Growth Chamber
 - Simic Guildgate
 - Simic Signet
+- Sink into Stupor
 - Skullclamp
 - Skyshroud Claim
 - Smoldering Marsh

@@ -110,6 +110,7 @@ import {
   returnFromGraveyard,
   returnFromGraveyardToBattlefield,
   returnSelfTappedFromGraveyard,
+  returnSpellOrPermanentToHand,
   returnToHand,
   sacrificeFormerHost,
   sacrificeThenReturnTargetsTapped,
@@ -4934,6 +4935,36 @@ export const STARTER_SET: CardDefinition[] = [
         { label: 'Create a Treasure token', effect: createTreasures(1) },
       ],
       effect: noop(), // the modes carry the whole ability
+    },
+  },
+  // --- Coverage batch CARD65: Force of Will (a pitch cost) + Sink into Stupor (spell-or-permanent) ---
+  {
+    name: 'Force of Will',
+    types: ['Instant'],
+    manaCost: '{3}{U}{U}',
+    colors: ['U'],
+    // "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost. /
+    //  Counter target spell."
+    pitchCost: { life: 1, color: 'U' },
+    spell: { targets: [{ kind: 'spell', count: 1 }], effect: counterTarget() },
+  },
+  {
+    name: 'Sink into Stupor',
+    types: ['Instant'],
+    manaCost: '{1}{U}{U}',
+    colors: ['U'],
+    // "Return target spell or nonland permanent an opponent controls to its owner's hand."
+    //  // back: "Soporific Springs — As this land enters, you may pay 3 life. If you don't, it enters
+    //  tapped. / {T}: Add {U}."
+    spell: {
+      targets: [{ kind: 'spellOrPermanent', count: 1, filter: { excludeTypes: ['Land'], controller: 'opponent' } }],
+      effect: returnSpellOrPermanentToHand(),
+    },
+    modalBack: {
+      name: 'Soporific Springs',
+      types: ['Land'],
+      entersTappedUnlessPayLife: 3,
+      abilities: [{ kind: 'activated', cost: { tap: true }, isMana: true, produces: ['U'], effect: addMana('U') }],
     },
   },
 ]

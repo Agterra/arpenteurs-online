@@ -17,6 +17,7 @@ import { currentKeywords, currentPower } from '../characteristics'
 // edge is a call-time-only cycle (invoked inside effect bodies, never at module
 // init), so it is safe — mirrors the existing effects→registry (getDef) cycle.
 import {
+  remintCommanderForHand,
   chaosWarpPermanent,
   devotionTo,
   fireEntersTriggers,
@@ -1820,8 +1821,35 @@ export const commanderFromCommandZoneToHand = (): Effect => (ctx) => {
     logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name}'s commander is not in the command zone.`)
     return
   }
+  const label = getDef(obj.defName).name
   moveTo(ctx.state, obj.id, 'hand')
-  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} puts ${getDef(obj.defName).name} into their hand.`)
+  // the command zone is PUBLIC, so keeping the id would let an opponent follow the card into the hidden
+  // hand (the leak fuzzer caught exactly that). Re-mint it and migrate the commander bookkeeping.
+  remintCommanderForHand(ctx.state, obj.id)
+  logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} puts ${label} into their hand.`)
+}
+
+/**
+ * Sink into Stupor: "Return target spell or nonland permanent an opponent controls to its owner's hand."
+ * A SPELL on the stack goes to its owner's hand (it never resolves, and it is not "countered"); a
+ * permanent takes the ordinary bounce path. Either way the card enters a HIDDEN zone from a public one, so
+ * its id is re-minted (invariant #3).
+ */
+export const returnSpellOrPermanentToHand = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    if (isPlayerId(ctx, t)) continue
+    const item = ctx.state.zones.stack.find((x) => x.kind === 'spell' && x.id === t)
+    if (item) {
+      const label = getDef(item.defName).name
+      moveTo(ctx.state, t, 'hand')
+      remintForHiddenEntry(ctx.state, t, true)
+      logLine(ctx.state, `${label} is returned to its owner's hand from the stack.`)
+      continue
+    }
+    const obj = ctx.state.objects[t]
+    if (!obj || obj.zone !== 'battlefield') continue
+    returnToHand()({ ...ctx, targets: [t] })
+  }
 }
 
 /** An effect that does nothing — for a card whose whole body is handled structurally (Animate Dead). */

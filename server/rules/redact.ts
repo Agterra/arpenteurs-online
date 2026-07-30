@@ -179,7 +179,22 @@ export function redactRulesState(state: RulesGameState, viewer: PlayerId): Rules
     id: state.id,
     mode: 'enforced',
     you: viewer,
-    players: state.players,
+    // A player's `commanderId` (and the commander-damage tally keyed on it) is an OBJECT ID: publishing
+    // it while that card sits in a HIDDEN zone would let an opponent follow it there — which is exactly
+    // how the leak fuzzer caught Command Beacon putting a commander into its owner's hand. Ids of
+    // commanders the viewer cannot see are dropped; everything else about the players is public.
+    players: Object.fromEntries(
+      Object.entries(state.players).map(([pid, p]) => [
+        pid,
+        {
+          ...p,
+          commanderId: p.commanderId && visibleTo(state, p.commanderId, viewer) ? p.commanderId : null,
+          commanderDamage: Object.fromEntries(
+            Object.entries(p.commanderDamage).filter(([cid]) => visibleTo(state, cid, viewer)),
+          ),
+        },
+      ]),
+    ),
     turnOrder: state.turnOrder,
     activePlayer: state.activePlayer,
     step: state.step,
@@ -241,6 +256,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     overloadable: [],
     freeCastable: [],
     castExtraCost: [],
+    pitchCastable: [],
     needsWard: false,
     wardCost: '',
     wardAffordable: false,
@@ -763,6 +779,21 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
       }
   }
 
+  // PITCH alternative costs (Force of Will): offered when you have the life and a card of that colour to
+  // exile — your own hand, so listing the candidates reveals nothing
+  const pitchCastable: LegalActions['pitchCastable'] = []
+  for (const id of zoneArr(state, viewer, 'hand')) {
+    const def = getDef(state.objects[id]!.defName)
+    const pitch = def.pitchCost
+    if (!pitch) continue
+    if (!def.types.includes('Instant') && !isMain) continue
+    if (state.players[viewer]!.life < pitch.life) continue
+    const candidateIds = zoneArr(state, viewer, 'hand').filter(
+      (other) => other !== id && (getDef(state.objects[other]!.defName).colors ?? []).includes(pitch.color),
+    )
+    if (candidateIds.length) pitchCastable.push({ objId: id, life: pitch.life, color: pitch.color, candidateIds })
+  }
+
   // Castable cards that also demand a cast-time additional cost (sacrifice / discard). Only cards
   // whose other costs are already payable are listed; the server re-validates the picks.
   const castExtraCost: LegalActions['castExtraCost'] = []
@@ -968,6 +999,7 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     bestowable,
     suspendable,
     adventurable,
+    pitchCastable,
     castExileIds,
     playableExileLandIds,
     playableBackLandIds,

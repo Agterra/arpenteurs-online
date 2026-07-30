@@ -35,9 +35,14 @@ describe('CARD64 — Command Beacon', () => {
     act(state, A, { type: 'r.activate', objId: beacon, abilityIndex: 1, targets: [] })
     expect(state.objects[beacon]!.zone).toBe('graveyard') // sacrificed as a cost
     resolve(state, A)
-    expect(state.objects[cmd]!.zone).toBe('hand')
+    // the command zone is PUBLIC and the hand is HIDDEN, so the id IS re-minted (invariant #3) and the
+    // commander bookkeeping follows it — the leak fuzzer caught the first version keeping the old id
+    expect(state.objects[cmd]).toBeUndefined()
     expect(state.zones.perPlayer[A]!.hand.length).toBe(hand + 1)
-    expect(state.zones.perPlayer[A]!.hand).toContain(cmd) // a commander is not re-minted: it is public
+    const newId = state.zones.perPlayer[A]!.hand.find((id) => nameOf(state, id) === 'Loran of the Third Path')!
+    expect(newId).toBeTruthy()
+    expect(state.objects[newId]!.zone).toBe('hand')
+    expect(state.players[A]!.commanderId).toBe(newId)
   })
 
   it('does nothing when the commander is not in the command zone', () => {

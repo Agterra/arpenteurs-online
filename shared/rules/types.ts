@@ -772,6 +772,11 @@ export interface LegalActions {
    * them to r.cast as `sacrifices` / `discards`.
    */
   castExtraCost: { objId: ObjId; sacrifice: number; sacFilter: 'creature' | 'artifactOrCreature'; discard: number }[]
+  /**
+   * Hand cards castable for a PITCH alternative cost right now (Force of Will) — the life, the colour to
+   * exile and the eligible cards in your hand, which is your own information.
+   */
+  pitchCastable: { objId: ObjId; life: number; color: ManaColor; candidateIds: ObjId[] }[]
   /** a ward trigger is resolving and YOU must decide to pay or let your spell/ability be countered (CR 702.21) */
   needsWard: boolean
   /** the ward cost you'd pay, and whether your current mana pool covers it */
