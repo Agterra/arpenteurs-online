@@ -85,6 +85,7 @@ export const TARGETED_SPELLS: Record<string, TargetClass> = {
   'holy strength': 'creature',
   'angelic gift': 'creature',
   pacifism: 'creature',
+  'wild growth': 'permanent', // "enchant LAND" — the picker offers permanents; r.cast re-checks the type
   blaze: 'any', // {X} damage to any target
   'burst lightning': 'any', // 2 (or 4 if kicked) damage to any target
   'mind rot': 'player',

@@ -167,6 +167,11 @@ export interface ActivatedAbility {
    */
   manaEqualToChosenTypeCount?: boolean
   /**
+   * "{T}: Add {C} for each charge counter on this permanent." (Everflowing Chalice) — the amount is
+   * that counter count; `produces` is the fixed colour it makes.
+   */
+  manaEqualToCounters?: string
+  /**
    * RESTRICTED mana (CR 106.6): the mana this ability makes goes into a separate bucket that can only
    * pay for a matching spell. `chosenTypeOnly` = "only to cast a creature spell of the chosen type"
    * (reads the source's as-enters `chosenType`), `legendaryOnly` = "only to cast a legendary spell",
@@ -519,6 +524,39 @@ export interface CardDefinition {
    * ability has left the stack. Give the card `types: ['Enchantment']`, `subtypes: ['Saga']`.
    */
   saga?: { chapters: SagaChapter[] }
+  /**
+   * TRIGGERED MANA ABILITY on an Aura (Wild Growth: "Whenever enchanted land is tapped for mana, its
+   * controller adds {G}"). CR 605.1b: a triggered mana ability doesn't use the stack, so the engine
+   * adds this mana as part of the tap that triggered it. The mana goes to the TAPPED permanent's
+   * controller, as printed.
+   */
+  tappedForMana?: { color: ManaColor; amount: number }
+  /**
+   * MULTIKICKER (CR 702.33b — Everflowing Chalice): `kickerCost` may be paid any number of times as
+   * the spell is cast. The count comes in on `r.cast.kickerCount` and rides the stack item, so the
+   * resolving permanent can read how many times it was kicked.
+   */
+  multikicker?: boolean
+  /** "…enters with a charge counter on it for each time it was kicked." (Everflowing Chalice) */
+  entersWithCounterPerKick?: string
+  /**
+   * "Nontoken creature spells you control can't be countered." (Rhythm of the Wild) — a static from
+   * ANOTHER permanent, so it is stamped onto the spell as it is cast (like Cavern of Souls' rider),
+   * which is also what keeps it correct if the Rhythm leaves before the spell resolves.
+   */
+  yourCreatureSpellsUncounterable?: boolean
+  /**
+   * "Creature spells you control have RIOT." (Rhythm of the Wild) — CR 702.137: as the creature
+   * enters, its controller chooses a +1/+1 counter or haste. Only creatures that entered by RESOLVING
+   * AS A SPELL get it (a token or a reanimated creature never had a spell).
+   * DOCUMENTED SIMPLIFICATION: the choice is queued as the permanent enters and answered before any
+   * of its ETB triggers RESOLVE, rather than strictly as part of the entry, so an ETB that reads its
+   * own counters sees the riot counter either way — but one that reads them "as it enters" would
+   * differ from paper in the corner case of a counter-reading replacement effect.
+   */
+  grantsRiotToYourCreatureSpells?: boolean
+  /** RIOT printed on the card itself (CR 702.137 — Gruul Spellbreaker) */
+  riot?: boolean
   /**
    * "If this card is in your OPENING HAND, you may begin the game with it on the battlefield"
    * (CR 103.6 — Gemstone Caverns, the Leyline cycle). Offered once, after the last player keeps and

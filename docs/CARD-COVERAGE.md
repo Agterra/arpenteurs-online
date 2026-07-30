@@ -4,7 +4,7 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**616 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**619 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
@@ -178,6 +178,7 @@
 - Errant Ephemeron
 - Esper Sentinel
 - Eternal Witness
+- Everflowing Chalice
 - Evolution Sage
 - Evolving Wilds
 - Exotic Orchard
@@ -432,6 +433,7 @@
 - Return of the Wildspeaker
 - Revitalize
 - Rhystic Study
+- Rhythm of the Wild
 - Roaming Throne
 - Rockfall Vale
 - Rogue's Passage
@@ -602,6 +604,7 @@
 - Wayfarer's Bauble
 - Whispersilk Cloak
 - White Knight
+- Wild Growth
 - Wind Drake
 - Windborn Muse
 - Windfall

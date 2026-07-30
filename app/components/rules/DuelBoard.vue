@@ -142,6 +142,8 @@ const casting = ref<{
   cycling?: boolean // paying a cycling cost (→ r.cycle) rather than casting
   kickerCost?: string // the spell's kicker cost, if it has one (enables the kick toggle)
   kicked?: boolean // whether the player chose to pay the kicker
+  multikicker?: boolean // MULTIKICKER (CR 702.33b): payable any number of times → a stepper, not a toggle
+  kickerCount?: number // how many times the multikicker is being paid
   // alternative cast being paid for (extra r.cast flag / different zone / different action)
   alt?: AltKind
   escapeCount?: number // escape: how many other graveyard cards to exile as the cost
@@ -228,10 +230,11 @@ const castCost = computed(() => {
   cost.generic += (c.x ?? 0) * (c.xCount ?? 0) // {X}: add the chosen X per {X} pip
   if (c.abilityIndex == null && cardOf(c.cardId)?.isCommander) cost.generic += 2 * cmdTax(you.value)
   if (c.kicked && c.kickerCost) {
-    // kicker adds its mana to the total the player must pay
+    // kicker adds its mana to the total the player must pay — a multikicker adds it once per payment
     const kc = parseManaCost(c.kickerCost)
-    cost.generic += kc.generic
-    for (const col of POOL_COLORS) cost.colored[col] += kc.colored[col]
+    const times = c.multikicker ? Math.max(1, c.kickerCount ?? 1) : 1
+    cost.generic += kc.generic * times
+    for (const col of POOL_COLORS) cost.colored[col] += kc.colored[col] * times
   }
   if (c.buyback && c.buybackCost) {
     const bc = parseManaCost(c.buybackCost)
@@ -241,9 +244,12 @@ const castCost = computed(() => {
   return cost
 })
 // displayed cost string — append the kicker's pips when the player has chosen to kick
-const castManaCostStr = computed(() =>
-  casting.value ? casting.value.costStr + (casting.value.kicked && casting.value.kickerCost ? casting.value.kickerCost : '') : '',
-)
+const castManaCostStr = computed(() => {
+  const c = casting.value
+  if (!c) return ''
+  if (!c.kicked || !c.kickerCost) return c.costStr
+  return c.costStr + c.kickerCost.repeat(c.multikicker ? Math.max(1, c.kickerCount ?? 1) : 1)
+})
 const castIsAbility = computed(() => casting.value?.abilityIndex != null)
 /**
  * The mana available for the spell being paid for: the open pool plus every RESTRICTED bucket this
@@ -290,6 +296,8 @@ function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode
     // kicker/buyback toggles are only for a normal cast (not alt-casts)
     kickerCost: alt ? undefined : legal.value?.kickable.find((k) => k.objId === card.id)?.cost,
     kicked: false,
+    multikicker: alt ? undefined : legal.value?.kickable.find((k) => k.objId === card.id)?.multi,
+    kickerCount: 1,
     alt,
     buybackCost: alt ? undefined : legal.value?.buybackable.find((b) => b.objId === card.id)?.cost,
     buyback: false,
@@ -298,6 +306,14 @@ function beginPayment(card: RulesClientCard, targets: (ObjId | PlayerId)[], mode
 /** toggle whether the current cast pays its kicker (recomputes the required cost). */
 function toggleKicker() {
   if (casting.value?.kickerCost) casting.value.kicked = !casting.value.kicked
+}
+/** MULTIKICKER: pay the kicker one more / one fewer time (0 = not kicked at all) */
+function bumpKicker(delta: number) {
+  const c = casting.value
+  if (!c?.kickerCost || !c.multikicker) return
+  const next = Math.max(0, Math.min(20, (c.kickerCount ?? 1) + delta))
+  c.kickerCount = next
+  c.kicked = next > 0
 }
 function beginActivatePayment(objId: ObjId, abilityIndex: number, cost: string, targets: (ObjId | PlayerId)[]) {
   activating.value = null
@@ -317,6 +333,7 @@ function confirmCast() {
       mode: c.mode ?? undefined,
       modes: c.modes?.length ? c.modes : undefined,
       kicked: c.kicked || undefined,
+      kickerCount: c.kicked && c.multikicker ? Math.max(1, c.kickerCount ?? 1) : undefined,
       buyback: c.buyback || undefined,
       // alt-cast flags the server reads (flashback/retrace/exile are auto-detected by zone,
       // so they need no flag — retrace only needs the land to discard)
@@ -1441,7 +1458,7 @@ function scheduleYield() {
   if (!s || s.status !== 'active' || !l) return void (yieldTurn.value = false)
   if (s.activePlayer !== you.value) return void (yieldTurn.value = false) // turn has moved on → done
   // forced choices we can't safely auto-make → hand control back to the player
-  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsRetarget || l.needsEntersChoice || l.needsCascade || l.needsHideaway || l.needsFreePlay || l.needsOpeningPlay || l.needsTriggerTargets || s.scry || s.search)
+  if (targeting.value || casting.value || costSac.value || equipping.value || modalPick.value || loyaltyPick.value || multiTargeting.value || graveyardTargeting.value || l.needsDiscard || l.needsPutBack || l.needsSacrifice || l.needsWard || l.needsOptionalPay || !!channeling.value || !!gyAbility.value || l.needsTypeChoice || l.needsHandChoice || l.needsProliferate || l.needsRevealTop || l.needsMayDraw || l.needsRetarget || l.needsEntersChoice || l.needsCascade || l.needsRiot || l.needsHideaway || l.needsFreePlay || l.needsOpeningPlay || l.needsTriggerTargets || s.scry || s.search)
     return void (yieldTurn.value = false)
   yieldTimer = setTimeout(() => {
     yieldTimer = null
@@ -1720,8 +1737,14 @@ onBeforeUnmount(() => {
                 <b class="tabular-nums">{{ casting.x }}</b>
                 <UButton size="xs" variant="soft" icon="i-lucide-plus" @click="setX(1)" />
               </span>
+              <span v-if="casting.kickerCost && casting.multikicker" class="flex items-center gap-1">
+                <span class="flex items-center gap-0.5">Multikicker <ManaSymbols :value="casting.kickerCost" :size="12" /> ×</span>
+                <UButton size="xs" variant="soft" icon="i-lucide-minus" :disabled="(casting.kickerCount ?? 0) <= 0" @click="() => { bumpKicker(-1) }" />
+                <b class="tabular-nums">{{ casting.kickerCount ?? 0 }}</b>
+                <UButton size="xs" variant="soft" icon="i-lucide-plus" @click="() => { bumpKicker(1) }" />
+              </span>
               <UButton
-                v-if="casting.kickerCost"
+                v-else-if="casting.kickerCost"
                 size="xs"
                 :variant="casting.kicked ? 'solid' : 'soft'"
                 :color="casting.kicked ? 'primary' : 'neutral'"
@@ -1793,6 +1816,11 @@ onBeforeUnmount(() => {
               <UButton v-else-if="legal.cascadeCanFreeCast" size="xs" icon="i-lucide-sparkles" @click="sendCascade(true)">Cast free</UButton>
               <span v-else class="text-dimmed">(can't free-cast this here — decline)</span>
               <UButton size="xs" variant="ghost" color="neutral" @click="sendCascade(false)">Decline</UButton>
+            </div>
+            <div v-if="legal?.needsRiot" class="flex items-center gap-2 rounded-lg border border-lime-400 bg-lime-500/10 px-3 py-1.5 text-xs font-medium">
+              <span>Riot — <b>{{ legal.riotSourceName }}</b> enters with…</span>
+              <UButton size="xs" icon="i-lucide-plus-circle" @click="() => { send({ type: 'r.riot', haste: false }) }">a +1/+1 counter</UButton>
+              <UButton size="xs" variant="soft" icon="i-lucide-rabbit" @click="() => { send({ type: 'r.riot', haste: true }) }">haste</UButton>
             </div>
             <div v-if="legal?.needsHideaway" class="flex flex-wrap items-center gap-2 rounded-lg border border-teal-400 bg-teal-500/10 px-3 py-1.5 text-xs font-medium">
               <span>{{ legal.hideawaySourceName }} — hide one away (the rest go to the bottom):</span>

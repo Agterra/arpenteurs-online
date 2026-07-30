@@ -43,7 +43,8 @@ export const RulesMsg = z.discriminatedUnion('type', [
     // chosen modes for a MULTI-mode spell ("choose two" / "one or more"); the server re-validates
     // the count against the card's modeRule and rejects duplicates
     modes: z.array(z.number().int().min(0).max(9)).max(4).optional(),
-    kicked: z.boolean().optional(), // whether the optional kicker cost was paid
+    kicked: z.boolean().optional(), // whether the optional kicker cost was paid (CR 702.33)
+    kickerCount: z.number().int().min(0).max(20).optional(), // MULTIKICKER: how many times (CR 702.33b)
     adventure: z.boolean().optional(), // cast the Adventure half (CR 715) rather than the creature
     convoke: z.array(Id).max(20).optional(), // creatures tapped to help pay via convoke (CR 702.51)
     retraceLand: Id.optional(), // land discarded as the additional retrace cost (CR 702.81)
@@ -130,6 +131,9 @@ export const RulesMsg = z.discriminatedUnion('type', [
   z.object({ type: z.literal('r.keep'), toBottom: z.array(Id).max(20) }),
   /** CR 103.6 pre-game offer: begin the game with this card on the battlefield (Gemstone Caverns) */
   z.object({ type: z.literal('r.openingPlay'), play: z.boolean(), exileIds: z.array(Id).max(4).optional() }),
+
+  /** RIOT (CR 702.137): the creature that just entered takes a +1/+1 counter, or haste */
+  z.object({ type: z.literal('r.riot'), haste: z.boolean() }),
 
   // ---- hideaway (CR 702.76) ----
   /** which of the four looked-at cards is exiled face down */

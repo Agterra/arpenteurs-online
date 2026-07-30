@@ -64,6 +64,7 @@ export function buildRulesGame(
     pendingHideaway: null,
     pendingFreePlay: null,
     pendingOpeningPlay: null,
+    pendingRiot: null,
     entersChoiceQueue: [],
     extraTriggerQueue: [],
     delayedTriggers: [],

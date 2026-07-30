@@ -226,6 +226,8 @@ export interface StackItem {
   cantBeCountered?: boolean
   /** whether this spell was cast kicked (its optional kicker cost was paid) — CR 702.33 */
   kicked?: boolean
+  /** MULTIKICKER: how many times the kicker cost was paid (CR 702.33b — Everflowing Chalice) */
+  kickedCount?: number
   /** Saga chapter ability on the stack (CR 714): the 1-based chapter number resolving (its
    *  effect is `def.saga.chapters[sagaChapter - 1]`). */
   sagaChapter?: number
@@ -319,7 +321,7 @@ export type PendingKind =
   | 'attackers' | 'blockers' | 'discard' | 'trigger' | 'scry' | 'search' | 'sacrifice' | 'ward'
   | 'cascade' | 'madness' | 'entersChoice' | 'optionalPay' | 'putBack' | 'typeChoice' | 'handChoice'
   | 'proliferate' | 'revealTop' | 'mayDraw' | 'retarget' | 'modes' | 'hideaway' | 'freePlay'
-  | 'openingPlay'
+  | 'openingPlay' | 'riot'
 
 export interface RulesGameState {
   id: string
@@ -537,6 +539,12 @@ export interface RulesGameState {
    */
   pendingOpeningPlay: { player: PlayerId; objId: ObjId; defName: string; queue: PlayerId[] } | null
   /**
+   * RIOT (CR 702.137): "as this creature enters, choose a +1/+1 counter or haste". Queued on the
+   * as-enters queue like the shocklands' choice, so several riot creatures entering together are each
+   * asked in turn.
+   */
+  pendingRiot: { player: PlayerId; objId: ObjId } | null
+  /**
    * Scheduled DELAYED triggers (CR 603.7) — "at the beginning of your next upkeep / main phase".
    * `defName` + `key` point at the body in `CardDefinition.delayed` (functions can't be serialised);
    * `x` carries any value captured when it was scheduled (Mana Drain's mana value). It fires at the
@@ -565,7 +573,7 @@ export interface RulesGameState {
     anyPlayersTurn?: boolean
   }[]
   /** as-enters choices waiting to be opened, in entry order (several permanents can enter at once) */
-  entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number; chooseType?: boolean }[]
+  entersChoiceQueue: { player: PlayerId; objId: ObjId; life: number; chooseType?: boolean; riot?: boolean }[]
   /**
    * Roaming Throne: extra instances of a triggered ability that must go on the stack "an additional time".
    * A non-targeted ability is simply pushed twice; one that opens a TARGET CHOICE waits here until that
@@ -832,7 +840,7 @@ export interface LegalActions {
     label?: string
   }[]
   /** castable cards that have a kicker — the client offers a "kick" toggle (cost = kicker's mana) — CR 702.33 */
-  kickable: { objId: ObjId; cost: string }[]
+  kickable: { objId: ObjId; cost: string; multi?: boolean }[]
   /** hand cards castable for their OVERLOAD cost right now (untargeted "each" body) — CR 702.96 */
   overloadable: { objId: ObjId; cost: string }[]
   /** hand cards castable for FREE right now because you control a commander (Fierce Guardianship) */
@@ -873,6 +881,10 @@ export interface LegalActions {
   entersChoiceAffordable: boolean
   /** a cascade hit is waiting on YOU: cast the revealed card free or decline (CR 702.85) */
   /** a HIDEAWAY choice is waiting (r.hideaway): the four cards you're looking at, pick one to exile */
+  /** a RIOT choice is waiting (r.riot): +1/+1 counter or haste for the creature that just entered */
+  needsRiot: boolean
+  riotObjId: ObjId | null
+  riotSourceName: string
   needsHideaway: boolean
   hideawayIds: ObjId[]
   hideawaySourceName: string

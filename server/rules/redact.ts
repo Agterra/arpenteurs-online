@@ -306,6 +306,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     entersChoiceLife: 0,
     entersChoiceName: '',
     entersChoiceAffordable: false,
+    needsRiot: false,
+    riotObjId: null,
+    riotSourceName: '',
     needsHideaway: false,
     hideawayIds: [],
     hideawaySourceName: '',
@@ -568,6 +571,16 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
         entersChoiceAffordable: state.players[viewer]!.life >= pec.life,
       }
     }
+    if (state.pending.kind === 'riot' && state.pendingRiot) {
+      // a battlefield permanent and a two-way choice: all public information
+      const obj = state.objects[state.pendingRiot.objId]
+      return {
+        ...none,
+        needsRiot: true,
+        riotObjId: state.pendingRiot.objId,
+        riotSourceName: obj ? getDef(obj.defName).name : '',
+      }
+    }
     if (state.pending.kind === 'hideaway' && state.pendingHideaway) {
       // the four cards themselves ride along in `cards` (actor-only, above)
       return {
@@ -821,8 +834,9 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
   // gated client-side by the payment panel and re-checked by r.cast.
   const kickable: LegalActions['kickable'] = []
   for (const id of castableIds) {
-    const kc = getDef(state.objects[id]!.defName).kickerCost
-    if (kc) kickable.push({ objId: id, cost: kc })
+    const kd = getDef(state.objects[id]!.defName)
+    // MULTIKICKER (CR 702.33b) is flagged so the client offers a COUNT, not a yes/no toggle
+    if (kd.kickerCost) kickable.push({ objId: id, cost: kd.kickerCost, ...(kd.multikicker ? { multi: true } : {}) })
   }
 
   // Overload (CR 702.96): an ALTERNATIVE cost, so affordability is judged against the overload

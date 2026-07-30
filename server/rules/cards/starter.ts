@@ -5024,6 +5024,46 @@ export const STARTER_SET: CardDefinition[] = [
     ],
   },
   {
+    name: 'Wild Growth',
+    types: ['Enchantment'],
+    subtypes: ['Aura'],
+    manaCost: '{G}',
+    colors: ['G'],
+    // "Enchant land. Whenever enchanted land is tapped for mana, its controller adds {G}."
+    spell: { targets: [{ kind: 'permanent', count: 1, filter: { types: ['Land'] } }], effect: sequence() },
+    tappedForMana: { color: 'G', amount: 1 },
+  },
+  {
+    name: 'Everflowing Chalice',
+    types: ['Artifact'],
+    manaCost: '{0}',
+    // "Multikicker {2} (You may pay an additional {2} any number of times as you cast this spell.)
+    //  Everflowing Chalice enters with a charge counter on it for each time it was kicked.
+    //  {T}: Add {C} for each charge counter on Everflowing Chalice."
+    kickerCost: '{2}',
+    multikicker: true,
+    entersWithCounterPerKick: 'charge',
+    abilities: [
+      {
+        kind: 'activated',
+        cost: { tap: true },
+        isMana: true,
+        produces: ['C'],
+        manaEqualToCounters: 'charge',
+        effect: noop(),
+      },
+    ],
+  },
+  {
+    name: 'Rhythm of the Wild',
+    types: ['Enchantment'],
+    manaCost: '{1}{R}{G}',
+    colors: ['R', 'G'],
+    // "Nontoken creature spells you control can't be countered. Creature spells you control have riot."
+    yourCreatureSpellsUncounterable: true,
+    grantsRiotToYourCreatureSpells: true,
+  },
+  {
     name: 'Gemstone Caverns',
     types: ['Land'],
     supertypes: ['Legendary'],

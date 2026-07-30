@@ -77,6 +77,8 @@ let pwLoyaltyFired = 0
 let pwAttacked = 0
 let pwBurned = 0 // a spell/ability aimed its damage at a planeswalker ("any target" — CR 115.4)
 let impulsePlayed = 0 // a card exiled by an impulse effect was played straight out of exile (fuzz-only telemetry)
+let riotChosen = 0 // a riot creature entered and its controller chose (CR 702.137)
+let multiKicked = 0 // a multikicker spell was cast kicked (CR 702.33b)
 let hidAway = 0 // a hideaway land exiled a card face down (the look → face-down-exile path)
 let beganWithPermanent = 0 // a player took the CR 103.6 pre-game offer (Gemstone Caverns)
 
@@ -120,6 +122,12 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
       // DECLINE — the exiled (publicly-revealed) cards go to the bottom re-minted, exercising
       // the leak-critical exile→library path; must handle this pending or the fuzzer stalls.
       applyRulesAction(state, p, { type: 'r.cascade', cast: false, targets: [] })
+      return true
+    }
+    if (state.pending.kind === 'riot') {
+      // RIOT: a +1/+1 counter or haste — both halves get exercised across the seeds
+      applyRulesAction(state, p, { type: 'r.riot', haste: rnd() < 0.5 })
+      riotChosen++ // coverage guard
       return true
     }
     if (state.pending.kind === 'hideaway') {
@@ -664,7 +672,12 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     const xCount = (def.manaCost?.match(/\{X\}/g) ?? []).length
     const x = xCount > 0 ? Math.floor(rnd() * 3) : undefined
     const basePips = (def.manaCost?.replace(/\{X\}/g, '').match(/\{/g) ?? []).length
-    const need = basePips + (x ?? 0) * xCount
+    // MULTIKICKER (CR 702.33b): decide to kick BEFORE tapping, so the extra mana is actually floated —
+    // otherwise the fuzzer taps for the base cost only and can never afford a kick
+    const wantKick = !!def.multikicker && !!def.kickerCost
+    const manaNeeded = (cost: string | undefined) =>
+      [...(cost ?? '').matchAll(/\{([^}]+)\}/g)].reduce((n, m) => n + (/^\d+$/.test(m[1]!) ? Number(m[1]) : 1), 0)
+    const need = basePips + (x ?? 0) * xCount + (wantKick ? manaNeeded(def.kickerCost) : 0)
     for (const src of legal.manaSourceIds) {
       const pool = state.players[actor]!.manaPool
       if (Object.values(pool).reduce((a, b) => a + b, 0) >= need) break
@@ -761,8 +774,22 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
         discards = hand.slice(0, extra.discard)
       }
     }
+    // MULTIKICKER (CR 702.33b): kick once when the extra {2} is floating, so the charge-counter and
+    // counter-driven mana paths get exercised (a plain kicker is left alone — the base cast covers it)
+    const multiKick = wantKick && Object.values(state.players[actor]!.manaPool).reduce((a, b) => a + b, 0) >= need
     try {
-      applyRulesAction(state, actor, { type: 'r.cast', objId, targets, x, mode: modeIdx, modes: modeSet, sacrifices, discards })
+      applyRulesAction(state, actor, {
+        type: 'r.cast',
+        objId,
+        targets,
+        x,
+        mode: modeIdx,
+        modes: modeSet,
+        sacrifices,
+        discards,
+        ...(multiKick ? { kicked: true, kickerCount: 1 } : {}),
+      })
+      if (multiKick) multiKicked++ // coverage guard
     } catch {
       return tryPass() // e.g. pool short after random taps, or illegal modal target — passing is always legal
     }
@@ -1115,6 +1142,9 @@ const FUZZ_DECK = [
   ...Array(2).fill('Three Tree City'),
   ...Array(3).fill('Mosswort Bridge'),
   ...Array(2).fill('Gemstone Caverns'),
+  ...Array(2).fill('Wild Growth'),
+  ...Array(3).fill('Everflowing Chalice'),
+  ...Array(2).fill('Rhythm of the Wild'),
   ...Array(3).fill('Sink into Stupor'),
   ...Array(2).fill('Tireless Provisioner'),
   ...Array(2).fill('Command Beacon'),
@@ -1169,6 +1199,8 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     impulsePlayed = 0
     hidAway = 0
     beganWithPermanent = 0
+    riotChosen = 0
+    multiKicked = 0
     try {
       for (const [nPlayers, seed] of cases) {
         const rnd = mulberry32(seed)
@@ -1191,6 +1223,10 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
         // someone's declare-attackers is pure seed luck (it silently dropped to zero when this
         // deck changed), which would leave the pwAttacked coverage guard below asserting nothing.
         for (const p of state.turnOrder) {
+          // Rhythm of the Wild grants RIOT to every creature spell its controller casts, so the riot
+          // choice is reached from the very first creature cast instead of depending on drawing one
+          putCard(state, p, 'Rhythm of the Wild', 'battlefield')
+          putCard(state, p, 'Everflowing Chalice', 'hand') // a {0} multikicker in reach of every game
           const pw = putCard(state, p, 'Nissa, Voice of Zendikar', 'battlefield')
           // putCard bypasses moveTo (where loyalty is normally initialised), so set it here or the
           // 0-loyalty SBA kills her instantly
@@ -1214,7 +1250,14 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     // as dead code (a planeswalker never castable / never attacked)
     expect(pwLoyaltyFired).toBeGreaterThan(0)
     expect(pwAttacked).toBeGreaterThan(0)
-    expect(hidAway).toBeGreaterThan(0) // the hideaway look → face-down exile path really ran
+    // (hidAway is telemetry, not a guard: whether a Mosswort Bridge is drawn AND played in these four
+    //  games is shuffle luck — it went to 0 the moment this deck grew — so the leak-critical
+    //  library → face-down-exile path is pinned by the deterministic test below instead.)
+    expect(riotChosen).toBeGreaterThan(0) // a riot choice was really made
+    // (multiKicked is telemetry, not a guard: whether a {0} artifact is the card the fuzzer happens to
+    //  pick out of a dozen castable ones, WITH two spare mana floating, is seed luck. Multikicker is a
+    //  field on the already-heavily-fuzzed r.cast rather than a new action, and it touches no hidden
+    //  zone — the mechanic itself is pinned by rules-cards-card68.spec.ts.)
     expect(beganWithPermanent).toBeGreaterThan(0) // a player really took the pre-game offer
     // (pwBurned is telemetry, not a guard: a fuzz game's planeswalkers are attacked to death long
     //  before an any-target burn spell happens to be castable — measured at 0 of 6 such casts — so the
@@ -1430,6 +1473,42 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
         if (state.objects[id]?.zone === 'exile') expect(state.objects[id]!.playableUntil).toBeUndefined()
       }
       assertNoLeaks(state, '(after the window closed)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // HIDEAWAY (CARD67): the top four of a HIDDEN library are shown to their owner alone, one becomes a
+  // FACE-DOWN exile (public id, no identity) and the other three go to the bottom re-minted. Whether a
+  // Mosswort Bridge is drawn AND played in the fuzz games is shuffle luck, so the path is pinned here.
+  it('hideaway: library → own-peek → face-down exile, with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(6161))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const bridge = putCard(state, A, 'Mosswort Bridge', 'hand')
+      assertNoLeaks(state, '(hideaway setup)', seen)
+      applyRulesAction(state, A, { type: 'r.playLand', objId: bridge })
+      until(state, (s) => s.pending?.kind === 'hideaway' && s.pending.player === A, 'the look')
+      // the four looked-at ids are A's own sanctioned peek; B must see none of them
+      const looked = [...state.pendingHideaway!.cardIds]
+      assertNoLeaks(state, '(hideaway look open)', seen)
+      const theirView = JSON.stringify(redactRulesState(state, B))
+      for (const id of looked) expect(theirView.includes(id), `look id ${id} leaked to B`).toBe(false)
+      const chosen = looked[2]!
+      applyRulesAction(state, A, { type: 'r.hideaway', objId: chosen })
+      // the exiled card is public but anonymous; the other three went back to the hidden library and
+      // were re-minted, so none of the ids A just saw may resurface there
+      assertNoLeaks(state, '(hideaway resolved)', seen)
+      expect(state.objects[chosen]!.faceDown).toBe(true)
+      expect(redactRulesState(state, B).cards[chosen]!.defName ?? '').toBe('')
+      for (const id of looked) if (id !== chosen) expect(state.objects[id]).toBeUndefined()
+      // …and the rest of the turn stays clean (the face-down id is now known to both players)
+      until(state, (s) => s.step === 'end' || s.turnNumber > 1, 'the turn ends')
+      assertNoLeaks(state, '(hideaway, end of turn)', seen)
     } finally {
       __setDeterministicRng(null)
     }

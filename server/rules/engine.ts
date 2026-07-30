@@ -468,7 +468,17 @@ export function checkSBA(state: RulesGameState) {
       const isAura = defIsAura(def)
       if (!isAura && !defIsEquipment(def)) continue
       const host = obj.attachedTo ? state.objects[obj.attachedTo] : null
-      const hostOk = !!host && host.zone === 'battlefield' && defIsCreature(getDef(host.defName))
+      // CR 704.5n: the host must still satisfy the Aura's ENCHANT restriction, which is its spell's
+      // own target spec — "enchant land" (Wild Growth) is a legal attachment, so a creature-only check
+      // would bin it the moment it entered. Equipment always equips creatures.
+      const enchantSpec = isAura && !def.reanimatingAura ? def.spell?.targets?.[0] : undefined
+      const hostOk =
+        !!host &&
+        host.zone === 'battlefield' &&
+        (enchantSpec && enchantSpec.kind === 'permanent'
+          ? matchesFilter(state, host, enchantSpec.filter, obj.controllerId)
+          : defIsCreature(getDef(host.defName)) &&
+            (!enchantSpec || enchantSpec.kind !== 'creature' || matchesFilter(state, host, enchantSpec.filter, obj.controllerId)))
       if (isAura && !hostOk) {
         logLine(state, `${def.name} is put into the graveyard (nothing to enchant).`)
         moveToGraveyard(state, obj.id)
@@ -555,11 +565,38 @@ function drainEntersChoices(state: RulesGameState): boolean {
       state.pendingTypeChoice = { player: next.player, objId: next.objId }
       return true
     }
+    if (next.riot) {
+      // RIOT (CR 702.137): a +1/+1 counter or haste (r.riot)
+      state.pending = { kind: 'riot', player: next.player }
+      state.pendingRiot = { player: next.player, objId: next.objId }
+      return true
+    }
     state.pending = { kind: 'entersChoice', player: next.player }
     state.pendingEntersChoice = next
     return true
   }
   return false
+}
+
+/**
+ * "Whenever enchanted land is tapped for mana, its controller adds {G}." (Wild Growth) — CR 605.1b:
+ * this is a triggered MANA ability, so it never uses the stack; the mana is added as part of the tap
+ * that triggered it. Fires once per attached permanent that has the ability.
+ */
+function fireTappedForMana(state: RulesGameState, tappedId: ObjId) {
+  const tapped = state.objects[tappedId]
+  if (!tapped) return
+  for (const obj of Object.values(state.objects)) {
+    if (obj.zone !== 'battlefield' || obj.attachedTo !== tappedId || obj.phasedOut) continue
+    if (state.loseAbilities.includes(obj.id)) continue
+    const add = getDef(obj.defName).tappedForMana
+    if (!add) continue
+    state.players[tapped.controllerId]!.manaPool[add.color] += add.amount
+    logLine(
+      state,
+      `${objName(state, obj.id)} adds ${add.amount} {${add.color}} for ${name(state, tapped.controllerId)} (${objName(state, tappedId)} was tapped for mana).`,
+    )
+  }
 }
 
 // ---------- forced sacrifice (edicts / aristocrats) ----------
@@ -842,6 +879,7 @@ function repairControlFlow(state: RulesGameState) {
     state.pendingHideaway = null
     state.pendingFreePlay = null
     state.pendingOpeningPlay = null
+    state.pendingRiot = null
     if (kind === 'optionalPay') {
       // the payer left → they can't pay, so the ability happens for its controller
       if (optionalPay && !state.players[optionalPay.beneficiary]!.hasLost) {
@@ -1659,6 +1697,20 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     moveTo(state, obj.id, 'battlefield') // moveTo initialises loyalty for a planeswalker (CR 306.5b)
     obj.enteredByCast = true // The One Ring's ETB reads this ("if you cast it")
     if (auraTarget) obj.attachedTo = auraTarget // set AFTER moveTo (which clears attachedTo)
+    // MULTIKICKER: "enters with a charge counter for each time it was kicked" (Everflowing Chalice)
+    if (def.entersWithCounterPerKick && item.kickedCount)
+      putCounters(state, obj.id, def.entersWithCounterPerKick, item.kickedCount)
+    // RIOT (CR 702.137) — printed on the card, or granted to your creature SPELLS by another
+    // permanent (Rhythm of the Wild). Only a creature that resolved as a spell can have it, which is
+    // exactly this path; queued like the shocklands' as-enters choice so several are asked in turn.
+    if (
+      defIsCreature(def) &&
+      (def.riot ||
+        zoneArr(state, item.controllerId, 'battlefield').some(
+          (id) => getDef(state.objects[id]!.defName).grantsRiotToYourCreatureSpells,
+        ))
+    )
+      (state.entersChoiceQueue ??= []).push({ player: item.controllerId, objId: obj.id, life: 0, riot: true })
     // (entersTapped is applied by moveTo for every entry path)
     fireEntersTriggers(state, obj.id) // a face-down creature has no own ETB (guarded in fireEntersTriggers)
     // (a Saga's first lore counter + chapter I are added by moveTo, on every entry path)
@@ -2778,8 +2830,18 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
           const only = restriction.legendaryOnly ? 'legendary spells' : `${obj.chosenType ?? 'the chosen type'} creature spells`
           logLine(state, `${name(state, actor)} adds {${msg.color}} (only for ${only}).`)
         }
+      } else if (ability.manaEqualToCounters) {
+        // "{T}: Add {C} for each charge counter on this permanent." (Everflowing Chalice)
+        const n = obj.counters[ability.manaEqualToCounters] ?? 0
+        const col = ability.produces?.[0] ?? 'C'
+        state.players[actor]!.manaPool[col] += n
+        logLine(state, `${name(state, actor)} adds ${n} {${col}} (${ability.manaEqualToCounters} counters).`)
       } else if (ability.chooseColor) state.players[actor]!.manaPool[msg.color!]++
       else ability.effect({ state, controllerId: actor, sourceId: obj.id, targets: [] }) // fixed output
+      // TRIGGERED MANA ABILITY (CR 605.1b — Wild Growth): an Aura attached to the tapped permanent
+      // that adds mana whenever it is tapped for mana. It doesn't use the stack, so the mana lands
+      // now, in the TAPPED permanent's controller's pool as printed.
+      fireTappedForMana(state, obj.id)
       // pay a mana ability's sacrifice cost (the Altars) — after the mana is in the pool, so a dies
       // trigger that wants to spend it sees it
       for (const id of manaSacIds) {
@@ -3018,12 +3080,19 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (fromCommand) cost.generic += 2 * state.players[actor]!.commanderTax // commander tax (CR 903.8)
       cost.generic += x * xCount
       // kicker (CR 702.33): an optional additional cost chosen as the spell is cast (main face only)
-      const kicked = !adv && !!msg.kicked
+      // MULTIKICKER (CR 702.33b): the kicker may be paid any number of times, so the count — not just
+      // a boolean — drives the cost and rides the stack item
+      // a count above 1 is only meaningful for a MULTIkicker — refuse it outright rather than
+      // silently treating it as a single kick
+      if ((msg.kickerCount ?? 0) > 1 && !def.multikicker)
+        throw new RulesError('NO_KICKER', 'That kicker can only be paid once')
+      const kickerCount = !adv ? (def.multikicker ? (msg.kickerCount ?? (msg.kicked ? 1 : 0)) : msg.kicked ? 1 : 0) : 0
+      const kicked = kickerCount > 0
       if (kicked) {
         if (!def.kickerCost) throw new RulesError('NO_KICKER', 'That spell has no kicker')
         const kc = parseManaCost(def.kickerCost)
-        cost.generic += kc.generic
-        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += kc.colored[c]
+        cost.generic += kc.generic * kickerCount
+        for (const c of ['W', 'U', 'B', 'R', 'G', 'C'] as const) cost.colored[c] += kc.colored[c] * kickerCount
       }
       // buyback (CR 702.27): optional additional cost; on resolution the spell returns to hand
       const buyback = !adv && !splitHalf && !!msg.buyback
@@ -3195,9 +3264,17 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         x: xCount > 0 ? x : lifeX ? lifeX : undefined,
         mode: !adv && !multiModes && (def.modes?.length || def.split) ? (msg.mode ?? 0) : undefined,
         modes: multiModes ?? undefined,
-        cantBeCountered: spent.uncounterable || undefined,
+        // uncounterable from the mana that paid for it (Cavern of Souls) OR from a static another
+        // permanent grants your creature spells (Rhythm of the Wild) — stamped as it's cast, so it
+        // survives that permanent leaving before the spell resolves
+        cantBeCountered:
+          spent.uncounterable ||
+          (defIsCreature(def) &&
+            zoneArr(state, actor, 'battlefield').some((id) => getDef(state.objects[id]!.defName).yourCreatureSpellsUncounterable)) ||
+          undefined,
         faceDown: castingFaceDown || undefined,
         kicked: kicked || undefined,
+        kickedCount: kickerCount > 0 ? kickerCount : undefined,
         adventure: castingAdventure || undefined,
         flashback: fromFlashback || undefined,
         buyback: buyback || undefined,
@@ -4146,6 +4223,26 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} leaves the card on top of their library.`)
       }
       if (!state.pending) grantPriority(state, state.activePlayer)
+      break
+    }
+
+    case 'r.riot': {
+      if (state.pending?.kind !== 'riot' || state.pending.player !== actor || !state.pendingRiot)
+        throw new RulesError('NOT_PENDING', 'Not waiting for your riot choice')
+      const pr = state.pendingRiot
+      state.pending = null
+      state.pendingRiot = null
+      const obj = state.objects[pr.objId]
+      if (obj && obj.zone === 'battlefield') {
+        if (msg.haste) {
+          obj.summoningSick = false // haste (CR 702.10) — it can attack and tap right away
+          logLine(state, `${objName(state, obj.id)} enters with haste (riot).`)
+        } else {
+          putCounters(state, obj.id, '+1/+1', 1)
+          logLine(state, `${objName(state, obj.id)} enters with a +1/+1 counter (riot).`)
+        }
+      }
+      if (!drainDecisions(state)) grantPriority(state, state.activePlayer)
       break
     }
 
