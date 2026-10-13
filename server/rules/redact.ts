@@ -876,6 +876,8 @@ export function computeLegal(state: RulesGameState, viewer: PlayerId): LegalActi
     if (!pitch) continue
     if (!def.types.includes('Instant') && !isMain) continue
     if (state.players[viewer]!.life < pitch.life) continue
+    // "If it's not your turn…" (Force of Negation) — not offered on your own turn
+    if (pitch.onlyIfNotYourTurn && state.activePlayer === viewer) continue
     const candidateIds = zoneArr(state, viewer, 'hand').filter(
       (other) => other !== id && (getDef(state.objects[other]!.defName).colors ?? []).includes(pitch.color),
     )

@@ -290,7 +290,7 @@ export interface TriggeredAbility {
 /** The trigger events the engine emits. */
 export type TriggerKind =
   | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain'
+  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain' | 'createdTokens' | 'sacrificed'
 
 /**
  * One Saga chapter ability (CR 714). Chapter N triggers when the Saga's lore counter reaches N
@@ -570,6 +570,17 @@ export interface CardDefinition {
   /** RIOT printed on the card itself (CR 702.137 — Gruul Spellbreaker) */
   riot?: boolean
   /**
+   * "Whenever you create one or more tokens, …" (Mirkwood Bats) — fires ONCE per token-creating event,
+   * however many tokens it made, which is what "one or more" means (CR 603.2b). The engine fires it
+   * from the single token-minting path, so a doubled or substituted creation is still one event.
+   */
+  createdTokens?: TriggeredAbility
+  /**
+   * "Whenever you sacrifice one or more permanents, …" (Mirkwood Bats) — once per sacrifice event, from
+   * the one helper every sacrifice path funnels through.
+   */
+  sacrificedPermanents?: TriggeredAbility
+  /**
    * Panharmonicon: "If an ARTIFACT OR CREATURE entering the battlefield causes a triggered ability of a
    * permanent you control to trigger, that ability triggers an additional time." Shares the trigger-
    * doubling machinery with Roaming Throne (`doublesChosenTypeTriggers`), but keys off the ENTERING
@@ -729,7 +740,7 @@ export interface CardDefinition {
    * your control, it creates twice that many of those tokens instead" (Doubling Season, Parallel
    * Lives, Anointed Procession). Applied in `spawnTokens`; several stack multiplicatively.
    */
-  tokenReplacement?: 'double'
+  tokenReplacement?: 'double' | 'artifactTrio'
   /**
    * "This land enters tapped unless you control three or more other Islands." (the Eldraine land
    * cycle) — like `entersTappedUnlessOtherLandsAtLeast`, but counting only lands with that SUBTYPE.
@@ -828,7 +839,12 @@ export interface CardDefinition {
    * your hand rather than pay this spell's mana cost." Paid as the spell is cast, so the exiled card comes
    * in on r.cast (`exiles`), like the sacrifice/discard additional costs.
    */
-  pitchCost?: { life: number; color: ManaColor }
+  pitchCost?: {
+    life: number
+    color: ManaColor
+    /** "If it's NOT your turn, you may exile a blue card…" (Force of Negation) */
+    onlyIfNotYourTurn?: boolean
+  }
   /**
    * As-enters replacement CHOICE (CR 614.12) — the shocklands' "As this land enters, you may pay N
    * life. If you don't, it enters tapped." Set to the life amount. The engine opens an

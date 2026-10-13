@@ -413,6 +413,7 @@ export function checkSBA(state: RulesGameState) {
             (state.pendingTrigger?.sagaChapter != null && state.pendingTrigger.sourceId === obj.id)
           if (!chapterPending) {
             logLine(state, `${def.name} is sacrificed (final chapter complete).`)
+            fireSacrificeWatchers(state, obj.controllerId, [obj.id]) // a Saga sacrificing itself IS a sacrifice
             moveToGraveyard(state, obj.id)
             changed = true
           }
@@ -611,6 +612,28 @@ function fireTappedForMana(state: RulesGameState, tappedId: ObjId) {
       state,
       `${objName(state, obj.id)} adds ${add.amount} {${add.color}} for ${name(state, tapped.controllerId)} (${objName(state, tappedId)} was tapped for mana).`,
     )
+  }
+}
+
+/**
+ * "Whenever you sacrifice one or more permanents, …" (Mirkwood Bats) — CR 603.2b: ONE trigger per
+ * sacrifice event, however many permanents it took. Every sacrifice path calls this once, AFTER the
+ * moves, with the ids it sacrificed; an empty list fires nothing. A sacrifice is a leaves-the-battlefield
+ * event, so the watchers "look back in time" (CR 603.10a): a watcher sacrificed in that same event
+ * still triggers, which is why the sacrificed ids are scanned alongside the battlefield.
+ */
+export function fireSacrificeWatchers(state: RulesGameState, controllerId: PlayerId, sacrificedIds: ObjId[]) {
+  if (!sacrificedIds.length || state.status !== 'active') return
+  const onBattlefield = state.turnOrder.flatMap((pid) => state.zones.perPlayer[pid]!.battlefield)
+  for (const id of new Set([...onBattlefield, ...sacrificedIds])) {
+    const p = state.objects[id]
+    if (!p) continue
+    const leftNow = sacrificedIds.includes(id)
+    if (!leftNow && (p.phasedOut || state.loseAbilities.includes(id))) continue
+    // "whenever YOU sacrifice" — the watcher's own controller must be the sacrificing player (a
+    // sacrificed watcher was, by definition, controlled by the sacrificing player)
+    if (!getDef(p.defName).sacrificedPermanents || p.controllerId !== controllerId) continue
+    queueTriggeredAbility(state, p.id, 'sacrificed')
   }
 }
 
@@ -1426,6 +1449,8 @@ function abilityFor(def: CardDefinition, kind: StackItem['trigger']) {
     : kind === 'leavesBattlefield' ? def.leavesBattlefield
     : kind === 'etbWatch' ? def.entersWatch
     : kind === 'firstMain' ? def.firstMain
+    : kind === 'createdTokens' ? def.createdTokens
+    : kind === 'sacrificed' ? def.sacrificedPermanents
     : def.enters
 }
 
@@ -1443,6 +1468,8 @@ const TRIGGER_LABEL: Record<NonNullable<StackItem['trigger']>, string> = {
   leavesBattlefield: 'leaves-the-battlefield',
   etbWatch: 'enters-the-battlefield',
   firstMain: 'first main phase',
+  createdTokens: 'token-creation',
+  sacrificed: 'sacrifice',
 }
 
 /** Resolve a triggered ability (enters / dies / attacks) or an activated ability. */
@@ -1736,6 +1763,7 @@ function resolveSpell(state: RulesGameState, item: StackItem) {
     // still draws two cards even though it's already dying.
     if (item.evoke) {
       logLine(state, `${def.name} is sacrificed (evoke).`)
+      fireSacrificeWatchers(state, item.controllerId, [obj.id])
       moveToGraveyard(state, obj.id)
     }
   } else if (item.buyback) {
@@ -2899,7 +2927,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)} for mana.`)
         moveToGraveyard(state, id)
       }
-      if (manaSacIds.length) checkSBA(state)
+      if (manaSacIds.length) {
+        fireSacrificeWatchers(state, actor, manaSacIds) // "whenever you sacrifice one or more…"
+        checkSBA(state)
+      }
       // a mana ability that hurts (Ancient Tomb, City of Brass, the pain lands)
       if (ability.damageOnTapForMana) {
         changeLife(state, actor, -ability.damageOnTapForMana)
@@ -2911,6 +2942,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       if (ability.cost.sacrificeSelf) {
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, obj.id)} for mana.`)
         moveToGraveyard(state, obj.id)
+        fireSacrificeWatchers(state, actor, [obj.id])
         checkSBA(state)
       }
       // activating an ability is an action: the pass chain restarts (CR 116.4)
@@ -3033,6 +3065,8 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, obj.id)}.`)
         moveToGraveyard(state, obj.id)
       }
+      // paying the cost is ONE sacrifice event, however many permanents it took (CR 603.2b)
+      fireSacrificeWatchers(state, actor, ability.cost.sacrificeSelf ? [...sacIds, obj.id] : sacIds)
       // ward (CR 702.21): a targeted opponent-controlled permanent with ward triggers now
       queueWardTriggers(state, abilityStackId, msg.targets, actor)
       grantPriority(state, actor) // CR 116.4: caster/activator keeps priority; pass chain restarts
@@ -3253,6 +3287,9 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       const castingPitch = !adv && !castingBestow && !!msg.pitch
       if (castingPitch) {
         if (!pitch) throw new RulesError('NO_PITCH', 'That spell has no alternative cost')
+        // "If it's NOT your turn, you may exile a blue card…" (Force of Negation)
+        if (pitch.onlyIfNotYourTurn && state.activePlayer === actor)
+          throw new RulesError('NO_PITCH', "That alternative cost is only available on an opponent's turn")
         const ids = [...new Set(msg.exiles ?? [])]
         if (ids.length !== 1) throw new RulesError('BAD_PITCH', 'Exile exactly one card')
         const hand = zoneArr(state, actor, 'hand')
@@ -3353,6 +3390,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)} (additional cost).`)
         moveToGraveyard(state, id)
       }
+      fireSacrificeWatchers(state, actor, sacIds)
       // Path of Ancestry's rider: its mana was spent on a creature sharing a type with the commander
       for (let i = 0; i < pathScries; i++) scryEffect(1)({ state, controllerId: actor, sourceId: obj.id, targets: [] })
       // ward (CR 702.21): any targeted opponent-controlled permanent with ward triggers now
@@ -3790,6 +3828,7 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
         logLine(state, `${name(state, actor)} sacrifices ${objName(state, id)}.`)
         moveToGraveyard(state, id) // fires dies triggers
       }
+      fireSacrificeWatchers(state, actor, chosen)
       // Victimize: "…if you do, return the chosen cards to the battlefield tapped" — the sacrifice HAS
       // happened at this point, so the continuation runs (a creature that left the graveyard meanwhile is
       // simply skipped)
@@ -4057,7 +4096,10 @@ export function applyRulesAction(state: RulesGameState, actor: PlayerId, msg: Ru
       } else if (pop.cumulativeUpkeep) {
         // CR 702.24: not paying the cumulative upkeep sacrifices the permanent
         logLine(state, `${name(state, actor)} declines — ${getDef(pop.defName).name} is sacrificed (cumulative upkeep).`)
-        if (state.objects[pop.sourceId]?.zone === 'battlefield') moveToGraveyard(state, pop.sourceId)
+        if (state.objects[pop.sourceId]?.zone === 'battlefield') {
+          moveToGraveyard(state, pop.sourceId)
+          fireSacrificeWatchers(state, actor, [pop.sourceId]) // only if it was still there to sacrifice
+        }
       } else {
         logLine(state, `${name(state, actor)} declines to pay ${pop.cost}.`)
         if (!pop.effectOnPay) body?.effect({ state, controllerId: pop.beneficiary, sourceId: pop.sourceId, targets: [] })

@@ -25,6 +25,8 @@ import {
   openSacrifice,
   remintForHiddenEntry,
   scheduleDelayed,
+  fireSacrificeWatchers,
+  queueTriggeredAbility,
 } from '../engine'
 
 // intrinsic OR granted indestructible (Heroic Intervention) — the same check checkSBA's
@@ -227,6 +229,24 @@ export const counterTarget = (): Effect => (ctx) => {
     logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name}.`)
     if (item.flashback) moveTo(ctx.state, item.id, 'exile')
     else moveToGraveyard(ctx.state, item.id) // pulls it off the stack, into the graveyard
+  }
+}
+
+/**
+ * Force of Negation: "Counter target noncreature spell. If that spell is countered this way, EXILE it
+ * instead of putting it into its owner's graveyard." Same guard rails as counterTarget (a spell that
+ * can't be countered is left alone).
+ */
+export const counterTargetExiling = (): Effect => (ctx) => {
+  for (const t of ctx.targets) {
+    const item = ctx.state.zones.stack.find((s) => s.kind === 'spell' && s.id === t)
+    if (!item) continue
+    if (getDef(item.defName).cantBeCountered || item.cantBeCountered) {
+      logLine(ctx.state, `${getDef(item.defName).name} can't be countered.`)
+      continue
+    }
+    logLine(ctx.state, `${sourceName(ctx)} counters ${getDef(item.defName).name} and exiles it.`)
+    moveTo(ctx.state, item.id, 'exile')
   }
 }
 
@@ -764,6 +784,21 @@ export const FOOD: TokenSpec = {
   ],
 }
 
+/** A Clue token: "{2}, Sacrifice this token: Draw a card." (the investigate mechanic, CR 701.16) */
+export const CLUE: TokenSpec = {
+  name: 'Clue',
+  types: ['Artifact'],
+  subtypes: ['Clue'],
+  abilities: [
+    {
+      kind: 'activated',
+      cost: { mana: '{2}', sacrificeSelf: true },
+      // wrapped so `drawCards`, declared later in this module, resolves at call time
+      effect: (ctx) => drawCards(1)(ctx),
+    },
+  ],
+}
+
 export const TREASURE: TokenSpec = {
   name: 'Treasure',
   types: ['Artifact'],
@@ -828,6 +863,8 @@ function spawnTokensByDefName(
   defName: string,
   label: string,
   count: number,
+  /** set while the Academy Manufactor substitution is minting the OTHER two types (no recursion) */
+  isSubstitution = false,
 ) {
   if (count > 0) state.players[ownerId]!.createdTokenThisTurn = true // Idol of Oblivion's condition
   // token-creation REPLACEMENT effects (CR 616): Doubling Season / Parallel Lives / Anointed
@@ -836,7 +873,9 @@ function spawnTokensByDefName(
     const src = state.objects[id]
     return !!src && !src.phasedOut && !state.loseAbilities.includes(id) && getDef(src.defName).tokenReplacement === 'double'
   }).length
-  if (doublers && count > 0) {
+  // the Manufactor's substituted halves belong to the SAME creation event, whose count was already
+  // doubled above — doubling them again would apply each doubler twice
+  if (doublers && count > 0 && !isSubstitution) {
     const doubled = count * 2 ** doublers
     logLine(state, `${state.players[ownerId]!.name} creates ${doubled} ${label} tokens instead of ${count}.`)
     count = doubled
@@ -865,6 +904,30 @@ function spawnTokensByDefName(
   // Tokens ENTER the battlefield → fire ETB triggers (self + "whenever a creature
   // you control/another creature enters" watchers: Soul Warden, Impact Tremors…).
   for (const id of created) fireEntersTriggers(state, id)
+  // Academy Manufactor (CR 616): "whenever you create one or more Clue, Food, or Treasure tokens, you
+  // create that many of each of the other two types instead". Applied AFTER the requested tokens are
+  // minted, and never recursively (the substituted tokens don't trigger it again).
+  if (!isSubstitution && count > 0) {
+    const trio = ['Clue', 'Food', 'Treasure'] as const
+    const made = trio.find((t) => (getDef(defName).subtypes ?? []).includes(t))
+    if (made) {
+      const manufactors = state.zones.perPlayer[ownerId]!.battlefield.filter((id) => {
+        const src = state.objects[id]
+        return !!src && !src.phasedOut && !state.loseAbilities.includes(id) && getDef(src.defName).tokenReplacement === 'artifactTrio'
+      }).length
+      if (manufactors) {
+        for (const other of trio.filter((t) => t !== made)) {
+          const spec = other === 'Clue' ? CLUE : other === 'Food' ? FOOD : TREASURE
+          spawnTokensByDefName(state, ownerId, registerImplementedToken(spec), spec.name, count, true)
+        }
+        logLine(state, `${state.players[ownerId]!.name} also creates ${count} of each other artifact type (Academy Manufactor).`)
+      }
+    }
+  }
+  // "Whenever you create one or more tokens, …" (Mirkwood Bats) — ONE trigger per creation event
+  // (CR 603.2b), so a doubled or substituted creation is still a single event. The substituted halves
+  // pass isSubstitution, so the Manufactor's extra tokens don't fire it again.
+  if (!isSubstitution && count > 0) fireCreatedTokensWatchers(state, ownerId)
 }
 
 /** Create `count` tokens on the controller's battlefield. */
@@ -1630,6 +1693,7 @@ export const createCopyOfAttached = (): Effect => (ctx) => {
   ctx.state.players[ctx.controllerId]!.createdTokenThisTurn = true
   logLine(ctx.state, `${ctx.state.players[ctx.controllerId]!.name} creates a token copy of ${getDef(host.defName).name} (with haste).`)
   fireEntersTriggers(ctx.state, id)
+  fireCreatedTokensWatchers(ctx.state, ctx.controllerId) // minted outside spawnTokens, so fire it here
 }
 
 /**
@@ -1684,7 +1748,9 @@ export const sacrificeFormerHost = (): Effect => (ctx) => {
   const host = hostId ? ctx.state.objects[hostId] : undefined
   if (!host || host.zone !== 'battlefield') return
   logLine(ctx.state, `${getDef(host.defName).name} is sacrificed (${getDef(aura!.defName).name} left the battlefield).`)
+  const who = host.controllerId
   moveToGraveyard(ctx.state, host.id)
+  fireSacrificeWatchers(ctx.state, who, [host.id]) // its controller sacrificed it, so their watchers see it
 }
 
 /**
@@ -2035,6 +2101,23 @@ export const copySelfIfLandsAtLeast = (n: number, otherwise: TokenSpec): Effect 
   const selfName = getDef(src.defName).name
   logLine(ctx.state, `${selfName} creates a token copy of itself (${lands} lands).`)
   spawnTokensByDefName(ctx.state, ctx.controllerId, registerCopyToken(getDef(src.defName), {}), `${selfName} copy`, 1)
+}
+
+/**
+ * "Whenever you create one or more tokens, …" (Mirkwood Bats) — one trigger per creation event for each
+ * watcher that player controls.
+ */
+function fireCreatedTokensWatchers(state: EffectContext['state'], ownerId: PlayerId) {
+  if (state.status !== 'active') return
+  for (const pid of state.turnOrder) {
+    for (const id of [...state.zones.perPlayer[pid]!.battlefield]) {
+      const p = state.objects[id]
+      if (!p || p.phasedOut || state.loseAbilities.includes(id)) continue
+      // "whenever YOU create" — only the creating player's own watchers
+      if (!getDef(p.defName).createdTokens || p.controllerId !== ownerId) continue
+      queueTriggeredAbility(state, p.id, 'createdTokens')
+    }
+  }
 }
 
 /**

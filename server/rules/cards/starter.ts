@@ -134,6 +134,7 @@ import {
   weakenAllCreaturesX,
   weakenControlledCreatures,
   windfall,
+  counterTargetExiling,
 } from './effects'
 import type { Keyword, ManaColor } from '#shared/rules/types'
 
@@ -5025,6 +5026,45 @@ export const STARTER_SET: CardDefinition[] = [
       { kind: 'activated', cost: { tap: true }, isMana: true, produces: ['G'], effect: addMana('G') },
       { kind: 'activated', cost: { mana: '{G}', tap: true }, effect: playHiddenCard({ kind: 'totalPower', n: 10 }) },
     ],
+  },
+  {
+    name: 'Academy Manufactor',
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Gnome', 'Artificer'],
+    manaCost: '{3}',
+    power: 1,
+    toughness: 4,
+    // "If you would create one or more Clue, Food, or Treasure tokens, you create that many of each of
+    //  those types instead."
+    tokenReplacement: 'artifactTrio',
+  },
+  {
+    name: 'Mirkwood Bats',
+    types: ['Creature'],
+    subtypes: ['Bat'],
+    manaCost: '{3}{B}',
+    colors: ['B'],
+    power: 2,
+    toughness: 2,
+    keywords: ['flying'],
+    // "Flying. Whenever you create one or more tokens, each opponent loses 1 life and you gain 1 life.
+    //  Whenever you sacrifice one or more permanents, each opponent loses 1 life and you gain 1 life."
+    createdTokens: { effect: sequence(eachOpponentLoses(1), gainLife(1)) },
+    sacrificedPermanents: { effect: sequence(eachOpponentLoses(1), gainLife(1)) },
+  },
+  {
+    name: 'Force of Negation',
+    types: ['Instant'],
+    manaCost: '{1}{U}{U}',
+    colors: ['U'],
+    // "If it's not your turn, you may exile a blue card from your hand rather than pay this spell's mana
+    //  cost. / Counter target noncreature spell. If that spell is countered this way, exile it instead of
+    //  putting it into its owner's graveyard."
+    pitchCost: { life: 0, color: 'U', onlyIfNotYourTurn: true },
+    spell: {
+      targets: [{ kind: 'spell', count: 1, filter: { excludeTypes: ['Creature'] } }],
+      effect: counterTargetExiling(),
+    },
   },
   {
     name: 'Panharmonicon',

@@ -82,6 +82,7 @@ let pwBurned = 0 // a spell/ability aimed its damage at a planeswalker ("any tar
 let impulsePlayed = 0 // a card exiled by an impulse effect was played straight out of exile (fuzz-only telemetry)
 let riotChosen = 0 // a riot creature entered and its controller chose (CR 702.137)
 let multiKicked = 0 // a multikicker spell was cast kicked (CR 702.33b)
+let pitchCast = 0 // a spell was cast for its PITCH alternative cost (hand → public exile)
 let hidAway = 0 // a hideaway land exiled a card face down (the look → face-down-exile path)
 let beganWithPermanent = 0 // a player took the CR 103.6 pre-game offer (Gemstone Caverns)
 
@@ -662,6 +663,36 @@ function randomAction(state: RulesGameState, rnd: () => number): boolean {
     }
   }
 
+  // PITCH alternative costs (Force of Will / Force of Negation, CR 118.9): a card leaves the HIDDEN hand
+  // for public exile as the cost is paid, so this belongs in the leak fuzzer — and it was never driven
+  // here before. Only attempted when a spell is on the stack to counter.
+  if (legal.pitchCastable.length && state.zones.stack.length && rnd() < 0.5) {
+    const offer = pick(legal.pitchCastable)
+    const pdef = getDef(state.objects[offer.objId]!.defName)
+    const spec = pdef.spell?.targets?.[0]
+    const spells = state.zones.stack.filter(
+      (x) =>
+        x.kind === 'spell' &&
+        x.id !== offer.objId &&
+        !(spec?.filter?.excludeTypes ?? []).some((t) => getDef(x.defName).types.includes(t)),
+    )
+    if (spells.length && offer.candidateIds.length) {
+      try {
+        applyRulesAction(state, actor, {
+          type: 'r.cast',
+          objId: offer.objId,
+          targets: [pick(spells).id],
+          pitch: true,
+          exiles: [pick(offer.candidateIds)],
+        })
+        pitchCast++ // telemetry
+        return true
+      } catch {
+        /* not castable right now (timing / target) — fall through to the normal actions */
+      }
+    }
+  }
+
   const roll = rnd()
 
   if (roll < 0.25 && legal.playableLandIds.length) {
@@ -1167,6 +1198,9 @@ const FUZZ_DECK = [
   ...Array(2).fill('The Great Henge'),
   ...Array(2).fill('Mox Diamond'),
   ...Array(2).fill('Panharmonicon'),
+  ...Array(2).fill('Academy Manufactor'),
+  ...Array(2).fill('Mirkwood Bats'),
+  ...Array(2).fill('Force of Negation'),
   ...Array(3).fill('Orcish Bowmasters'),
   ...Array(2).fill('Mithril Coat'),
   // NOT Scute Swarm: past six lands every land drop DOUBLES every copy, and this fuzzer redacts the
@@ -1231,6 +1265,7 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
     beganWithPermanent = 0
     riotChosen = 0
     multiKicked = 0
+    pitchCast = 0
     try {
       for (const [nPlayers, seed] of cases) {
         const rnd = mulberry32(seed)
@@ -1543,6 +1578,37 @@ describe('enforced-mode hidden-information fuzzing (CI-blocking)', () => {
       // …and the rest of the turn stays clean (the face-down id is now known to both players)
       until(state, (s) => s.step === 'end' || s.turnNumber > 1, 'the turn ends')
       assertNoLeaks(state, '(hideaway, end of turn)', seen)
+    } finally {
+      __setDeterministicRng(null)
+    }
+  })
+
+  // PITCH alternative cost (CARD65/CARD71): paying it moves a card from the HIDDEN hand to PUBLIC exile,
+  // and the countered spell is exiled too. Both are public destinations, so no re-mint is due — this
+  // pins that and drives the r.cast pitch shape through the history-aware machinery.
+  it('pitch cost: hand → public exile with no leak (history-aware, deterministic)', () => {
+    __setDeterministicRng(mulberry32(8181))
+    try {
+      const { state } = makeGameN(2, FUZZ_DECK)
+      const A = state.activePlayer
+      const B = state.turnOrder.find((p) => p !== A)!
+      const seen = new Map<PlayerId, Set<string>>(state.turnOrder.map((p) => [p, new Set<string>()]))
+      toStep(state, 'main1')
+      const force = putCard(state, B, 'Force of Negation', 'hand')
+      const blue = putCard(state, B, 'Counterspell', 'hand')
+      const div = putCard(state, A, 'Divination', 'hand')
+      assertNoLeaks(state, '(pitch setup)', seen)
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'U', delta: 1 })
+      applyRulesAction(state, A, { type: 'r.mMana', color: 'C', delta: 2 })
+      applyRulesAction(state, A, { type: 'r.cast', objId: div, targets: [] })
+      applyRulesAction(state, A, { type: 'r.pass' })
+      applyRulesAction(state, B, { type: 'r.cast', objId: force, targets: [div], pitch: true, exiles: [blue] })
+      // the pitched card is public in exile now, and so is the countered spell once it resolves
+      expect(state.objects[blue]!.zone).toBe('exile')
+      assertNoLeaks(state, '(pitched)', seen)
+      until(state, (s) => !s.zones.stack.length, 'both resolve')
+      expect(state.objects[div]!.zone).toBe('exile')
+      assertNoLeaks(state, '(after the counter)', seen)
     } finally {
       __setDeterministicRng(null)
     }

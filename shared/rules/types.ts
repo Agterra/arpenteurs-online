@@ -181,7 +181,7 @@ export type TargetClassKind =
 /** Which triggered ability a stack item / pending decision came from. */
 export type TriggerKind =
   | 'etb' | 'dies' | 'attacks' | 'upkeep' | 'cast' | 'draw' | 'landfall' | 'combatDamage' | 'drawStep'
-  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain'
+  | 'beginCombat' | 'leavesBattlefield' | 'etbWatch' | 'firstMain' | 'createdTokens' | 'sacrificed'
 
 /** A spell or ability on the stack. */
 export interface StackItem {

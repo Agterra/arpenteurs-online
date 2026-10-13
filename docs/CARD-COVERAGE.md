@@ -4,12 +4,13 @@
 > Regenerated on every local `pnpm test` run. This is the ledger for the perpetual
 > card-by-card coverage program (roadmap M-R5+).
 
-**625 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
+**628 cards implemented** (hand-coded, non-fallback; excludes tokens & DFC back faces).
 **8** of them can be a commander (legendary creatures).
 
 ## Cards
 
 - Abrade
+- Academy Manufactor
 - Accorder Paladin
 - Acidic Slime
 - Adarkar Wastes
@@ -211,6 +212,7 @@
 - Flooded Grove
 - Flooded Strand
 - Flux Channeler
+- Force of Negation
 - Force of Will
 - Foreboding Ruins
 - Forest
@@ -334,6 +336,7 @@
 - Mind Sculpt
 - Mind Spring
 - Mind Stone
+- Mirkwood Bats
 - Misty Rainforest
 - Mithril Coat
 - Monastery Swiftspear
